@@ -1,0 +1,22 @@
+[project]
+name = "dental-ai"
+version = "0.1.0"
+description = "口扫网格牙齿分割、缺牙检测与缺失牙生成"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "trimesh>=4.0",
+    "networkx>=3.0",
+    "rtree>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dental_ai*"]
