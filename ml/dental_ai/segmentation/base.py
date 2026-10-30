@@ -17,6 +17,8 @@ from ..io import load_labels
 
 class Segmenter(ABC):
     name: str = "base"
+    # 是否对输出做自动后处理（去碎片等）。人工标注、真值标注不需要
+    postprocess: bool = True
 
     @abstractmethod
     def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray: ...
@@ -26,9 +28,11 @@ class LabelFileSegmenter(Segmenter):
     """直接读取已有标签文件（Teeth3DS 标注、人工修正结果）。用于开发调试和评估下游模块。"""
 
     name = "label_file"
+    postprocess = False
 
-    def __init__(self, label_path: str | Path):
+    def __init__(self, label_path: str | Path, name: str = "label_file"):
         self.label_path = Path(label_path)
+        self.name = name
 
     def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
         labels, _ = load_labels(self.label_path)

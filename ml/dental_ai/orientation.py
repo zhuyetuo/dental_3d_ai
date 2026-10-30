@@ -133,6 +133,7 @@ class OrientedSegmenter(Segmenter):
     def __init__(self, inner: Segmenter):
         self.inner = inner
         self.name = inner.name
+        self.postprocess = inner.postprocess
         self.last: OrientationResult | None = None
 
     def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:

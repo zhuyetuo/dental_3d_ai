@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import json
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
+from dental_ai.fdi import arch_order
+from dental_ai.io import load_labels, save_labels
 from dental_ai.preferences import DesignPreferences
 
 from . import storage
@@ -86,6 +92,53 @@ def run_case(case_id: str, background: BackgroundTasks) -> dict:
     case["status"] = "queued"
     storage.save_case(case)
     background.add_task(process_case, case_id)
+    return case
+
+
+class LabelsUpdate(BaseModel):
+    labels: list[int]
+
+
+@app.put("/api/cases/{case_id}/labels")
+def update_labels(case_id: str, body: LabelsUpdate) -> dict:
+    """保存人工修正后的逐顶点标签。之后调用 /run 会用这份标签重新计算下游步骤。
+
+    每次修改保存为新版本（labels_edit_001.json …）；第一次修改前把模型的原始预测另存为
+    labels_model.json，“模型预测 → 人工修正”成对保留，用作训练数据。
+    """
+    case = _get_case(case_id)
+    if case["status"] in ("queued", "running"):
+        raise HTTPException(409, "任务正在运行，结束后再保存")
+    current = storage.case_path(case_id, "result", "labels.json")
+    if not current.exists():
+        raise HTTPException(409, "还没有分割结果，请先运行")
+    base, _ = load_labels(current)
+    new = np.asarray(body.labels, dtype=np.int64)
+    if len(new) != len(base):
+        raise HTTPException(400, f"标签数量 {len(new)} 与顶点数 {len(base)} 不一致")
+    valid = {0, *arch_order(case["jaw"], include_third_molars=True)}
+    invalid = sorted(int(v) for v in set(np.unique(new).tolist()) - valid)
+    if invalid:
+        raise HTTPException(400, f"{case['jaw']} 不允许的牙号: {invalid}")
+
+    edits = case.setdefault("label_edits", [])
+    if not edits:
+        shutil.copyfile(current, storage.case_path(case_id, "labels_model.json"))
+        case["files"]["labels_model"] = "labels_model.json"
+        case["model_segmenter"] = (case.get("report") or {}).get("segmenter")
+    version = len(edits) + 1
+    name = f"labels_edit_{version:03d}.json"
+    save_labels(storage.case_path(case_id, name), new, case["jaw"], patient_id=case_id)
+    edits.append(
+        {
+            "version": version,
+            "file": name,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "changed_vertices": int((new != base).sum()),
+        }
+    )
+    case["files"]["labels"] = name
+    storage.save_case(case)
     return case
 
 

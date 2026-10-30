@@ -31,7 +31,7 @@ backend/   FastAPI 服务
 services/  算法服务（每个模型一个容器）
   tgnet/                        TGNet 分割服务（需要 NVIDIA GPU）
 models/    模型权重（不提交到 git，见 models/README.md）
-frontend/  React + Three.js 查看器
+frontend/  React + Three.js 查看器和标注编辑器（src/editor）
 scripts/   工具脚本
 docs/      设计文档
 ```
@@ -94,11 +94,29 @@ cd ml && pytest -q
 cd backend && pytest -q
 ```
 
+前端单元测试（标注编辑逻辑）：
+
+```bash
+cd frontend && npm test
+```
+
 TGNet 服务的接口测试（用假模型，不需要 GPU）：
 
 ```bash
 pytest -q services/tgnet/tests
 ```
+
+## 标注编辑器
+
+处理完成后，右侧就是编辑器：
+
+| 模式 | 快捷键 | 操作 |
+|---|---|---|
+| 查看 | V | 左键旋转、右键平移、滚轮缩放 |
+| 改牙号 | S | 在牙位图上选牙号，再点击模型上的一颗牙（或一块牙龈），整块改成该牙号 |
+| 画笔 | B | 选牙号，按住左键涂抹，修正牙齿和牙龈的边界；可以调画笔半径 |
+
+撤销 Ctrl+Z，重做 Ctrl+Shift+Z。改完点“保存并重新计算”：修正后的标签保存为新版本，并重新运行缺牙检测、生成和封底。模型的原始预测会单独保留，用作训练数据。
 
 ## 当前状态
 

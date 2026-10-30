@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, Case } from "./api";
+import { LabelEditor } from "./editor/LabelEditor";
 import { Viewer } from "./Viewer";
 
 const KIND_TEXT = { space: "有缺隙，可修复", closed: "间隙已关闭", free_end: "游离端缺失" } as const;
@@ -18,6 +19,32 @@ export function App() {
   const [cervical, setCervical] = useState<Record<string, number[][]>>();
   const [showCervical, setShowCervical] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const onDirtyChange = useCallback((d: boolean) => setDirty(d), []);
+  const version = current?.finished_at;
+
+  // 有未保存的修改时，切换病例或关闭页面前确认
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  function select(c: Case) {
+    if (c.id === current?.id) return;
+    if (dirty && !window.confirm("当前病例有未保存的标注修改，确定要离开吗？")) return;
+    setDirty(false);
+    setCurrent(c);
+  }
+
+  async function saveLabels(labels: number[]) {
+    if (!current) return;
+    await api.saveLabels(current.id, labels);
+    setDirty(false);
+    setCurrent(await api.runCase(current.id));
+    refresh();
+  }
 
   const refresh = () => api.listCases().then(setCases).catch((e) => setError(String(e)));
   useEffect(() => {
@@ -38,11 +65,11 @@ export function App() {
   useEffect(() => {
     setCervical(undefined);
     if (current?.status !== "done") return;
-    fetch(api.fileUrl(current.id, "result/cervical_lines.json"))
+    fetch(api.fileUrl(current.id, "result/cervical_lines.json", current.finished_at))
       .then((r) => r.json())
       .then(setCervical)
       .catch(() => setCervical(undefined));
-  }, [current?.id, current?.status]);
+  }, [current?.id, current?.status, current?.finished_at]);
 
   async function upload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -68,8 +95,9 @@ export function App() {
   }
 
   const generatedUrls = useMemo(
-    () => (current?.status === "done" ? current.report!.generated.map((g) => api.fileUrl(current.id, `result/${g.file}`)) : []),
-    [current?.id, current?.status],
+    () =>
+      current?.status === "done" ? current.report!.generated.map((g) => api.fileUrl(current.id, `result/${g.file}`, version)) : [],
+    [current?.id, current?.status, version],
   );
 
   const report = current?.report;
@@ -113,7 +141,7 @@ export function App() {
         <h2>病例</h2>
         <ul className="cases">
           {cases.map((c) => (
-            <li key={c.id} className={c.id === current?.id ? "active" : ""} onClick={() => setCurrent(c)}>
+            <li key={c.id} className={c.id === current?.id ? "active" : ""} onClick={() => select(c)}>
               {c.jaw === "upper" ? "上颌" : "下颌"} · {new Date(c.created_at).toLocaleString()} · {c.status}
             </li>
           ))}
@@ -127,6 +155,10 @@ export function App() {
             {report && (
               <>
                 <p>识别到的牙齿：{report.teeth.join(", ")}</p>
+                <p>
+                  分割来源：{report.segmenter === "manual" ? "人工修正" : report.segmenter}
+                  {current.label_edits?.length ? `（已修正 ${current.label_edits.length} 次）` : ""}
+                </p>
                 <h3>缺失牙</h3>
                 <ul>
                   {report.missing.map((m) => (
@@ -168,13 +200,21 @@ export function App() {
         )}
       </aside>
       <main>
-        <Viewer
-          segmentationUrl={current?.status === "done" ? api.fileUrl(current.id, "result/segmentation.ply") : undefined}
-          meshUrl={current ? api.fileUrl(current.id, current.files.mesh) : undefined}
-          generatedUrls={generatedUrls}
-          cervicalLines={cervical}
-          showCervical={showCervical}
-        />
+        {current?.status === "done" ? (
+          <LabelEditor
+            key={current.id}
+            plyUrl={api.fileUrl(current.id, "result/segmentation.ply", version)}
+            labelsUrl={api.fileUrl(current.id, "result/labels.json", version)}
+            jaw={current.jaw}
+            onSave={saveLabels}
+            onDirtyChange={onDirtyChange}
+            generatedUrls={generatedUrls}
+            cervicalLines={cervical}
+            showCervical={showCervical}
+          />
+        ) : (
+          <Viewer meshUrl={current ? api.fileUrl(current.id, current.files.mesh) : undefined} />
+        )}
       </main>
     </div>
   );
