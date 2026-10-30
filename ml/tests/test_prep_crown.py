@@ -51,12 +51,14 @@ def test_intaglio_follows_cement_gap():
     assert abs(np.median(d) - 0.08) < 0.02
 
 
-def test_no_neighbor_raises():
+def test_last_molar_prep_uses_free_end_placement():
+    """最后一颗磨牙做预备体（远中没有邻牙）：以前无法生成，现在按游离端处理。"""
     mesh, labels = synthetic_arch("lower", prepared=(37,), resolution=0.25, band=12)
     up = estimate_arch_frame(mesh, labels, "lower").occlusal
     margin = detect_margin(mesh, labels, 37, up=up).points
-    with pytest.raises(ValueError, match="邻牙"):
-        generate_prep_crown(mesh, labels, "lower", 37, margin, up)
+    res = generate_prep_crown(mesh, labels, "lower", 37, margin, up)
+    assert res.mesh.is_watertight and res.info["min_thickness_mm"] >= 0.5 - 1e-3
+    assert set(res.info["contacts_mm"]) == {"36"}
 
 
 def test_pipeline_generates_prep_crown(tmp_path):
@@ -76,7 +78,7 @@ def test_pipeline_generates_prep_crown(tmp_path):
 
 
 def test_prepared_teeth_are_not_used_as_donors(tmp_path):
-    """缺 36、46 是预备体：36 不能用磨小的 46 镜像，46 也没有对侧供体。"""
+    """缺 36、46 是预备体：36 不能用磨小的 46 镜像，46 的对侧 36 也缺失。"""
     mesh, labels = synthetic_arch("lower", missing=(36,), prepared=(46,), resolution=0.25, band=12, label_offset=0.4)
 
     class Fixed(Segmenter):
@@ -87,5 +89,6 @@ def test_prepared_teeth_are_not_used_as_donors(tmp_path):
             return labels
 
     report = run(mesh, "lower", Fixed(), tmp_path, prepared_teeth=[46])
-    assert report["generated"] == []
-    assert any("36" in w and "预备体" in w for w in report["warnings"])
+    sources = {g["fdi"]: g["source"] for g in report["generated"]}
+    # 两颗都改用标准牙模板，而不是互相镜像
+    assert sources == {36: "builtin:lower_6", 46: "builtin:lower_6"}

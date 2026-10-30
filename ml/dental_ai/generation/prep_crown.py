@@ -236,6 +236,7 @@ def generate_prep_crown(
     gap_taper: float = 1.0,
     margin_thickness: float = 0.05,
     excluded_donors: set[int] | frozenset[int] = frozenset(),
+    library=None,
 ) -> PrepCrown:
     prefs = preferences or DesignPreferences()
     # 颈缘线的点先吸附回网格表面：检测结果经过平滑，在凸棱处会稍微缩进牙体，
@@ -262,12 +263,13 @@ def generate_prep_crown(
     # 2. 冠外表面：把预备体当作缺失牙生成
     without = np.where(labels == fdi, 0, labels)
     target = next((m for m in detect_missing(mesh, without, jaw, include_third_molars=True) if m.fdi == fdi), None)
-    if target is None or target.kind != "space":
-        raise ValueError(f"{fdi} 两侧没有邻牙，V1 无法确定牙冠大小")
+    if target is None or (target.mesial is None and target.distal is None):
+        raise ValueError(f"{fdi} 两侧都没有邻牙，无法确定牙冠方向和大小")
     ctx = GenerationContext(
         mesh=mesh, labels=without, jaw=jaw, antagonist=antagonist, excluded_donors=frozenset(excluded_donors)
     )
-    outer_tooth = MirrorTemplateGenerator(template_dir=template_dir, preferences=prefs).generate(ctx, target)
+    generator = MirrorTemplateGenerator(template_dir=template_dir, preferences=prefs, library=library)
+    outer_tooth = generator.generate(ctx, target, center=margin.mean(axis=0))
     outer = outer_tooth.crown
     outer_loops = boundary_loops(outer)
     if len(outer_loops) != 1:

@@ -21,7 +21,8 @@ ml/        核心算法包 dental_ai（与 Web 无关，可单独使用）
   dental_ai/fdi.py              FDI 牙位编号工具
   dental_ai/segmentation/       分割接口、远程分割服务客户端、编号纠错、后处理
   dental_ai/detection/          缺牙检测
-  dental_ai/generation/         缺失牙生成（V1：对侧镜像 + 缺隙拟合）、预备体牙冠生成
+  dental_ai/generation/         缺失牙生成（对侧镜像 / 标准牙模板 + 缺隙拟合）、预备体牙冠生成
+  dental_ai/templates/          标准牙模板库（牙齿局部坐标系、内置参数化模板、从标注数据构建）
   dental_ai/margin/             牙颈线提取、预备体颈缘线检测、贴合牙龈的底面生成
   dental_ai/preferences.py      设计参数（邻接距离、咬合距离、粘接间隙等）
   dental_ai/orientation.py      朝向归一化（分割前把任意朝向的口扫转到标准坐标系）
@@ -124,7 +125,8 @@ pytest -q services/tgnet/tests
 
 - 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化，分割后自动做编号纠错（都在合成数据上验证过，真实口扫待验证；纠错可用 `NUMBERING_FIX=0` 关闭）；
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
-- 生成：V1 对侧镜像，只处理两侧都有邻牙的缺隙；
+- 生成：外形供体优先用对侧同名牙镜像，对侧也缺（或是预备体）时用标准牙模板库；支持两侧都有邻牙的缺隙、牙弓末端（游离端，如最后一颗磨牙）和连续多颗缺牙。放置位置：缺隙按各牙标准宽度分配；游离端优先用对侧同名牙的镜像位置，对侧也没有时沿牙弓局部外推（合成数据上误差：镜像位置约 0.05 mm，外推约 1.2 mm）；
+- 标准牙模板库：默认用内置的参数化模板（按教科书平均尺寸程序生成的**简化形态**，只是占位）。有标注数据后用 `python -m dental_ai.templates build --data-dir <obj> --gt-dir <标注> --out models/templates` 构建真实模板，后端通过 `TEMPLATE_DIR` 读取（docker-compose 已挂载 `models/templates`）。注意 Teeth3DS 是 CC BY-NC-ND 4.0，用它构建的模板不能直接商用；
 - 底面：缺失牙场景（底面贴合牙龈）已实现；
 - 预备体颈缘线：自动检测（几何方法，合成肩台预备体上平均误差约 0.13 mm）+ 编辑器人工编辑；上传时填写预备体牙号，或在编辑器里设置；
 - 预备体牙冠：沿颈缘线精确切开预备体，组织面贴合（粘接间隙、颈缘处渐变为 0、去倒凹），外表面用对侧同名牙镜像，邻接距离按设计参数调整，保证最小冠厚度，颈缘处缝合成封闭 STL（`result/crown_<牙号>.stl`）。缺失牙同样做邻接调整。限制见 docs/algorithm-architecture.md 的 E2 一节。

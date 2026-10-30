@@ -14,7 +14,7 @@ import trimesh
 from scipy.spatial import cKDTree
 
 from .detection.missing import detect_missing
-from .fdi import Jaw
+from .fdi import Jaw, arch_order
 from .generation.base import GenerationContext, ToothGenerator
 from .generation.contacts import adjust_contacts
 from .generation.mirror_template import MirrorTemplateGenerator
@@ -119,6 +119,7 @@ def run(
             crown = generate_prep_crown(
                 mesh, labels, jaw, fdi, np.asarray(m["points"]), up, preferences=prefs, antagonist=antagonist,
                 excluded_donors=set(prepared_teeth or []),
+                library=getattr(generator, "library", None),
             )
         except (LookupError, ValueError) as exc:
             report["warnings"].append(f"{fdi} 预备体牙冠生成失败: {exc}")
@@ -130,14 +131,20 @@ def run(
             {"fdi": fdi, "file": name, "method": "prep_crown", "watertight": bool(crown.mesh.is_watertight), **crown.info}
         )
     for target in missing:
-        if target.kind != "space":
+        if target.kind == "closed":
             continue
         try:
             tooth = generator.generate(ctx, target)
             # 邻接调整：底边 1 mm 以内的顶点不动，保证封底不受影响
             boundary = tooth.crown.vertices[boundary_loops(tooth.crown)[0]]
             movable = cKDTree(boundary).query(tooth.crown.vertices)[0] > 1.0
-            neighbors = {f: tooth_mesh(mesh, labels, f) for f in (target.mesial, target.distal) if f is not None}
+            # 只和真正相邻的牙做邻接（连续缺失时，隔着缺失牙的邻牙不算）
+            order = arch_order(jaw, include_third_molars=True)
+            neighbors = {
+                f: tooth_mesh(mesh, labels, f)
+                for f in (target.mesial, target.distal)
+                if f is not None and abs(order.index(f) - order.index(target.fdi)) == 1
+            }
             contacts, contact_warnings = adjust_contacts(tooth.crown, neighbors, prefs.contacts_distance, movable)
             tooth.info["contacts_mm"] = {str(k): v for k, v in contacts.items()}
             report["warnings"] += contact_warnings

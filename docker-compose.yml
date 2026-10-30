@@ -23,8 +23,11 @@ services:
       SEGMENTER_ORIENT: "1"
       # 分割后自动做编号纠错，"0" 关闭
       NUMBERING_FIX: "1"
+      # 标准牙模板库目录；里面没有对应牙位时自动用内置参数化模板
+      TEMPLATE_DIR: /models/templates
     volumes:
       - case-data:/data
+      - ./models/templates:/models/templates:ro
     ports:
       - "8000:8000"
 
