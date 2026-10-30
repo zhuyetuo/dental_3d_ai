@@ -12,6 +12,8 @@ const PREFERENCE_FIELDS = [
   { key: "occlusion_distance", label: "咬合距离", value: 0.3 },
   { key: "gum_relief", label: "底面到牙龈距离", value: 0.05 },
   { key: "emergence_taper", label: "穿龈收拢比例", value: 0.85 },
+  { key: "cement_gap", label: "粘接间隙（预备体冠）", value: 0.03 },
+  { key: "crown_thickness", label: "最小冠厚度（预备体冠）", value: 0.5 },
 ] as const;
 
 export function App() {
@@ -217,7 +219,8 @@ export function App() {
                 <ul>
                   {report.generated.map((g) => (
                     <li key={g.fdi}>
-                      {g.fdi}：{g.method}（{g.source}）{g.watertight ? "" : " ⚠ 非封闭"} ·{" "}
+                      {g.fdi}：{g.method === "prep_crown" ? "预备体牙冠" : "缺失牙"}（{g.source}
+                      {g.min_thickness_mm != null && `，最小厚度 ${g.min_thickness_mm} mm`}）{g.watertight ? "" : " ⚠ 非封闭"} ·{" "}
                       <a href={api.fileUrl(current.id, `result/${g.file}`)} download>
                         下载 STL
                       </a>

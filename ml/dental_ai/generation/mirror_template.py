@@ -39,14 +39,15 @@ class MirrorTemplateGenerator(ToothGenerator):
 
     def _donor(self, ctx: GenerationContext, frame: ArchFrame, fdi: int) -> tuple[trimesh.Trimesh, str]:
         contra = mirror(fdi)
-        if np.any(ctx.labels == contra):
+        if contra not in ctx.excluded_donors and np.any(ctx.labels == contra):
             donor = tooth_mesh(ctx.mesh, ctx.labels, contra)
             donor.vertices = frame.reflect(donor.vertices)
             donor.invert()  # 镜像会翻转三角形朝向
             return donor, f"mirror:{contra}"
         if self.template_dir and (self.template_dir / f"{fdi}.stl").exists():
             return load_mesh(self.template_dir / f"{fdi}.stl"), f"template:{fdi}"
-        raise LookupError(f"没有对侧牙 {contra}，模板库中也没有 {fdi}")
+        reason = f"对侧牙 {contra} 是预备体" if contra in ctx.excluded_donors else f"没有对侧牙 {contra}"
+        raise LookupError(f"{reason}，模板库中也没有 {fdi}")
 
     def generate(self, ctx: GenerationContext, target: MissingTooth) -> GeneratedTooth:
         if target.kind != "space":

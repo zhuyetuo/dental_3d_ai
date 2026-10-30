@@ -53,3 +53,5 @@ def test_pipeline_margins(tmp_path):
     manual = {46: {"points": [[0, 0, 0]] * 4, "control": None}}
     report = run(mesh, "lower", Fixed(), tmp_path / "b", prepared_teeth=[46], margin_overrides=manual)
     assert report["margins"]["46"]["source"] == "manual"
+    # 退化的颈缘线：牙冠生成失败，只记警告，不影响其它结果
+    assert any("预备体牙冠生成失败" in w for w in report["warnings"])
