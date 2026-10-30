@@ -23,6 +23,7 @@ from .margin.cervical import all_cervical_lines
 from .orientation import OrientedSegmenter
 from .preferences import DesignPreferences
 from .segmentation.base import LabelFileSegmenter, Segmenter
+from .segmentation.numbering import correct_numbering
 from .segmentation.postprocess import check_arch_order, remove_small_islands
 from .segmentation.remote import RemoteSegmenter
 
@@ -35,6 +36,7 @@ def run(
     generator: ToothGenerator | None = None,
     antagonist: trimesh.Trimesh | None = None,
     preferences: DesignPreferences | None = None,
+    fix_numbering: bool = True,
 ) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -43,7 +45,13 @@ def run(
 
     labels = segmenter.predict(mesh, jaw)
     orientation = getattr(segmenter, "last", None)
+    numbering = None
     if segmenter.postprocess:
+        # 编号纠错要在去碎片之前：去碎片会把“同一牙号的第二块”并到邻居里，吞掉被标重号的那颗牙
+        if fix_numbering:
+            canonical = orientation.apply(mesh).vertices if orientation else None
+            numbering = correct_numbering(mesh, labels, jaw, canonical_vertices=canonical)
+            labels = numbering.labels
         labels = remove_small_islands(mesh, labels)
     save_labels(out / "labels.json", labels, jaw)
     export_colored_ply(out / "segmentation.ply", mesh, labels)
@@ -53,8 +61,9 @@ def run(
         "segmenter": segmenter.name,
         "preferences": prefs.to_dict(),
         "orientation": {"symmetry_error_mm": round(orientation.symmetry_error, 3)} if orientation else None,
+        "numbering": numbering.to_dict() if numbering else None,
         "teeth": sorted(int(v) for v in np.unique(labels) if v != 0),
-        "warnings": check_arch_order(mesh, labels, jaw),
+        "warnings": check_arch_order(mesh, labels, jaw) + (numbering.warnings if numbering else []),
         "missing": [],
         "generated": [],
     }
@@ -92,6 +101,7 @@ def main() -> None:
     p.add_argument("--labels", help="Teeth3DS 格式标签文件（直接使用，不调用分割模型）")
     p.add_argument("--segmenter-url", help="分割服务地址，如 http://localhost:8001（services/tgnet）")
     p.add_argument("--no-orient", action="store_true", help="调用分割服务前不做朝向归一化（输入已经是标准朝向时使用）")
+    p.add_argument("--no-fix-numbering", action="store_true", help="不做编号纠错")
     p.add_argument("--antagonist", help="对颌网格，用于咬合约束")
     p.add_argument("--templates", help="牙齿模板库目录（<FDI>.stl）")
     p.add_argument("--preferences", help="设计参数 JSON 文件，字段见 dental_ai.preferences")
@@ -115,6 +125,7 @@ def main() -> None:
         generator=MirrorTemplateGenerator(template_dir=args.templates, preferences=prefs),
         antagonist=load_mesh(args.antagonist) if args.antagonist else None,
         preferences=prefs,
+        fix_numbering=not args.no_fix_numbering,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

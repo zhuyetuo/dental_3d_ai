@@ -159,6 +159,13 @@ export function App() {
                   分割来源：{report.segmenter === "manual" ? "人工修正" : report.segmenter}
                   {current.label_edits?.length ? `（已修正 ${current.label_edits.length} 次）` : ""}
                 </p>
+                {report.numbering?.applied && (
+                  <p>
+                    自动纠正编号：
+                    {report.numbering.changes.map((c) => `${c.from}→${c.to}`).join("，")}
+                    （请在编辑器中确认）
+                  </p>
+                )}
                 <h3>缺失牙</h3>
                 <ul>
                   {report.missing.map((m) => (

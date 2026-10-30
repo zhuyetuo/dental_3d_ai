@@ -18,7 +18,7 @@
 ```
 ml/        核心算法包 dental_ai（与 Web 无关，可单独使用）
   dental_ai/fdi.py              FDI 牙位编号工具
-  dental_ai/segmentation/       分割接口、远程分割服务客户端、后处理
+  dental_ai/segmentation/       分割接口、远程分割服务客户端、编号纠错、后处理
   dental_ai/detection/          缺牙检测
   dental_ai/generation/         缺失牙生成（V1：对侧镜像 + 缺隙拟合）
   dental_ai/margin/             牙颈线提取、贴合牙龈的底面生成
@@ -120,7 +120,7 @@ pytest -q services/tgnet/tests
 
 ## 当前状态
 
-- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化（合成数据上验证过，真实口扫待验证）；
+- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化，分割后自动做编号纠错（都在合成数据上验证过，真实口扫待验证；纠错可用 `NUMBERING_FIX=0` 关闭）；
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
 - 生成：V1 对侧镜像，只处理两侧都有邻牙的缺隙；
 - 底面：缺失牙场景（底面贴合牙龈）已实现；预备体颈缘线检测待做。
