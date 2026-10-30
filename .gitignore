@@ -5,3 +5,5 @@ __pycache__/
 data/
 samples/
 out/
+models/**/*.h5
+models/**/*.pth
