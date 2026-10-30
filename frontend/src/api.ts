@@ -20,6 +20,7 @@ export interface GeneratedTooth {
 }
 
 export interface Report {
+  segmenter: string;
   jaw: Jaw;
   teeth: number[];
   warnings: string[];
@@ -35,6 +36,9 @@ export interface Case {
   files: Record<string, string>;
   report: Report | null;
   error: string | null;
+  /** 最近一次处理结束的时间，用作结果文件的版本号（避免浏览器缓存旧文件） */
+  finished_at?: string;
+  label_edits?: { version: number; file: string; created_at: string; changed_vertices: number }[];
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -50,5 +54,12 @@ export const api = {
   getCase: (id: string) => fetch(`/api/cases/${id}`).then((r) => json<Case>(r)),
   createCase: (form: FormData) => fetch("/api/cases", { method: "POST", body: form }).then((r) => json<Case>(r)),
   runCase: (id: string) => fetch(`/api/cases/${id}/run`, { method: "POST" }).then((r) => json<Case>(r)),
-  fileUrl: (id: string, path: string) => `/api/cases/${id}/files/${path}`,
+  saveLabels: (id: string, labels: number[]) =>
+    fetch(`/api/cases/${id}/labels`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ labels }),
+    }).then((r) => json<Case>(r)),
+  fileUrl: (id: string, path: string, version?: string) =>
+    `/api/cases/${id}/files/${path}${version ? `?v=${encodeURIComponent(version)}` : ""}`,
 };

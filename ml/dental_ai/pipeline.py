@@ -43,7 +43,8 @@ def run(
 
     labels = segmenter.predict(mesh, jaw)
     orientation = getattr(segmenter, "last", None)
-    labels = remove_small_islands(mesh, labels)
+    if segmenter.postprocess:
+        labels = remove_small_islands(mesh, labels)
     save_labels(out / "labels.json", labels, jaw)
     export_colored_ply(out / "segmentation.ply", mesh, labels)
 

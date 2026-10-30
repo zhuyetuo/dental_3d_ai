@@ -86,3 +86,47 @@ def test_preferences(client, tmp_path):
 
     assert _upload(client, tmp_path, preferences='{"bogus": 1}').status_code == 400
     assert _upload(client, tmp_path, preferences="not json").status_code == 400
+
+
+def _done_case(client, tmp_path):
+    case_id = _upload(client, tmp_path).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    labels = json.loads(client.get(f"/api/cases/{case_id}/files/result/labels.json").content)["labels"]
+    return case_id, labels
+
+
+def test_edit_labels_and_rerun(client, tmp_path):
+    case_id, labels = _done_case(client, tmp_path)
+    edited = [32 if v == 31 else v for v in labels]  # 把 31 改成 32
+    res = client.put(f"/api/cases/{case_id}/labels", json={"labels": edited})
+    assert res.status_code == 200, res.text
+    case = res.json()
+    assert case["files"]["labels"] == "labels_edit_001.json"
+    assert case["label_edits"][0]["changed_vertices"] == labels.count(31)
+    assert case["model_segmenter"] == "label_file"
+
+    client.post(f"/api/cases/{case_id}/run")
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["status"] == "done", case["error"]
+    assert case["report"]["segmenter"] == "manual"
+    assert 31 not in case["report"]["teeth"]
+    rerun = json.loads(client.get(f"/api/cases/{case_id}/files/result/labels.json").content)["labels"]
+    assert rerun == edited  # 人工标注不做自动后处理
+
+    # 第二次修改：版本递增，模型原始预测保持不变
+    case = client.put(f"/api/cases/{case_id}/labels", json={"labels": labels}).json()
+    assert [e["version"] for e in case["label_edits"]] == [1, 2]
+    model = json.loads(client.get(f"/api/cases/{case_id}/files/labels_model.json").content)["labels"]
+    assert model == labels
+
+
+def test_edit_labels_validation(client, tmp_path):
+    case_id = _upload(client, tmp_path).json()["id"]
+    assert client.put(f"/api/cases/{case_id}/labels", json={"labels": [0]}).status_code == 409  # 还没运行
+
+    case_id, labels = _done_case(client, tmp_path)
+    assert client.put(f"/api/cases/{case_id}/labels", json={"labels": labels[:-1]}).status_code == 400
+    wrong_jaw = [11 if v else 0 for v in labels]  # 下颌不允许上颌牙号
+    res = client.put(f"/api/cases/{case_id}/labels", json={"labels": wrong_jaw})
+    assert res.status_code == 400 and "11" in res.json()["detail"]
+    assert client.put(f"/api/cases/{case_id}/labels", json={"labels": [99] * len(labels)}).status_code == 400

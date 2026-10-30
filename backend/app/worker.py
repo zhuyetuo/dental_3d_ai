@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import traceback
+from datetime import datetime, timezone
 
 from dental_ai.generation.mirror_template import MirrorTemplateGenerator
 from dental_ai.io import load_mesh
@@ -21,7 +22,8 @@ def build_segmenter(case: dict) -> Segmenter:
     """上传了标签文件就直接用（人工修正结果、Teeth3DS 标注），否则调用分割服务。"""
     labels = case["files"].get("labels")
     if labels:
-        return LabelFileSegmenter(storage.case_path(case["id"], labels))
+        name = "manual" if case.get("label_edits") else "label_file"
+        return LabelFileSegmenter(storage.case_path(case["id"], labels), name=name)
     url = os.environ.get("SEGMENTER_URL")
     if url:
         segmenter: Segmenter = RemoteSegmenter(url, name=os.environ.get("SEGMENTER_NAME", "tgnet"))
@@ -53,4 +55,5 @@ def process_case(case_id: str) -> None:
     except Exception as exc:  # 任务失败要记录到病例上，前端才能显示
         traceback.print_exc()
         case.update(status="failed", error=str(exc))
+    case["finished_at"] = datetime.now(timezone.utc).isoformat()
     storage.save_case(case)
