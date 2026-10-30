@@ -11,16 +11,18 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from scipy.spatial import cKDTree
 
 from .detection.missing import detect_missing
 from .fdi import Jaw
 from .generation.base import GenerationContext, ToothGenerator
+from .generation.contacts import adjust_contacts
 from .generation.mirror_template import MirrorTemplateGenerator
 from .generation.prep_crown import generate_prep_crown
-from .geometry import estimate_arch_frame, gum_mesh
+from .geometry import estimate_arch_frame, gum_mesh, tooth_mesh
 from .io import export_colored_ply, load_mesh, save_labels
 from .margin.base_surface import close_with_gum_base
-from .margin.cervical import all_cervical_lines
+from .margin.cervical import all_cervical_lines, boundary_loops
 from .margin.detect import detect_margin, edge_sharpness
 from .orientation import OrientedSegmenter
 from .preferences import DesignPreferences
@@ -132,6 +134,13 @@ def run(
             continue
         try:
             tooth = generator.generate(ctx, target)
+            # 邻接调整：底边 1 mm 以内的顶点不动，保证封底不受影响
+            boundary = tooth.crown.vertices[boundary_loops(tooth.crown)[0]]
+            movable = cKDTree(boundary).query(tooth.crown.vertices)[0] > 1.0
+            neighbors = {f: tooth_mesh(mesh, labels, f) for f in (target.mesial, target.distal) if f is not None}
+            contacts, contact_warnings = adjust_contacts(tooth.crown, neighbors, prefs.contacts_distance, movable)
+            tooth.info["contacts_mm"] = {str(k): v for k, v in contacts.items()}
+            report["warnings"] += contact_warnings
             solid = close_with_gum_base(tooth.crown, gum, up, relief=prefs.gum_relief, taper=prefs.emergence_taper)
         except (LookupError, ValueError) as exc:
             report["warnings"].append(f"{target.fdi} 生成失败: {exc}")
