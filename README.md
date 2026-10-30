@@ -10,6 +10,7 @@
 | [docs/architecture.md](docs/architecture.md) | 各任务的技术调研、论文和开源方案对比 |
 | [docs/product-analysis.md](docs/product-analysis.md) | 竞品解析（dentalai.ai / 3Shape / 先临三维）与功能规划 |
 | [docs/industry-landscape.md](docs/industry-landscape.md) | 产业界、学术界格局与 AI 提效数据 |
+| [docs/annotation-guidelines.md](docs/annotation-guidelines.md) | 标注规范 v1.0：牙齿分割与编号（含数据接收要求、病例登记表模板、质量控制） |
 | [docs/evaluation.md](docs/evaluation.md) | 分割评估（Teeth3DS、官方指标）与朝向归一化 |
 | [docs/research-log.md](docs/research-log.md) | 全部调研记录汇总（时间线、资料总表、待核对、改正记录） |
 
