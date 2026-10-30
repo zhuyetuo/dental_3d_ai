@@ -78,20 +78,21 @@ def estimate_arch_frame(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw) -> 
     if len(gum_h) and tooth_h.mean() < gum_h.mean():
         normal = -normal
 
-    # 左右方向：左侧象限质心均值 - 右侧象限质心均值
     right_q, left_q = QUADRANTS[jaw]
     right = [c for f, c in centroids.items() if quadrant(f) == right_q]
     left = [c for f, c in centroids.items() if quadrant(f) == left_q]
     if not right or not left:
         raise ValueError("需要左右两侧都有牙齿才能估计正中矢状面")
-    lateral = np.mean(left, axis=0) - np.mean(right, axis=0)
-    lateral -= (lateral @ normal) * normal
-    lateral /= np.linalg.norm(lateral)
-
-    # 正中矢状面位置：用左右成对存在的同名牙的中点，没有成对牙时退化为两侧均值的中点
+    # 左右方向和正中矢状面：优先只用左右两侧都存在的同名牙对（每对“左 − 右”取平均）。
+    # 直接用两侧全部牙的质心之差，一侧缺牙时两侧牙数不对称，方向会偏转好几度，
+    # 镜像供体和镜像位置在牙弓末端就会偏出几毫米
     pairs = [(c, centroids[mirror(f)]) for f, c in centroids.items() if quadrant(f) == right_q and mirror(f) in centroids]
-    if pairs:
+    if len(pairs) >= 2:
+        lateral = np.mean([b - a for a, b in pairs], axis=0)
         origin = np.mean([(a + b) / 2 for a, b in pairs], axis=0)
     else:
+        lateral = np.mean(left, axis=0) - np.mean(right, axis=0)
         origin = (np.mean(left, axis=0) + np.mean(right, axis=0)) / 2
+    lateral -= (lateral @ normal) * normal
+    lateral /= np.linalg.norm(lateral)
     return ArchFrame(origin=origin, occlusal=normal, lateral=lateral)

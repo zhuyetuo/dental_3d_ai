@@ -57,7 +57,8 @@ def process_case(case_id: str) -> None:
             case["jaw"],
             build_segmenter(case),
             storage.case_path(case_id, "result"),
-            generator=MirrorTemplateGenerator(preferences=prefs),
+            # 自定义模板库（python -m dental_ai.templates build 生成）；不设置时用内置参数化模板
+            generator=MirrorTemplateGenerator(template_dir=os.environ.get("TEMPLATE_DIR"), preferences=prefs),
             antagonist=load_mesh(storage.case_path(case_id, antagonist)) if antagonist else None,
             preferences=prefs,
             fix_numbering=os.environ.get("NUMBERING_FIX", "1") != "0",
