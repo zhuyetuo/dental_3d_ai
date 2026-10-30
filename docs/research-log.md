@@ -19,6 +19,7 @@
 | 5 | 用户离线下载的 7 个页面 | 解析 zip 中的 HTML | 3DTeethSAM、TSegAgent、ToothLDNet、DMC 原文摘要、ToothCraft 原文摘要、ToothCR | architecture.md |
 | 6 | 产业界、学术界、提效数据 | 网络搜索（中英文） | 国内外厂商、研究团队、多篇 2026 年综述和荟萃分析的设计时间数据；先临 AI Design（2025-09 发布） | industry-landscape.md |
 | 7 | TGNet 源码 | 克隆仓库，读推理代码 | 发现几处 README 没写清楚的接口细节，见第 4 节 | services/tgnet |
+| 8 | 3DTeethSeg'22 官方仓库 | 克隆仓库，读 README 和 evaluation.py | 确认 Teeth3DS 许可（CC BY-NC-ND 4.0）；官方指标的确切实现；数据在 OSF；两种划分文件 | evaluation.md、ml/dental_ai/evaluation.py |
 
 ## 2. 资料总表
 
@@ -26,7 +27,7 @@
 
 | 名称 | 规模 / 内容 | 链接 | 许可 | 状态 |
 |---|---|---|---|---|
-| Teeth3DS / 3DTeethSeg'22 | 1800 个口扫，900 名患者，逐顶点 FDI 标注；扫描仪：Primescan、Trios3、iTero | [GitHub](https://github.com/abenhamadou/3DTeethSeg22_challenge) | 待核对 | 未下载 |
+| Teeth3DS / 3DTeethSeg'22 | 1800 个口扫，900 名患者，逐顶点 FDI 标注；扫描仪：Primescan、Trios3、iTero；数据在 OSF（osf.io/xctdy，6 个部分） | [GitHub](https://github.com/abenhamadou/3DTeethSeg22_challenge) | **CC BY-NC-ND 4.0，仅限非商业；商用（含训练商业模型）需单独申请商业授权** | 未下载（本环境访问不了 OSF） |
 | Teeth3DS+ / 3DTeethLand'24 | 增加牙齿关键点标注，是首个公开的 3D 牙齿关键点数据集 | [arXiv 2210.06094](https://arxiv.org/abs/2210.06094)、[arXiv 2512.08323](https://arxiv.org/html/2512.08323v1) | 待核对 | 未下载 |
 | 先临三维牙齿分割数据集 | IEEE DataPort，DOI 10.21227/txce-st96 | [链接](https://ieee-dataport.org/documents/shining3d-tooth-segmentation-dataset) | 待核对 | 未下载 |
 | ODD | ToothCraft 训练用的完整牙弓数据 | 见 ToothCraft 仓库 | 待核对 | 未下载 |
@@ -96,7 +97,9 @@
 | 项 | 原因 | 怎么补 |
 |---|---|---|
 | 3DTeethSAM 的代码 / 权重是否公开 | 页面里没有写 | 去 GitHub 搜索作者和论文名 |
-| Teeth3DS、先临数据集的许可 | 没读到许可条款 | 下载前确认 |
+| 先临数据集、ODD 的许可 | 没读到许可条款 | 下载前确认（Teeth3DS 已确认，见上表） |
+| 评估指标与官方代码的直接比对 | 本环境不允许执行下载来的外部代码 | 拿到数据后用官方 evaluation.py 跑同一批预测对比 |
+| 朝向归一化在真实口扫上的效果 | 本环境访问不了 OSF，拿不到真实数据 | 下载 Teeth3DS 后跑 `--check-orientation` |
 | ToothCR 原文 | Springer 付费页面 | 需要时找机构访问 |
 | 先临三维设计软件 AI 分割的技术细节 | 没有公开资料 | 拿同一批扫描做实测对比 |
 | 各种厂商效率数字 | 都是厂商自己宣传的 | 与技工所做实测对比 |
@@ -111,6 +114,8 @@
 | 2026-10-30 | TGNet 适配器直接传 `.h5` 路径 | `start_inference.py` 会自动加 `.h5`；现在的服务直接调用推理管线，不经过这个脚本 |
 | 2026-10-30 | TGNet 输出标签数 = 输入顶点数 | TGNet 内部会先合并重复顶点，数量可能变少；服务端已映射回原始顶点 |
 | 2026-10-30 | RTX 40 系“有兼容问题”（README 原话） | 原因是 pointops 写死了只编译 sm_61 / sm_75；Dockerfile 改成可配置的架构列表 |
+| 2026-10-30 | 评估指标最初按论文文字描述实现（最近质心匹配、包围盒对角线归一化、TSA 为牙齿前景 F1） | 改为复刻官方 evaluation.py：匈牙利匹配、逐轴尺寸归一化、TSA 为二分类 micro-F1（即准确率）、TIR 分母为匹配数 |
+| 2026-10-30 | Teeth3DS 许可“待核对” | CC BY-NC-ND 4.0，仅限非商业，商用需单独授权 |
 | 2026-10-30 | 3DTeethSAM 公开集 mIoU 92.03 | 这是 TSegAgent 作者复现的数字；3DTeethSAM 论文自己报告的是 91.90 |
 
 ## 5. TGNet 源码要点（2026-10-30，commit d7e16a4）

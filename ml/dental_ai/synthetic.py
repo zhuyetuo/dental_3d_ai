@@ -18,8 +18,14 @@ def synthetic_arch(
     missing: tuple[int, ...] = (),
     resolution: float = 0.35,
     curvature: float = 0.045,
+    band: float | None = None,
 ) -> tuple[trimesh.Trimesh, np.ndarray]:
-    """返回 (网格, 逐顶点 FDI 标签)。坐标单位 mm，Z 轴为咬合方向，牙弓开口朝 +Y。"""
+    """返回 (网格, 逐顶点 FDI 标签)。
+
+    坐标：单位 mm，牙冠朝 +Z，+Y 指向后方（磨牙），+X 为患者左侧。下颌与 Teeth3DS 标准坐标系一致；
+    Teeth3DS 中上颌牙冠朝 -Z，需要时把上颌关于 XY 平面镜像（见 tests 中的 canonical_upper）。
+    band：只保留离牙弓曲线 band mm 以内的部分，得到真实口扫那样的马蹄形轮廓；None 表示保留整块矩形。
+    """
     order = arch_order(jaw)
     widths = np.array([expected_width(f) for f in order])
     # 沿抛物线 y = curvature * x^2 按弧长排牙，中线位于两颗中切牙之间
@@ -61,4 +67,12 @@ def synthetic_arch(
     faces = np.concatenate([np.stack([a, b, d], -1).reshape(-1, 3), np.stack([a, d, c], -1).reshape(-1, 3)])
     verts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
     mesh = trimesh.Trimesh(verts, faces, process=False)
-    return mesh, labels.ravel()
+    labels = labels.ravel()
+    if band is not None:
+        keep = (d_curve.ravel() <= band)[faces].all(axis=1)
+        used = np.unique(faces[keep])
+        remap = np.full(len(verts), -1)
+        remap[used] = np.arange(len(used))
+        mesh = trimesh.Trimesh(verts[used], remap[faces[keep]], process=False)
+        labels = labels[used]
+    return mesh, labels
