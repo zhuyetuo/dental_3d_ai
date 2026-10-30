@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
@@ -79,9 +80,7 @@ export function Viewer({ segmentationUrl, meshUrl, generatedUrls, cervicalLines,
 
     const baseUrl = segmentationUrl ?? meshUrl;
     if (baseUrl) {
-      const isPly = baseUrl.endsWith(".ply") || baseUrl === segmentationUrl;
-      const loader = isPly ? new PLYLoader() : new STLLoader();
-      loader.load(baseUrl, (geometry) => {
+      loadGeometry(baseUrl, (geometry) => {
         geometry.computeVertexNormals();
         const material = new THREE.MeshStandardMaterial({
           vertexColors: geometry.hasAttribute("color"),
@@ -112,6 +111,18 @@ export function Viewer({ segmentationUrl, meshUrl, generatedUrls, cervicalLines,
       cancelled = true;
     };
   }, [segmentationUrl, meshUrl, generatedUrls, cervicalLines, showCervical]);
+
+  // 按扩展名选择解析器；分割结果固定是 PLY
+  function loadGeometry(url: string, onLoad: (geometry: THREE.BufferGeometry) => void) {
+    const ext = url.split(".").pop()?.toLowerCase();
+    if (ext === "ply") new PLYLoader().load(url, onLoad);
+    else if (ext === "obj")
+      new OBJLoader().load(url, (group) => {
+        const mesh = group.children.find((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+        if (mesh) onLoad(mesh.geometry);
+      });
+    else new STLLoader().load(url, onLoad);
+  }
 
   // 相机对准模型
   function frame(geometry: THREE.BufferGeometry) {

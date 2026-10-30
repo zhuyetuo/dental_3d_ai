@@ -1,6 +1,7 @@
-# 系统方案
+# 技术方案与调研
 
-> 竞品（dentalai.ai、3Shape、先临三维）解析和产品功能规划见 [product-analysis.md](product-analysis.md)。
+> 系统架构见 [system-architecture.md](system-architecture.md)，算法架构见 [algorithm-architecture.md](algorithm-architecture.md)。本文是各任务的技术调研、论文和开源方案对比。
+> 竞品（dentalai.ai、3Shape、先临三维）解析和产品功能规划见 [product-analysis.md](product-analysis.md)；全部调研记录见 [research-log.md](research-log.md)。
 
 目标：输入口扫模型（上下颌 STL/OBJ/PLY）→ 牙齿实例分割和 FDI 编号 → 识别缺牙 → 生成缺失牙 3D 模型 → 底面贴合牙龈 → 导出可打印 / 可导入 CAD 的封闭 STL。
 
@@ -66,7 +67,7 @@ GPU Worker                            backend/app/worker.py → ml/dental_ai/pip
 同时，即使最好的方法，在私有集上也有约一半的模型存在编号错误，所以**前端的人工修正功能必不可少**。
 
 **建议路线（已根据上述结果调整）**：
-1. **短期**：用 TGNet 官方权重在独立 Docker 环境里跑推理（适配器 `segmentation/tgnet.py` 已写好），尽快在真实数据上跑通整条流程；
+1. **短期**：用 TGNet 官方权重在独立 Docker 环境里跑推理（已做成独立的 Docker 服务 `services/tgnet`，后端通过 `segmentation/remote.py` 调用），尽快在真实数据上跑通整条流程；
 2. **主模型**：采用 3DTeethSAM 的思路，即多视图渲染 + 冻结 SAM2 + 轻量适配器。只训练少量参数，泛化好，也能复用 SAM2 的持续升级。代码若未开源，就按论文复现；
 3. **编号纠错**：借鉴 TSegAgent 的几何先验，即牙弓曲线排序、双侧对称、包围盒尺寸。`segmentation/postprocess.py` 里的 `check_arch_order` 已经在做顺序和左右检查，下一步扩展成自动纠正；视觉语言模型只在规则判断不了时调用；
 4. **后处理**：去除碎片（已实现）；网格图割平滑边界（待做，两篇 SAM 论文都用了）；

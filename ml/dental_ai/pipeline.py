@@ -23,6 +23,7 @@ from .margin.cervical import all_cervical_lines
 from .preferences import DesignPreferences
 from .segmentation.base import LabelFileSegmenter, Segmenter
 from .segmentation.postprocess import check_arch_order, remove_small_islands
+from .segmentation.remote import RemoteSegmenter
 
 
 def run(
@@ -84,20 +85,25 @@ def main() -> None:
     p = argparse.ArgumentParser(description="口扫网格 → 分割 → 缺牙检测 → 生成缺失牙")
     p.add_argument("mesh")
     p.add_argument("--jaw", choices=["upper", "lower"], required=True)
-    p.add_argument("--labels", help="Teeth3DS 格式标签文件；不提供时需要配置分割模型")
+    p.add_argument("--labels", help="Teeth3DS 格式标签文件（直接使用，不调用分割模型）")
+    p.add_argument("--segmenter-url", help="分割服务地址，如 http://localhost:8001（services/tgnet）")
     p.add_argument("--antagonist", help="对颌网格，用于咬合约束")
     p.add_argument("--templates", help="牙齿模板库目录（<FDI>.stl）")
     p.add_argument("--preferences", help="设计参数 JSON 文件，字段见 dental_ai.preferences")
     p.add_argument("--out", default="out")
     args = p.parse_args()
 
-    if not args.labels:
-        p.error("当前版本需要 --labels；接入 TGNet 后见 dental_ai.segmentation.tgnet")
+    if args.labels:
+        segmenter: Segmenter = LabelFileSegmenter(args.labels)
+    elif args.segmenter_url:
+        segmenter = RemoteSegmenter(args.segmenter_url, name="tgnet")
+    else:
+        p.error("需要 --labels 或 --segmenter-url")
     prefs = DesignPreferences.from_dict(json.loads(Path(args.preferences).read_text()) if args.preferences else None)
     report = run(
         load_mesh(args.mesh),
         args.jaw,
-        LabelFileSegmenter(args.labels),
+        segmenter,
         args.out,
         generator=MirrorTemplateGenerator(template_dir=args.templates, preferences=prefs),
         antagonist=load_mesh(args.antagonist) if args.antagonist else None,

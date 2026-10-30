@@ -49,11 +49,22 @@ def test_full_flow(client, tmp_path):
     assert [c["id"] for c in client.get("/api/cases").json()] == [case_id]
 
 
-def test_without_labels_fails_cleanly(client, tmp_path):
+def test_without_labels_or_segmenter_fails_cleanly(client, tmp_path, monkeypatch):
+    monkeypatch.delenv("SEGMENTER_URL", raising=False)
     case_id = _upload(client, tmp_path, with_labels=False).json()["id"]
     client.post(f"/api/cases/{case_id}/run")
     case = client.get(f"/api/cases/{case_id}").json()
-    assert case["status"] == "failed" and "分割模型" in case["error"]
+    assert case["status"] == "failed" and "SEGMENTER_URL" in case["error"]
+
+
+def test_uses_segmentation_service(client, tmp_path, monkeypatch, fake_segmenter_url):
+    monkeypatch.setenv("SEGMENTER_URL", fake_segmenter_url)
+    case_id = _upload(client, tmp_path, with_labels=False).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["status"] == "done", case["error"]
+    assert case["report"]["segmenter"] == "tgnet"
+    assert [g["fdi"] for g in case["report"]["generated"]] == [36]
 
 
 def test_rejects_bad_input(client, tmp_path):

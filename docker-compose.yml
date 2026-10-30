@@ -1,0 +1,43 @@
+# 启动前端 + 后端（无 GPU 时，只能上传标签文件来跳过分割）：
+#   docker compose up --build
+# 同时启动 TGNet 分割服务（需要 NVIDIA GPU 和 nvidia-container-toolkit，权重放在 models/tgnet/）：
+#   docker compose --profile gpu up --build
+# 浏览器打开 http://localhost:8080
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      SEGMENTER_URL: http://tgnet:8001
+      SEGMENTER_NAME: tgnet
+    volumes:
+      - case-data:/data
+    ports:
+      - "8000:8000"
+
+  tgnet:
+    profiles: ["gpu"]
+    build: ./services/tgnet
+    volumes:
+      - ./models/tgnet:/models:ro
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  case-data:

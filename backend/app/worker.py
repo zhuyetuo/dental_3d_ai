@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import traceback
 
 from dental_ai.generation.mirror_template import MirrorTemplateGenerator
@@ -10,16 +11,20 @@ from dental_ai.io import load_mesh
 from dental_ai.pipeline import run
 from dental_ai.preferences import DesignPreferences
 from dental_ai.segmentation.base import LabelFileSegmenter, Segmenter
+from dental_ai.segmentation.remote import RemoteSegmenter
 
 from . import storage
 
 
 def build_segmenter(case: dict) -> Segmenter:
+    """上传了标签文件就直接用（人工修正结果、Teeth3DS 标注），否则调用分割服务。"""
     labels = case["files"].get("labels")
     if labels:
         return LabelFileSegmenter(storage.case_path(case["id"], labels))
-    # TODO: 接入 TGNet / DilatedToothSegNet 后在这里返回模型分割器
-    raise RuntimeError("尚未配置分割模型，请随网格一起上传 Teeth3DS 格式的标签文件")
+    url = os.environ.get("SEGMENTER_URL")
+    if url:
+        return RemoteSegmenter(url, name=os.environ.get("SEGMENTER_NAME", "tgnet"))
+    raise RuntimeError("未配置分割服务（环境变量 SEGMENTER_URL），请上传标签文件或启动 tgnet 服务")
 
 
 def process_case(case_id: str) -> None:
