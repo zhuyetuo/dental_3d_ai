@@ -46,6 +46,12 @@ python -m dental_ai.evaluation --data-dir teeth3ds/obj --gt-dir teeth3ds/gt --li
 
 `--limit N` 只评估前 N 个扫描，适合快速检查。
 
+**衡量编号纠错的效果**：同一批预测分别加、不加 `--fix-numbering` 各跑一次，对比 `tir` 和 `all_correct`：
+
+```bash
+python -m dental_ai.evaluation --data-dir teeth3ds/obj --gt-dir teeth3ds/gt --split private-testing-set.txt --pred-dir tgnet_out --fix-numbering --out results/tgnet_fixed
+```
+
 ## 3. 输出
 
 | 文件 | 内容 |

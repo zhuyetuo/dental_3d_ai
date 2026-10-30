@@ -21,6 +21,8 @@ services:
       SEGMENTER_NAME: tgnet
       # 调用分割前做朝向归一化；输入已是 Teeth3DS 标准朝向时可设为 "0"
       SEGMENTER_ORIENT: "1"
+      # 分割后自动做编号纠错，"0" 关闭
+      NUMBERING_FIX: "1"
     volumes:
       - case-data:/data
     ports:

@@ -19,8 +19,15 @@ export interface GeneratedTooth {
   scale?: number;
 }
 
+export interface NumberingFix {
+  applied: boolean;
+  changes: { from: number; to: number; vertices: number }[];
+  warnings: string[];
+}
+
 export interface Report {
   segmenter: string;
+  numbering?: NumberingFix | null;
   jaw: Jaw;
   teeth: number[];
   warnings: string[];

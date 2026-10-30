@@ -346,6 +346,7 @@ def main() -> None:
     src.add_argument("--segmenter-url", help="分割服务地址，逐个病例调用")
     src.add_argument("--check-orientation", action="store_true", help="只验证朝向归一化，不评估分割")
     p.add_argument("--orient", action="store_true", help="调用分割服务前先做朝向归一化")
+    p.add_argument("--fix-numbering", action="store_true", help="对预测结果做编号纠错后再评估（用来衡量纠错带来的提升）")
     p.add_argument("--out", type=Path, default=Path("eval_results"))
     args = p.parse_args()
 
@@ -378,6 +379,14 @@ def main() -> None:
             return segmenter.predict(mesh, scan.jaw)
     else:
         p.error("需要 --pred-dir、--segmenter-url 或 --check-orientation 之一")
+
+    if args.fix_numbering:
+        from .segmentation.numbering import correct_numbering
+
+        base_predict = predict
+
+        def predict(scan: Scan, mesh):  # noqa: F811
+            return correct_numbering(mesh, base_predict(scan, mesh), scan.jaw).labels
 
     summary = evaluate(scans, predict, args.out)
     _print_summary(summary)

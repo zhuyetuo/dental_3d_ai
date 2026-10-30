@@ -50,6 +50,7 @@ def process_case(case_id: str) -> None:
             generator=MirrorTemplateGenerator(preferences=prefs),
             antagonist=load_mesh(storage.case_path(case_id, antagonist)) if antagonist else None,
             preferences=prefs,
+            fix_numbering=os.environ.get("NUMBERING_FIX", "1") != "0",
         )
         case.update(status="done", report=report)
     except Exception as exc:  # 任务失败要记录到病例上，前端才能显示
