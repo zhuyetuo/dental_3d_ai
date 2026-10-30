@@ -10,6 +10,7 @@
 | [docs/architecture.md](docs/architecture.md) | 各任务的技术调研、论文和开源方案对比 |
 | [docs/product-analysis.md](docs/product-analysis.md) | 竞品解析（dentalai.ai / 3Shape / 先临三维）与功能规划 |
 | [docs/industry-landscape.md](docs/industry-landscape.md) | 产业界、学术界格局与 AI 提效数据 |
+| [docs/evaluation.md](docs/evaluation.md) | 分割评估（Teeth3DS、官方指标）与朝向归一化 |
 | [docs/research-log.md](docs/research-log.md) | 全部调研记录汇总（时间线、资料总表、待核对、改正记录） |
 
 ## 目录
@@ -22,6 +23,8 @@ ml/        核心算法包 dental_ai（与 Web 无关，可单独使用）
   dental_ai/generation/         缺失牙生成（V1：对侧镜像 + 缺隙拟合）
   dental_ai/margin/             牙颈线提取、贴合牙龈的底面生成
   dental_ai/preferences.py      设计参数（邻接距离、咬合距离、粘接间隙等）
+  dental_ai/orientation.py      朝向归一化（分割前把任意朝向的口扫转到标准坐标系）
+  dental_ai/evaluation.py       分割评估（挑战赛官方指标、TGNet 口径、论文口径）
   dental_ai/pipeline.py         端到端流程 / 命令行入口
   dental_ai/synthetic.py        合成牙弓，用于测试和联调
 backend/   FastAPI 服务
@@ -99,7 +102,7 @@ pytest -q services/tgnet/tests
 
 ## 当前状态
 
-- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。TGNet 要求输入朝向统一（Y 轴指向后方），朝向归一化还没做；
+- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化（合成数据上验证过，真实口扫待验证）；
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
 - 生成：V1 对侧镜像，只处理两侧都有邻牙的缺隙；
 - 底面：缺失牙场景（底面贴合牙龈）已实现；预备体颈缘线检测待做。

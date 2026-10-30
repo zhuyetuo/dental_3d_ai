@@ -5,16 +5,16 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 import trimesh
-from scipy.spatial import cKDTree
 
 from dental_ai.synthetic import synthetic_arch
 
 
 @pytest.fixture(scope="session")
 def fake_segmenter_url():
-    """模拟分割服务：按顶点坐标查合成牙弓的真值标签，用来测试 HTTP 调用链路。"""
+    """模拟分割服务：按顶点顺序返回合成牙弓的真值标签（与真实服务的契约一致：标签与收到的顶点一一对应）。
+
+    收到的网格可能已经做过朝向归一化，坐标会变，但顶点顺序不变。"""
     mesh, labels = synthetic_arch("lower", missing=(36,))
-    tree = cKDTree(mesh.vertices)
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -26,7 +26,12 @@ def fake_segmenter_url():
                 self.end_headers()
                 self.wfile.write(b"only lower")
                 return
-            out = labels[tree.query(received.vertices)[1]].tolist()
+            if len(received.vertices) != len(labels):
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"unexpected vertex count")
+                return
+            out = labels.tolist()
             data = json.dumps({"labels": out}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

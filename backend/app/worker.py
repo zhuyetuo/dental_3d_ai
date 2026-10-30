@@ -8,6 +8,7 @@ import traceback
 
 from dental_ai.generation.mirror_template import MirrorTemplateGenerator
 from dental_ai.io import load_mesh
+from dental_ai.orientation import OrientedSegmenter
 from dental_ai.pipeline import run
 from dental_ai.preferences import DesignPreferences
 from dental_ai.segmentation.base import LabelFileSegmenter, Segmenter
@@ -23,7 +24,11 @@ def build_segmenter(case: dict) -> Segmenter:
         return LabelFileSegmenter(storage.case_path(case["id"], labels))
     url = os.environ.get("SEGMENTER_URL")
     if url:
-        return RemoteSegmenter(url, name=os.environ.get("SEGMENTER_NAME", "tgnet"))
+        segmenter: Segmenter = RemoteSegmenter(url, name=os.environ.get("SEGMENTER_NAME", "tgnet"))
+        # TGNet 要求标准朝向；输入已经是标准朝向时可以设 SEGMENTER_ORIENT=0 关闭
+        if os.environ.get("SEGMENTER_ORIENT", "1") != "0":
+            segmenter = OrientedSegmenter(segmenter)
+        return segmenter
     raise RuntimeError("未配置分割服务（环境变量 SEGMENTER_URL），请上传标签文件或启动 tgnet 服务")
 
 

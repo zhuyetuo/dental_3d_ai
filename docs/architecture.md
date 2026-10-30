@@ -75,7 +75,7 @@ GPU Worker                            backend/app/worker.py → ml/dental_ai/pip
 6. **评估**：除了 mIoU，还要统计“整副牙列全对率”，并且一定要在非 Teeth3DS 来源的数据上测试，比如自有数据或先临三维数据集。
 
 数据集：[Teeth3DS / 3DTeethSeg'22](https://github.com/abenhamadou/3DTeethSeg22_challenge)，1800 个口扫，900 个病人，逐顶点 FDI 标注，扫描仪包括 Primescan、Trios3、iTero。
-扩展版 Teeth3DS+ 还有关键点标注（3DTeethLand'24）。**商用前要核对数据集许可**，长期需要自有数据。
+扩展版 Teeth3DS+ 还有关键点标注（3DTeethLand'24）。**Teeth3DS 的许可是 CC BY-NC-ND 4.0，仅限非商业研究；用于商业产品（包括训练商业模型）需要向作者申请商业授权**，长期必须有自有数据。评估方法见 [evaluation.md](evaluation.md)。
 
 ### 牙齿关键点
 

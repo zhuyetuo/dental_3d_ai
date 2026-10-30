@@ -20,6 +20,7 @@ from .geometry import estimate_arch_frame, gum_mesh
 from .io import export_colored_ply, load_mesh, save_labels
 from .margin.base_surface import close_with_gum_base
 from .margin.cervical import all_cervical_lines
+from .orientation import OrientedSegmenter
 from .preferences import DesignPreferences
 from .segmentation.base import LabelFileSegmenter, Segmenter
 from .segmentation.postprocess import check_arch_order, remove_small_islands
@@ -41,6 +42,7 @@ def run(
     generator = generator or MirrorTemplateGenerator(preferences=prefs)
 
     labels = segmenter.predict(mesh, jaw)
+    orientation = getattr(segmenter, "last", None)
     labels = remove_small_islands(mesh, labels)
     save_labels(out / "labels.json", labels, jaw)
     export_colored_ply(out / "segmentation.ply", mesh, labels)
@@ -49,6 +51,7 @@ def run(
         "jaw": jaw,
         "segmenter": segmenter.name,
         "preferences": prefs.to_dict(),
+        "orientation": {"symmetry_error_mm": round(orientation.symmetry_error, 3)} if orientation else None,
         "teeth": sorted(int(v) for v in np.unique(labels) if v != 0),
         "warnings": check_arch_order(mesh, labels, jaw),
         "missing": [],
@@ -87,6 +90,7 @@ def main() -> None:
     p.add_argument("--jaw", choices=["upper", "lower"], required=True)
     p.add_argument("--labels", help="Teeth3DS 格式标签文件（直接使用，不调用分割模型）")
     p.add_argument("--segmenter-url", help="分割服务地址，如 http://localhost:8001（services/tgnet）")
+    p.add_argument("--no-orient", action="store_true", help="调用分割服务前不做朝向归一化（输入已经是标准朝向时使用）")
     p.add_argument("--antagonist", help="对颌网格，用于咬合约束")
     p.add_argument("--templates", help="牙齿模板库目录（<FDI>.stl）")
     p.add_argument("--preferences", help="设计参数 JSON 文件，字段见 dental_ai.preferences")
@@ -97,6 +101,8 @@ def main() -> None:
         segmenter: Segmenter = LabelFileSegmenter(args.labels)
     elif args.segmenter_url:
         segmenter = RemoteSegmenter(args.segmenter_url, name="tgnet")
+        if not args.no_orient:
+            segmenter = OrientedSegmenter(segmenter)
     else:
         p.error("需要 --labels 或 --segmenter-url")
     prefs = DesignPreferences.from_dict(json.loads(Path(args.preferences).read_text()) if args.preferences else None)
