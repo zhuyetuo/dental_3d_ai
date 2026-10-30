@@ -1,0 +1,3 @@
+case_id,source,scan_type,scanner,scan_date,age_group,dentition,missing_teeth,missing_reason,special,defects,notes
+A0001,LAB01,intraoral,Trios 4,2026-09,adult,permanent,36,extracted,implant:36;prepared:46,,
+A0002,LAB01,model,E4,2026-09,teen,permanent,,,brackets,47 远中缺损,
