@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import trimesh
 
+from dental_ai.generation.contacts import signed_distance_to_surface
 from dental_ai.generation.prep_crown import _distance_to_loop, _frame, extract_die, generate_prep_crown
 from dental_ai.geometry import estimate_arch_frame, tooth_mesh
 from dental_ai.margin.detect import detect_margin
@@ -32,10 +33,13 @@ def test_crown_is_closed_fits_and_is_thick_enough(fdi, neighbors, offset):
     probe = mesh.vertices[near] - mesh.vertex_normals[near] * 0.01
     inside = crown.contains(probe)
     if inside.any():
+        # 允许误差：切割时离切割线 0.03 mm 以内的顶点归到内侧，再加检测点本身的 0.01 mm 偏移
         depth = trimesh.proximity.closest_point(crown, probe[inside])[1].max() + 0.01
-        assert depth < 0.03
+        assert depth < 0.05
+    # 邻接：默认 -0.03 mm（轻微过接触），邻牙最多被穿入这么深
     for f in neighbors:
-        assert not crown.contains(tooth_mesh(mesh, labels, f).vertices).any()
+        d = signed_distance_to_surface(crown.vertices, tooth_mesh(mesh, labels, f))[0].min()
+        assert abs(d - (-0.03)) < 0.015
 
 
 def test_intaglio_follows_cement_gap():

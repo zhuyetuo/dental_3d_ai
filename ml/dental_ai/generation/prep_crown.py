@@ -2,13 +2,14 @@
 
 步骤：
 1. 冠内表面（组织面）：取颈缘线以内的预备体表面，沿法向外偏粘接间隙（cement_gap）。
-   间隙在离颈缘线 gap_taper mm 内从 0 渐变到设定值，保证颈缘处密合。组织面的边界就是牙冠的实际颈缘，
-   它在牙面上、紧贴颈缘线内侧（误差在一个三角形以内）；
+   间隙在离颈缘线 gap_taper mm 内从 0 渐变到设定值，保证颈缘处密合。预备体表面沿颈缘线精确切开
+   （margin/cut.py），组织面的边界就是牙冠的实际颈缘，落在颈缘线上；
    然后沿就位方向（咬合方向）去除倒凹：从正上方看被预备体自身挡住的点，沿径向推到上方悬突的半径，
    否则牙冠戴不进去；
 2. 冠外表面：把预备体当作“缺失牙”，复用 MirrorTemplateGenerator（对侧同名牙镜像、按邻牙缺隙缩放、
    有对颌时满足咬合距离）；再把外表面底部按高度单调重映射，让底边落到颈缘线外 margin_thickness mm 处；
-3. 最小厚度：外表面离冠内表面不足 crown_thickness 的地方（颈缘附近除外），沿法向向外推；
+3. 邻接与最小厚度：调整外表面，使与近远中邻牙的距离等于邻接距离（contacts.py）；
+   外表面离冠内表面不足 crown_thickness 的地方（颈缘附近除外），沿法向向外推；
 4. 缝合：外表面底边与冠内表面底边按绕牙轴的角度对齐，生成一圈三角带，输出封闭网格。
 """
 
@@ -23,8 +24,11 @@ from scipy.spatial import cKDTree
 from ..detection.missing import detect_missing
 from ..fdi import Jaw
 from ..margin.cervical import boundary_loops
+from ..margin.cut import margin_field, split_along_zero
 from ..preferences import DesignPreferences
+from ..geometry import tooth_mesh
 from .base import GenerationContext
+from .contacts import adjust_contacts
 from .mirror_template import MirrorTemplateGenerator
 
 
@@ -77,18 +81,29 @@ def _inside_polygon(px: np.ndarray, py: np.ndarray, poly: np.ndarray) -> np.ndar
 
 
 def extract_die(mesh: trimesh.Trimesh, margin: np.ndarray, frame: _Frame) -> trimesh.Trimesh:
-    """颈缘线以内的预备体表面：三个顶点都在颈缘线投影多边形内、且不低于颈缘线的面，取最大连通块。
-
-    必须三个顶点都在线内：只看面中心的话，边缘一圈三角形会伸出颈缘线，拉回颈缘线时会折叠，
-    组织面就会穿进预备体。"""
+    """沿颈缘线把网格精确切开，取内侧的预备体表面（最大连通块）。边界正好落在颈缘线上。"""
     _, _, mh = frame.polar(margin)
     poly = np.stack([(margin - frame.center) @ frame.u, (margin - frame.center) @ frame.v], axis=1)
+    # 先只取颈缘线附近和以内的部分，减少切割的计算量
     d = mesh.vertices - frame.center
-    vin = _inside_polygon(d @ frame.u, d @ frame.v, poly) & (d @ frame.up >= mh.min() - 0.5)
-    inside = vin[mesh.faces].all(axis=1)
-    if not inside.any():
+    above = d @ frame.up >= mh.min() - 1.0
+    near = _inside_polygon(d @ frame.u, d @ frame.v, poly) | (_distance_to_loop(mesh.vertices, margin) < 1.5)
+    keep = (above & near)[mesh.faces].all(axis=1)
+    if not keep.any():
         raise ValueError("颈缘线以内没有预备体表面，请检查颈缘线")
-    die = mesh.submesh([np.nonzero(inside)[0]], append=True, repair=False)
+    local = mesh.submesh([np.nonzero(keep)[0]], append=True, repair=False)
+    ld = local.vertices - frame.center
+    xy = np.stack([ld @ frame.u, ld @ frame.v], axis=1)
+    inside_2d = _inside_polygon(xy[:, 0], xy[:, 1], poly)
+    theta, _, h = frame.polar(local.vertices)
+    margin_h = frame.polar(_interp_loop(margin, frame, theta))[2]
+    f = margin_field(xy, h, poly, inside_2d, margin_h)
+    cut, values = split_along_zero(local, f)
+    inner = (values <= 0)[cut.faces].all(axis=1)
+    if not inner.any():
+        raise ValueError("颈缘线以内没有预备体表面，请检查颈缘线")
+    die = cut.submesh([np.nonzero(inner)[0]], append=True, repair=False)
+    die.merge_vertices()
     parts = die.split(only_watertight=False)
     return max(parts, key=lambda p: len(p.faces)) if len(parts) > 1 else die
 
@@ -239,8 +254,8 @@ def generate_prep_crown(
     if not inner_loops:
         raise ValueError(f"{fdi} 的预备体表面没有开放边界")
     inner_loop = inner_loops[0]
-    # 不拖动组织面：它的边界就在牙面上、紧贴颈缘线内侧（误差在一个三角形以内）。
-    # 把组织面拉到颈缘线上，会把附近的组织面拖到肩台下面，牙冠就穿进预备体了。
+    # 不拖动组织面：网格已经沿颈缘线切开，边界就在颈缘线上、也在原始牙面上。
+    # （把组织面拉到颈缘线上会把附近的组织面拖到肩台下面，牙冠就穿进预备体了。）
     # 牙冠的实际颈缘 = 组织面边界（粘接间隙在这里为 0，与预备体表面重合）
     crown_margin = inner.vertices[inner_loop]
 
@@ -260,16 +275,24 @@ def generate_prep_crown(
     outer_loop = outer_loops[0]
     _morph_outer(outer, outer_loop, crown_margin, frame, margin_thickness)
 
-    # 3. 最小厚度（颈缘线附近 gap_taper + 0.5 mm 内不检查）
+    # 3. 邻接 + 最小厚度（颈缘线附近 gap_taper + 0.5 mm 内的顶点不动、不检查）
     far = _distance_to_loop(outer.vertices, margin) > gap_taper + 0.5
     before = _signed_thickness(outer.vertices[far], inner) if far.any() else np.array([np.inf])
-    for _ in range(20):
-        t = _signed_thickness(outer.vertices[far], inner)
-        deficit = np.clip(prefs.crown_thickness - t, 0.0, None)
-        if deficit.max() <= 1e-4:
-            break
-        outer.vertices[far] = outer.vertices[far] + outer.vertex_normals[far] * deficit[:, None]
+    neighbors = {f: tooth_mesh(mesh, without, f) for f in (target.mesial, target.distal) if f is not None}
+
+    def enforce_thickness():
+        for _ in range(20):
+            t = _signed_thickness(outer.vertices[far], inner)
+            deficit = np.clip(prefs.crown_thickness - t, 0.0, None)
+            if deficit.max() <= 1e-4:
+                break
+            outer.vertices[far] = outer.vertices[far] + outer.vertex_normals[far] * deficit[:, None]
+
+    enforce_thickness()
+    contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
+    enforce_thickness()  # 退开邻牙时可能变薄，再补一次厚度
     after = _signed_thickness(outer.vertices[far], inner) if far.any() else np.array([np.inf])
+    warnings += contact_warnings
 
     # 4. 缝合：外表面法向朝外，组织面翻转（实体的外法向在组织面上指向预备体）
     inner.invert()
@@ -300,5 +323,6 @@ def generate_prep_crown(
         "blockout_max_mm": round(blockout, 3),
         "volume_mm3": round(float(crown.volume), 2),
         "margin_points": int(len(crown_margin)),
+        "contacts_mm": {str(k): v for k, v in contacts.items()},
     }
     return PrepCrown(fdi=fdi, mesh=crown, info=info, warnings=warnings)
