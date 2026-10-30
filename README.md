@@ -1,7 +1,7 @@
 # dental_3d_ai
 **口腔 3D 扫描模型（上下颌 STL）输入 → 牙齿实例分割 → 识别缺牙位置 → 自动生成缺失牙齿 3D 模型**
 
-整体方案、技术选型和参考论文见 [docs/architecture.md](docs/architecture.md)；竞品解析（dentalai.ai / 3Shape / 先临三维）和功能规划见 [docs/product-analysis.md](docs/product-analysis.md)。
+整体方案、技术选型和参考论文见 [docs/architecture.md](docs/architecture.md)；竞品解析（dentalai.ai / 3Shape / 先临三维）和功能规划见 [docs/product-analysis.md](docs/product-analysis.md)；产业界、学术界格局和 AI 提效数据见 [docs/industry-landscape.md](docs/industry-landscape.md)。
 
 ## 目录
 
