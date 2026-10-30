@@ -19,6 +19,9 @@ export interface GeneratedTooth {
   watertight: boolean;
   source?: string;
   scale?: number;
+  /** 预备体牙冠 */
+  min_thickness_mm?: number;
+  blockout_max_mm?: number;
 }
 
 export interface NumberingFix {

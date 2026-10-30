@@ -16,6 +16,7 @@ from .detection.missing import detect_missing
 from .fdi import Jaw
 from .generation.base import GenerationContext, ToothGenerator
 from .generation.mirror_template import MirrorTemplateGenerator
+from .generation.prep_crown import generate_prep_crown
 from .geometry import estimate_arch_frame, gum_mesh
 from .io import export_colored_ply, load_mesh, save_labels
 from .margin.base_surface import close_with_gum_base
@@ -77,7 +78,9 @@ def run(
     missing = detect_missing(mesh, labels, jaw)
     report["missing"] = [m.to_dict() for m in missing]
 
-    ctx = GenerationContext(mesh=mesh, labels=labels, jaw=jaw, antagonist=antagonist)
+    ctx = GenerationContext(
+        mesh=mesh, labels=labels, jaw=jaw, antagonist=antagonist, excluded_donors=frozenset(prepared_teeth or [])
+    )
     up = estimate_arch_frame(mesh, labels, jaw).occlusal
     gum = gum_mesh(mesh, labels)
 
@@ -104,6 +107,26 @@ def run(
         m = margins[str(fdi)]
         report["margins"][str(fdi)] = {"source": m["source"], "confidence": m.get("confidence"), "method": m.get("method")}
     (out / "margins.json").write_text(json.dumps(margins))
+
+    # 预备体牙冠：有颈缘线的预备体
+    for key, m in margins.items():
+        fdi = int(key)
+        if fdi not in present or len(m.get("points") or []) < 4:
+            continue
+        try:
+            crown = generate_prep_crown(
+                mesh, labels, jaw, fdi, np.asarray(m["points"]), up, preferences=prefs, antagonist=antagonist,
+                excluded_donors=set(prepared_teeth or []),
+            )
+        except (LookupError, ValueError) as exc:
+            report["warnings"].append(f"{fdi} 预备体牙冠生成失败: {exc}")
+            continue
+        name = f"crown_{fdi}.stl"
+        crown.mesh.export(out / name)
+        report["warnings"] += crown.warnings
+        report["generated"].append(
+            {"fdi": fdi, "file": name, "method": "prep_crown", "watertight": bool(crown.mesh.is_watertight), **crown.info}
+        )
     for target in missing:
         if target.kind != "space":
             continue

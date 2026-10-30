@@ -153,6 +153,9 @@ def test_margin_detection_and_edit(client, tmp_path):
     auto = json.loads(client.get(f"/api/cases/{case_id}/files/result/margins.json").content)["46"]
     pts = np.array(auto["points"])
     assert np.abs(np.hypot(pts[:, 0] - cx, pts[:, 1] - cy) - r).mean() < 0.3
+    crowns = [g for g in case["report"]["generated"] if g["method"] == "prep_crown"]
+    assert crowns and crowns[0]["file"] == "crown_46.stl" and crowns[0]["watertight"]
+    assert client.get(f"/api/cases/{case_id}/files/result/crown_46.stl").status_code == 200
 
     # 人工编辑：保存一条新线，重新计算后沿用人工版本
     edited = (pts + [0.05, 0, 0]).tolist()

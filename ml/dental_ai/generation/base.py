@@ -19,6 +19,8 @@ class GenerationContext:
     jaw: Jaw
     antagonist: trimesh.Trimesh | None = None  # 对颌，用于咬合约束
     antagonist_labels: np.ndarray | None = None
+    # 不能当供体的牙（如预备体：形态已经被磨改）
+    excluded_donors: frozenset[int] = frozenset()
 
 
 @dataclass

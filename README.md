@@ -21,7 +21,7 @@ ml/        核心算法包 dental_ai（与 Web 无关，可单独使用）
   dental_ai/fdi.py              FDI 牙位编号工具
   dental_ai/segmentation/       分割接口、远程分割服务客户端、编号纠错、后处理
   dental_ai/detection/          缺牙检测
-  dental_ai/generation/         缺失牙生成（V1：对侧镜像 + 缺隙拟合）
+  dental_ai/generation/         缺失牙生成（V1：对侧镜像 + 缺隙拟合）、预备体牙冠生成
   dental_ai/margin/             牙颈线提取、预备体颈缘线检测、贴合牙龈的底面生成
   dental_ai/preferences.py      设计参数（邻接距离、咬合距离、粘接间隙等）
   dental_ai/orientation.py      朝向归一化（分割前把任意朝向的口扫转到标准坐标系）
@@ -126,4 +126,5 @@ pytest -q services/tgnet/tests
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
 - 生成：V1 对侧镜像，只处理两侧都有邻牙的缺隙；
 - 底面：缺失牙场景（底面贴合牙龈）已实现；
-- 预备体颈缘线：自动检测（几何方法，合成肩台预备体上平均误差约 0.13 mm）+ 编辑器人工编辑；上传时填写预备体牙号，或在编辑器里设置；预备体牙冠生成待做。
+- 预备体颈缘线：自动检测（几何方法，合成肩台预备体上平均误差约 0.13 mm）+ 编辑器人工编辑；上传时填写预备体牙号，或在编辑器里设置；
+- 预备体牙冠：组织面贴合预备体（粘接间隙、颈缘处渐变为 0、去倒凹），外表面用对侧同名牙镜像，保证最小冠厚度，颈缘处缝合成封闭 STL（`result/crown_<牙号>.stl`）。限制见 docs/algorithm-architecture.md 的 E2 一节。
