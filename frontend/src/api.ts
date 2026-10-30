@@ -1,3 +1,5 @@
+import type { MarginMap } from "./editor/margins";
+
 export type Jaw = "upper" | "lower";
 
 export interface MissingTooth {
@@ -27,6 +29,7 @@ export interface NumberingFix {
 
 export interface Report {
   segmenter: string;
+  margins?: Record<string, { source: "auto" | "manual"; confidence?: number | null; method?: string | null }>;
   numbering?: NumberingFix | null;
   jaw: Jaw;
   teeth: number[];
@@ -46,6 +49,8 @@ export interface Case {
   /** 最近一次处理结束的时间，用作结果文件的版本号（避免浏览器缓存旧文件） */
   finished_at?: string;
   label_edits?: { version: number; file: string; created_at: string; changed_vertices: number }[];
+  prepared_teeth?: number[];
+  margin_edits?: { version: number; file: string; created_at: string; teeth: number[] }[];
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -66,6 +71,18 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ labels }),
+    }).then((r) => json<Case>(r)),
+  setPrepared: (id: string, teeth: number[]) =>
+    fetch(`/api/cases/${id}/prepared`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teeth }),
+    }).then((r) => json<Case>(r)),
+  saveMargins: (id: string, margins: MarginMap) =>
+    fetch(`/api/cases/${id}/margins`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ margins }),
     }).then((r) => json<Case>(r)),
   fileUrl: (id: string, path: string, version?: string) =>
     `/api/cases/${id}/files/${path}${version ? `?v=${encodeURIComponent(version)}` : ""}`,

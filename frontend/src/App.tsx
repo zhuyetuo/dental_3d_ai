@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, Case } from "./api";
+import type { MarginMap } from "./editor/margins";
 import { LabelEditor } from "./editor/LabelEditor";
 import { Viewer } from "./Viewer";
 
@@ -36,6 +37,19 @@ export function App() {
     if (dirty && !window.confirm("当前病例有未保存的标注修改，确定要离开吗？")) return;
     setDirty(false);
     setCurrent(c);
+  }
+
+  async function saveMargins(margins: MarginMap) {
+    if (!current) return;
+    setCurrent(await api.saveMargins(current.id, margins));
+  }
+
+  async function setPrepared(teeth: number[]) {
+    if (!current) return;
+    await api.setPrepared(current.id, teeth);
+    setDirty(false);
+    setCurrent(await api.runCase(current.id));
+    refresh();
   }
 
   async function saveLabels(labels: number[]) {
@@ -122,6 +136,10 @@ export function App() {
             <input type="file" name="labels" accept=".json" />
           </label>
           <label>
+            预备体牙号（可选，逗号分隔，如 46,36）
+            <input type="text" name="prepared" placeholder="自动检测这些牙的颈缘线" />
+          </label>
+          <label>
             对颌网格（可选，用于咬合约束）
             <input type="file" name="antagonist" accept=".stl,.ply,.obj" />
           </label>
@@ -159,6 +177,25 @@ export function App() {
                   分割来源：{report.segmenter === "manual" ? "人工修正" : report.segmenter}
                   {current.label_edits?.length ? `（已修正 ${current.label_edits.length} 次）` : ""}
                 </p>
+                {report.margins && Object.keys(report.margins).length > 0 && (
+                  <>
+                    <h3>颈缘线</h3>
+                    <ul>
+                      {Object.entries(report.margins).map(([fdi, m]) => {
+                        // 人工编辑保存后不用重新计算，报告里的来源可能还是上一次的“自动”
+                        const manual = m.source === "manual" || current.margin_edits?.some((e) => e.teeth.includes(Number(fdi)));
+                        return (
+                          <li key={fdi}>
+                            {fdi}：{manual ? "人工编辑" : `自动检测，置信度 ${m.confidence?.toFixed(2) ?? "-"}`}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <a href={api.fileUrl(current.id, current.files.margins ?? "result/margins.json", version)} download>
+                      下载颈缘线（JSON）
+                    </a>
+                  </>
+                )}
                 {report.numbering?.applied && (
                   <p>
                     自动纠正编号：
@@ -215,6 +252,14 @@ export function App() {
             jaw={current.jaw}
             onSave={saveLabels}
             onDirtyChange={onDirtyChange}
+            marginsUrl={
+              current.files.margins
+                ? api.fileUrl(current.id, current.files.margins)
+                : api.fileUrl(current.id, "result/margins.json", version)
+            }
+            prepared={current.prepared_teeth ?? []}
+            onSaveMargins={saveMargins}
+            onSetPrepared={setPrepared}
             generatedUrls={generatedUrls}
             cervicalLines={cervical}
             showCervical={showCervical}

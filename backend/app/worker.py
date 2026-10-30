@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import traceback
 from datetime import datetime, timezone
@@ -34,6 +35,15 @@ def build_segmenter(case: dict) -> Segmenter:
     raise RuntimeError("未配置分割服务（环境变量 SEGMENTER_URL），请上传标签文件或启动 tgnet 服务")
 
 
+def _margin_overrides(case: dict) -> dict[int, dict]:
+    """最新一版人工编辑的颈缘线。"""
+    name = case["files"].get("margins")
+    if not name:
+        return {}
+    data = json.loads(storage.case_path(case["id"], name).read_text())
+    return {int(k): v for k, v in data.items()}
+
+
 def process_case(case_id: str) -> None:
     case = storage.load_case(case_id)
     case.update(status="running", error=None)
@@ -51,6 +61,8 @@ def process_case(case_id: str) -> None:
             antagonist=load_mesh(storage.case_path(case_id, antagonist)) if antagonist else None,
             preferences=prefs,
             fix_numbering=os.environ.get("NUMBERING_FIX", "1") != "0",
+            prepared_teeth=case.get("prepared_teeth", []),
+            margin_overrides=_margin_overrides(case),
         )
         case.update(status="done", report=report)
     except Exception as exc:  # 任务失败要记录到病例上，前端才能显示

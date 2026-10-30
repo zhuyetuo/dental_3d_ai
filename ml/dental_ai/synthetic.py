@@ -19,12 +19,18 @@ def synthetic_arch(
     resolution: float = 0.35,
     curvature: float = 0.045,
     band: float | None = None,
+    prepared: tuple[int, ...] = (),
+    label_offset: float = 0.0,
 ) -> tuple[trimesh.Trimesh, np.ndarray]:
     """返回 (网格, 逐顶点 FDI 标签)。
 
     坐标：单位 mm，牙冠朝 +Z，+Y 指向后方（磨牙），+X 为患者左侧。下颌与 Teeth3DS 标准坐标系一致；
     Teeth3DS 中上颌牙冠朝 -Z，需要时把上颌关于 XY 平面镜像（见 tests 中的 canonical_upper）。
     band：只保留离牙弓曲线 band mm 以内的部分，得到真实口扫那样的马蹄形轮廓；None 表示保留整块矩形。
+    prepared：做成肩台预备体的牙号。预备体是“平顶 + 陡峭轴壁 + 0.8 mm 宽的水平肩台”，
+        颈缘线就是肩台外缘（一个圆），真值记在 mesh.metadata["margins"][fdi] = (cx, cy, 半径)。
+    label_offset：预备体的分割标签比真实颈缘线向外多出（>0）或向内缩进（<0）多少 mm，
+        用来模拟分割边界的误差。
     """
     order = arch_order(jaw)
     widths = np.array([expected_width(f) for f in order])
@@ -50,11 +56,23 @@ def synthetic_arch(
 
     labels = np.zeros(X.shape, dtype=np.int64)
     best = np.zeros(X.shape)
+    margins = {}
     for f, x0, y0, w in zip(order, cx, cy, widths):
         if f in missing:
             continue
         r = w * 0.45
-        bump = np.clip(1 - ((X - x0) ** 2 + (Y - y0) ** 2) / r**2, 0, None)
+        rr = np.hypot(X - x0, Y - y0)
+        if f in prepared:
+            r_margin = 0.8 * r
+            r_wall = r_margin - 0.8  # 肩台宽 0.8 mm
+            r_top = r_wall - 0.5
+            h = np.where(rr <= r_top, 4.5, np.where(rr <= r_wall, 4.5 - 3.5 * (rr - r_top) / (r_wall - r_top), 1.0))
+            h = np.where(rr <= r_margin, h, 0.0)
+            margins[f] = (float(x0), float(y0), float(r_margin))
+            best = np.where(h > best, h, best)
+            labels[rr <= r_margin + label_offset] = f
+            continue
+        bump = np.clip(1 - rr**2 / r**2, 0, None)
         h = 7.0 * np.sqrt(bump)
         inside = (h > 0) & (h > best)
         best = np.where(inside, h, best)
@@ -67,6 +85,7 @@ def synthetic_arch(
     faces = np.concatenate([np.stack([a, b, d], -1).reshape(-1, 3), np.stack([a, d, c], -1).reshape(-1, 3)])
     verts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
     mesh = trimesh.Trimesh(verts, faces, process=False)
+    mesh.metadata["margins"] = margins
     labels = labels.ravel()
     if band is not None:
         keep = (d_curve.ravel() <= band)[faces].all(axis=1)
@@ -74,5 +93,6 @@ def synthetic_arch(
         remap = np.full(len(verts), -1)
         remap[used] = np.arange(len(used))
         mesh = trimesh.Trimesh(verts[used], remap[faces[keep]], process=False)
+        mesh.metadata["margins"] = margins
         labels = labels[used]
     return mesh, labels
