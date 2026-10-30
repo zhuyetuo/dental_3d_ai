@@ -1,6 +1,7 @@
 import io
 import json
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -130,3 +131,54 @@ def test_edit_labels_validation(client, tmp_path):
     res = client.put(f"/api/cases/{case_id}/labels", json={"labels": wrong_jaw})
     assert res.status_code == 400 and "11" in res.json()["detail"]
     assert client.put(f"/api/cases/{case_id}/labels", json={"labels": [99] * len(labels)}).status_code == 400
+
+
+def _prep_case(client, tmp_path, prepared="46"):
+    from dental_ai.synthetic import synthetic_arch as arch
+
+    mesh, labels = arch("lower", prepared=(46,), resolution=0.25, band=12, label_offset=0.5)
+    save_labels(tmp_path / "p.json", labels, "lower")
+    files = {"mesh": ("lower.ply", io.BytesIO(mesh.export(file_type="ply"))), "labels": ("p.json", (tmp_path / "p.json").open("rb"))}
+    case_id = client.post("/api/cases", data={"jaw": "lower", "prepared": prepared}, files=files).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    return case_id, mesh.metadata["margins"][46]
+
+
+def test_margin_detection_and_edit(client, tmp_path):
+    case_id, (cx, cy, r) = _prep_case(client, tmp_path)
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["status"] == "done", case["error"]
+    assert case["prepared_teeth"] == [46]
+    assert case["report"]["margins"]["46"]["source"] == "auto"
+    auto = json.loads(client.get(f"/api/cases/{case_id}/files/result/margins.json").content)["46"]
+    pts = np.array(auto["points"])
+    assert np.abs(np.hypot(pts[:, 0] - cx, pts[:, 1] - cy) - r).mean() < 0.3
+
+    # 人工编辑：保存一条新线，重新计算后沿用人工版本
+    edited = (pts + [0.05, 0, 0]).tolist()
+    res = client.put(f"/api/cases/{case_id}/margins", json={"margins": {"46": {"points": edited, "control": edited[::10]}}})
+    assert res.status_code == 200, res.text
+    assert res.json()["files"]["margins"] == "margins_edit_001.json"
+    client.post(f"/api/cases/{case_id}/run")
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["report"]["margins"]["46"]["source"] == "manual"
+    rerun = json.loads(client.get(f"/api/cases/{case_id}/files/result/margins.json").content)["46"]
+    assert rerun["points"] == edited and rerun["control"] == edited[::10]
+    model = json.loads(client.get(f"/api/cases/{case_id}/files/margins_model.json").content)
+    assert model["46"]["source"] == "auto"
+
+
+def test_prepared_and_margin_validation(client, tmp_path):
+    case_id, _ = _prep_case(client, tmp_path, prepared="")
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["prepared_teeth"] == [] and case["report"]["margins"] == {}
+    # 标记为预备体后重新计算，自动检测
+    assert client.put(f"/api/cases/{case_id}/prepared", json={"teeth": [46]}).status_code == 200
+    client.post(f"/api/cases/{case_id}/run")
+    assert "46" in client.get(f"/api/cases/{case_id}").json()["report"]["margins"]
+
+    assert client.put(f"/api/cases/{case_id}/prepared", json={"teeth": [16]}).status_code == 400  # 下颌不允许上颌牙号
+    bad = client.put(f"/api/cases/{case_id}/margins", json={"margins": {"46": {"points": [[0, 0, 0]] * 3}}})
+    assert bad.status_code == 400
+    res = client.post("/api/cases", data={"jaw": "lower", "prepared": "4x"}, files={"mesh": ("a.ply", b"x")})
+    assert res.status_code == 400

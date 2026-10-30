@@ -15,19 +15,27 @@ import {
   Stroke,
   verticesInSphere,
 } from "./labels";
+import { MarginMap } from "./margins";
 import { Odontogram } from "./Odontogram";
+import { useMarginEditor } from "./useMarginEditor";
 
 // BVH 加速射线拾取：几十万面的口扫也能实时响应
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
-type Mode = "view" | "select" | "brush";
+type Mode = "view" | "select" | "brush" | "margin";
 
 const MODES: { mode: Mode; label: string; key: string; hint: string }[] = [
   { mode: "view", label: "查看", key: "v", hint: "左键旋转、右键平移、滚轮缩放" },
   { mode: "select", label: "改牙号", key: "s", hint: "点击一颗牙（或一块牙龈），整块改成选中的牙号" },
   { mode: "brush", label: "画笔", key: "b", hint: "按住左键涂抹，修正牙齿和牙龈的边界；在空白处拖动可以旋转" },
+  {
+    mode: "margin",
+    label: "颈缘线",
+    key: "m",
+    hint: "在牙位图选择预备体；拖动青色控制点移动，Shift+点击模型添加控制点，Alt+点击控制点删除",
+  },
 ];
 
 export interface LabelEditorProps extends Overlays {
@@ -38,6 +46,12 @@ export interface LabelEditorProps extends Overlays {
   jaw: Jaw;
   onSave: (labels: number[]) => Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  /** 颈缘线文件（人工编辑的最新版本，或自动检测结果） */
+  marginsUrl?: string;
+  /** 预备体牙号 */
+  prepared: number[];
+  onSaveMargins: (margins: MarginMap) => Promise<void>;
+  onSetPrepared: (teeth: number[]) => Promise<void>;
 }
 
 interface Loaded {
@@ -48,7 +62,18 @@ interface Loaded {
   adjacency?: Adjacency;
 }
 
-export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...overlays }: LabelEditorProps) {
+export function LabelEditor({
+  plyUrl,
+  labelsUrl,
+  jaw,
+  onSave,
+  onDirtyChange,
+  marginsUrl,
+  prepared,
+  onSaveMargins,
+  onSetPrepared,
+  ...overlays
+}: LabelEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const ctx = useScene(host);
   useOverlays(ctx, overlays);
@@ -63,6 +88,9 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedKey, setLoadedKey] = useState(0);
+  const meshGetter = useCallback(() => data.current?.mesh ?? null, []);
+  const margin = useMarginEditor({ ctx, mesh: meshGetter, loadedKey, marginsUrl, enabled: mode === "margin", active });
 
   // 事件处理里读取最新值
   const latest = useRef({ mode, active, radius });
@@ -82,8 +110,8 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
   }, []);
 
   useEffect(() => {
-    onDirtyChange?.(status.changed > 0);
-  }, [status.changed, onDirtyChange]);
+    onDirtyChange?.(status.changed > 0 || margin.dirty);
+  }, [status.changed, margin.dirty, onDirtyChange]);
 
   // 加载网格和标签
   useEffect(() => {
@@ -122,6 +150,7 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
         frameCamera(scene, geometry);
         data.current = { mesh, colors, positions: geometry.getAttribute("position").array, state };
         refresh();
+        setLoadedKey((k) => k + 1);
       })
       .catch((e) => !cancelled && setError(String(e)))
       .finally(() => !cancelled && setLoading(false));
@@ -190,7 +219,7 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
 
     const onDown = (e: PointerEvent) => {
       const { mode: m, active: label } = latest.current;
-      if (e.button !== 0 || m === "view") return;
+      if (e.button !== 0 || (m !== "select" && m !== "brush")) return;
       const hit = pick(e);
       if (!hit) return; // 没点中模型：交给轨道控制旋转
       e.stopImmediatePropagation();
@@ -257,13 +286,14 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      const inMargin = latest.current.mode === "margin";
       if (mod && key === "z") {
         e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
+        if (e.shiftKey) (inMargin ? margin.redo : redo)();
+        else (inMargin ? margin.undo : undo)();
       } else if (mod && key === "y") {
         e.preventDefault();
-        redo();
+        (inMargin ? margin.redo : redo)();
       } else if (!mod) {
         const m = MODES.find((x) => x.key === key);
         if (m) setMode(m.mode);
@@ -271,21 +301,37 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, margin]);
 
-  async function save() {
-    const d = data.current;
-    if (!d) return;
+  async function busy(task: () => Promise<void>) {
     setSaving(true);
     setError(null);
     try {
-      await onSave(Array.from(d.state.labels));
+      await task();
     } catch (e) {
       setError(String(e));
     } finally {
       setSaving(false);
     }
   }
+
+  const save = () =>
+    busy(async () => {
+      const d = data.current;
+      if (d) await onSave(Array.from(d.state.labels));
+    });
+
+  const saveMargins = () =>
+    busy(async () => {
+      await onSaveMargins(margin.edited());
+      margin.markSaved();
+    });
+
+  const togglePrepared = () =>
+    busy(() => onSetPrepared(prepared.includes(active) ? prepared.filter((t) => t !== active) : [...prepared, active].sort()));
+
+  const inMargin = mode === "margin";
+  const activeMargin = margin.summary[String(active)];
 
   const hint = MODES.find((m) => m.mode === mode)!.hint;
   return (
@@ -299,16 +345,22 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
             </button>
           ))}
           <span className="sep" />
-          <button type="button" onClick={undo} disabled={!status.canUndo} title="Ctrl+Z">
+          <button type="button" onClick={inMargin ? margin.undo : undo} disabled={inMargin ? !margin.canUndo : !status.canUndo} title="Ctrl+Z">
             撤销
           </button>
-          <button type="button" onClick={redo} disabled={!status.canRedo} title="Ctrl+Shift+Z">
+          <button type="button" onClick={inMargin ? margin.redo : redo} disabled={inMargin ? !margin.canRedo : !status.canRedo} title="Ctrl+Shift+Z">
             重做
           </button>
           <span className="sep" />
-          <button type="button" className="primary" onClick={save} disabled={saving || status.changed === 0}>
-            {saving ? "保存中…" : "保存并重新计算"}
-          </button>
+          {inMargin ? (
+            <button type="button" className="primary" onClick={saveMargins} disabled={saving || !margin.dirty}>
+              {saving ? "保存中…" : "保存颈缘线"}
+            </button>
+          ) : (
+            <button type="button" className="primary" onClick={save} disabled={saving || status.changed === 0}>
+              {saving ? "保存中…" : "保存并重新计算"}
+            </button>
+          )}
         </div>
         {mode === "brush" && (
           <label className="row">
@@ -317,9 +369,26 @@ export function LabelEditor({ plyUrl, labelsUrl, jaw, onSave, onDirtyChange, ...
           </label>
         )}
         {mode !== "view" && <Odontogram jaw={jaw} counts={status.counts} active={active} onPick={setActive} />}
+        {inMargin && (
+          <div className="row">
+            预备体：{prepared.length ? prepared.join("、") : "无"}
+            <button type="button" onClick={togglePrepared} disabled={saving || active === GUM}>
+              {prepared.includes(active) ? `取消 ${active} 预备体` : `把 ${active} 设为预备体并检测颈缘线`}
+            </button>
+            {activeMargin ? (
+              <span>
+                {active} 颈缘线：{activeMargin.source === "manual" ? "人工" : "自动"}
+                {activeMargin.confidence != null && `，置信度 ${activeMargin.confidence.toFixed(2)}`}，{activeMargin.controls} 个控制点
+              </span>
+            ) : (
+              prepared.includes(active) && <span>{active} 还没有颈缘线，可以 Shift+点击逐点画出</span>
+            )}
+          </div>
+        )}
         <div className="status">
           {hint}
           {mode !== "view" && <> · 当前牙号：<b>{active === GUM ? "牙龈" : active}</b></>}
+          {margin.dirty && <> · 颈缘线有未保存的修改</>}
           {hover !== null && <> · 鼠标处：<b>{hover === GUM ? "牙龈" : hover}</b></>}
           {status.changed > 0 && <> · 未保存的修改：{status.changed} 个顶点</>}
         </div>

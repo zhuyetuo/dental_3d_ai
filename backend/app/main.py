@@ -58,12 +58,19 @@ async def create_case(
     labels: UploadFile | None = File(None),
     antagonist: UploadFile | None = File(None),
     preferences: str | None = Form(None, description="设计参数 JSON，字段见 dental_ai.preferences.DesignPreferences"),
+    prepared: str | None = Form(None, description="预备体牙号，逗号分隔，如 46,36"),
 ) -> dict:
     try:
         prefs = DesignPreferences.from_dict(json.loads(preferences) if preferences else None)
     except (ValueError, TypeError) as exc:
         raise HTTPException(400, f"设计参数无效: {exc}") from None
+    try:
+        prepared_teeth = sorted({int(t) for t in (prepared or "").replace("，", ",").split(",") if t.strip()})
+    except ValueError:
+        raise HTTPException(400, f"预备体牙号格式错误: {prepared}") from None
+    _check_teeth(jaw, prepared_teeth)
     case = storage.create_case(jaw, prefs.to_dict())
+    case["prepared_teeth"] = prepared_teeth
     files = case["files"]
     files["mesh"] = await _save_upload(case["id"], mesh, "mesh", MESH_SUFFIXES)
     if labels is not None:
@@ -92,6 +99,67 @@ def run_case(case_id: str, background: BackgroundTasks) -> dict:
     case["status"] = "queued"
     storage.save_case(case)
     background.add_task(process_case, case_id)
+    return case
+
+
+def _check_teeth(jaw: str, teeth) -> None:
+    invalid = sorted(int(t) for t in set(teeth) - set(arch_order(jaw, include_third_molars=True)))
+    if invalid:
+        raise HTTPException(400, f"{jaw} 不允许的牙号: {invalid}")
+
+
+class PreparedUpdate(BaseModel):
+    teeth: list[int]
+
+
+@app.put("/api/cases/{case_id}/prepared")
+def update_prepared(case_id: str, body: PreparedUpdate) -> dict:
+    """设置哪些牙是预备体。之后调用 /run 会为新增的预备体自动检测颈缘线。"""
+    case = _get_case(case_id)
+    if case["status"] in ("queued", "running"):
+        raise HTTPException(409, "任务正在运行，结束后再修改")
+    _check_teeth(case["jaw"], body.teeth)
+    case["prepared_teeth"] = sorted(set(body.teeth))
+    storage.save_case(case)
+    return case
+
+
+class MarginLine(BaseModel):
+    points: list[list[float]]  # 网格表面上的闭合折线
+    control: list[list[float]] | None = None  # 编辑用的控制点
+
+
+class MarginsUpdate(BaseModel):
+    margins: dict[int, MarginLine]
+
+
+@app.put("/api/cases/{case_id}/margins")
+def update_margins(case_id: str, body: MarginsUpdate) -> dict:
+    """保存人工编辑的颈缘线。和标签一样按版本保存，第一次修改前保留自动检测结果（margins_model.json）。"""
+    case = _get_case(case_id)
+    if case["status"] in ("queued", "running"):
+        raise HTTPException(409, "任务正在运行，结束后再保存")
+    _check_teeth(case["jaw"], body.margins.keys())
+    for fdi, line in body.margins.items():
+        if len(line.points) < 4 or any(len(p) != 3 for p in line.points):
+            raise HTTPException(400, f"{fdi} 的颈缘线至少要 4 个三维点")
+    edits = case.setdefault("margin_edits", [])
+    auto = storage.case_path(case_id, "result", "margins.json")
+    if not edits and auto.exists():
+        shutil.copyfile(auto, storage.case_path(case_id, "margins_model.json"))
+        case["files"]["margins_model"] = "margins_model.json"
+    # 在上一版的基础上合并：没提交的牙保持不变
+    previous = {}
+    if case["files"].get("margins"):
+        previous = json.loads(storage.case_path(case_id, case["files"]["margins"]).read_text())
+    merged = {**previous, **{str(k): {**v.model_dump(), "source": "manual"} for k, v in body.margins.items()}}
+    version = len(edits) + 1
+    name = f"margins_edit_{version:03d}.json"
+    storage.case_path(case_id, name).write_text(json.dumps(merged))
+    edits.append({"version": version, "file": name, "created_at": datetime.now(timezone.utc).isoformat(), "teeth": sorted(body.margins)})
+    case["files"]["margins"] = name
+    case["prepared_teeth"] = sorted(set(case.get("prepared_teeth", [])) | set(body.margins))
+    storage.save_case(case)
     return case
 
 
