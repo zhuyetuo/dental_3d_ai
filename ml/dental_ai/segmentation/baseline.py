@@ -223,7 +223,9 @@ def main() -> None:
             from .postprocess import remove_small_islands
 
             labels = remove_small_islands(mesh, correct_numbering(mesh, labels, scan.jaw).labels)
-        save_labels(args.out / scan.case / f"{scan.name}.json", labels, scan.jaw, patient_id=scan.case)
+        dest = args.out / scan.case / f"{scan.name}.json"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        save_labels(dest, labels, scan.jaw, patient_id=scan.case)
         print(f"[{i}/{len(scans)}] {scan.name} {time.time() - t0:.1f}s", flush=True)
 
 
