@@ -228,7 +228,15 @@ class MirrorTemplateGenerator(ToothGenerator):
         crown, source = self._donor(ctx, arch, target.fdi, place)
 
         # 平移：水平到目标中心，高度保持（镜像牙沿用对侧高度，模板已放在牙颈线高度）
-        c = crown.vertices.mean(axis=0)
+        if source.startswith("mirror:"):
+            c = crown.vertices.mean(axis=0)  # 与参考位置（邻牙、对侧牙的顶点均值）同一个统计量
+        else:
+            # 模板按牙冠上部（高度前 60%）的面积质心对齐：目标位置来自接触点，在牙冠高度上。真实牙冠下部不对称
+            # （上颌磨牙的牙颈、腭侧向远中舌侧偏），按整颗牙的顶点均值对齐，牙冠上部会偏近中颊侧约 1 mm
+            h = crown.triangles_center @ up
+            upper = h > np.percentile(h, 40)
+            w = crown.area_faces[upper]
+            c = (crown.triangles_center[upper] * w[:, None]).sum(axis=0) / w.sum()
         shift = place.center - c
         shift -= (shift @ up) * up
         crown.vertices = crown.vertices + shift
