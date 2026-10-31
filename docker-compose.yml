@@ -28,6 +28,8 @@ services:
       TEMPLATE_DIR: /models/templates
       # 没有 GPU 时的 CPU 分割基线（python -m dental_ai.segmentation.baseline train 训练出来的文件）
       BASELINE_MODEL: /models/segmentation/baseline.joblib
+      # 自己训练的深度分割模型（python -m dental_ai.segmentation.deep train），存在时优先于 CPU 基线
+      DEEP_MODEL: /models/segmentation/deep.pt
       # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
       DEMO_DIR: /demo
     volumes:

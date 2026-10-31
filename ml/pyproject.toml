@@ -14,6 +14,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# 深度分割模型（segmentation/deep.py），GPU 服务器上的镜像一般已经带 PyTorch
+deep = ["torch>=2.0"]
 
 [build-system]
 requires = ["setuptools>=68"]
