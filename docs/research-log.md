@@ -22,6 +22,7 @@
 | 8 | 3DTeethSeg'22 官方仓库 | 克隆仓库，读 README 和 evaluation.py | 确认 Teeth3DS 许可（CC BY-NC-ND 4.0）；官方指标的确切实现；数据在 OSF；两种划分文件 | evaluation.md、ml/dental_ai/evaluation.py |
 | 9 | 公开数据集下载（2026-10-31） | 试 OSF、Hugging Face、Zenodo、Figshare（均被本环境网络策略拒绝）；在 GitHub 公开仓库里找带标注的真实扫描 | 3DTeethSeg'22 官方仓库自带 1 个带逐顶点标注的真实下颌口扫（`0EJBIPTC_lower`）和全部划分文件；TGNet、MeshSegNet 仓库没有可用的标注扫描 | scripts/download_datasets.py、real-data-test.md |
 | 10 | 用户提供的 Poseidon3D 链接（2026-10-31） | 克隆 GitHub 仓库（Zenodo 访问不了） | 仓库只有 README 和示意图；数据格式说明为 tbd、没有 LICENSE 文件 | datasets.md |
+| 11 | 用户上传到 Google Drive 的完整数据集（2026-10-31） | Drive API + 用户的 API 密钥下载（drive.google.com 本身被网络策略拦截） | Teeth3DS 1900 个扫描 + Teeth3DS+ 关键点 + Poseidon3D 200 个病例；Poseidon3D 格式和左右手性见 datasets.md | datasets.md、real-data-test.md 3.5 |
 
 ## 2. 资料总表
 
@@ -120,6 +121,8 @@
 | 2026-10-30 | RTX 40 系“有兼容问题”（README 原话） | 原因是 pointops 写死了只编译 sm_61 / sm_75；Dockerfile 改成可配置的架构列表 |
 | 2026-10-30 | 评估指标最初按论文文字描述实现（最近质心匹配、包围盒对角线归一化、TSA 为牙齿前景 F1） | 改为复刻官方 evaluation.py：匈牙利匹配、逐轴尺寸归一化、TSA 为二分类 micro-F1（即准确率）、TIR 分母为匹配数 |
 | 2026-10-30 | Teeth3DS 许可“待核对” | CC BY-NC-ND 4.0，仅限非商业，商用需单独授权 |
+| 2026-10-31 | Teeth3DS / TGNet 坐标系：上颌牙冠朝 −Z、+X 为患者左侧 | 实际数据里上下颌都是牙冠朝 +Z，上颌患者左侧在 −X（上颌模型翻过来看） |
+| 2026-10-31 | Poseidon3D 与 Teeth3DS 标注约定相同 | 左右手性相反（按右手系摆正后标成左侧的牙在右侧），导出时镜像 |
 | 2026-10-31 | 编号纠错“两颗牙被标成同一个号”只给警告即可 | 真实口扫上相邻牙接触，同号后连成一块，纠错会把后面的牙整体错改一位；动态规划要允许一块占两个牙位 |
 | 2026-10-31 | Teeth3DS 的 OBJ 顶点都被三角形引用，用 trimesh 读入即可 | 约 7% 是孤立顶点，trimesh 会丢掉，标签就对不上；TGNet 也是 trimesh 读入，所以它的输出比顶点数少（官方示例输出正好少了这些） |
 | 2026-10-30 | 3DTeethSAM 公开集 mIoU 92.03 | 这是 TSegAgent 作者复现的数字；3DTeethSAM 论文自己报告的是 91.90 |

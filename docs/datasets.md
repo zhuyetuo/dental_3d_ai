@@ -9,13 +9,25 @@
 
 | 数据集 | 内容 | 格式 | 许可 | 获取 | 在本项目里的用途 | 状态 |
 |---|---|---|---|---|---|---|
-| **Teeth3DS / 3DTeethSeg'22** | 1800 个口扫（900 名患者，上下颌各一），逐顶点 FDI 标注；扫描仪 Primescan、Trios3、iTero | 每个扫描一个 OBJ + 一个 JSON（`labels`、`instances`，逐顶点）；约 7% 的顶点没有被三角形引用（见 [real-data-test.md](real-data-test.md)） | **CC BY-NC-ND 4.0**，仅限非商业；训练或评估商业模型、用于商业产品需向 contact@udini.ai 申请商业授权 | [OSF xctdy](https://osf.io/xctdy/)，分 6 个部分，全部下载后合并；划分文件在 [官方仓库](https://github.com/abenhamadou/3DTeethSeg22_challenge) `dataset/` | 分割评估（官方指标）、朝向归一化验证、编号纠错统计、缺牙生成评估、模板库构建 | 示例病例 1 个已下载（`download_datasets.py teeth3ds-sample`）；完整数据待你上传 |
-| **Teeth3DS+ / 3DTeethLand'24** | 在 Teeth3DS 上增加牙齿关键点（牙尖、近远中点等） | 待核对 | 待核对（预计同 Teeth3DS） | 见 [arXiv 2210.06094](https://arxiv.org/abs/2210.06094)、[arXiv 2512.08323](https://arxiv.org/html/2512.08323v1) 和挑战赛页面 | 关键点（C1）、牙齿局部坐标系、咬合面 | 未下载 |
-| **Poseidon3D** | 正畸病例的真实口扫，包含牙列拥挤、缺牙等困难情况（Kubík & Španěl，Bioengineering 2024） | 待核对（GitHub README 的“Parsing the Dataset”一节还是 tbd） | 待核对：仓库没有 LICENSE 文件，README 写“intended for research purposes”；以 Zenodo 页面上的许可为准 | [Zenodo 15608906](https://zenodo.org/records/15608906)；代码仓库 [tiborkubik/lmvseg-poseidon3d](https://github.com/tiborkubik/lmvseg-poseidon3d)（commit `7cb29c2`，只有 README 和示意图） | 困难病例的分割评估（拥挤、缺牙）、编号纠错、缺牙检测 | 未下载 |
+| **Teeth3DS / 3DTeethSeg'22** | 下载到的 7 个分卷共 **1900 个口扫（上下颌各 950）**，逐顶点 FDI 标注；扫描仪 Primescan、Trios3、iTero | 每个扫描一个 OBJ + 一个 JSON（`labels`、`instances`，逐顶点），在 zip 里同一个目录 `<lower|upper>/<病例>/`；约 7% 的顶点没有被三角形引用（见 [real-data-test.md](real-data-test.md)）；坐标系：上下颌都是牙冠朝 +Z、磨牙在 +Y，上颌是“翻过来”的（见 evaluation.md 第 5 节） | **CC BY-NC-ND 4.0**，仅限非商业；训练或评估商业模型、用于商业产品需向 contact@udini.ai 申请商业授权 | [OSF xctdy](https://osf.io/xctdy/)；划分文件在 [官方仓库](https://github.com/abenhamadou/3DTeethSeg22_challenge) `dataset/` | 分割评估（官方指标）、朝向归一化验证、编号纠错统计、缺牙生成评估、模板库构建 | **已下载**（用户的 Google Drive，2026-10-31，8.9 GB zip，解压约 31 GB）；`Teeth3DS+/license.txt` 确认是 CC BY-NC-ND 4.0 |
+| **Teeth3DS+ / 3DTeethLand'24** | 在 Teeth3DS 上增加牙齿关键点（牙尖、近远中点等），训练 240 个、测试约 100 个扫描 | 每个扫描一个 `<病例>_<颌位>__kpt.json` | CC BY-NC-ND 4.0（同一个 license.txt） | 见 [arXiv 2210.06094](https://arxiv.org/abs/2210.06094)、[arXiv 2512.08323](https://arxiv.org/html/2512.08323v1) 和挑战赛页面 | 关键点（C1）、牙齿局部坐标系、咬合面 | **已下载**（同上，关键点文件还没解析） |
+| **Poseidon3D** | 200 个正畸病例（每个一个颌），包含牙列拥挤、缺牙等困难情况（Kubík & Španěl，Bioengineering 2024）；划分：test-simple 20、test-complex 20、validation 10、train 150 | 官方没有说明，从文件推出来的：`<病例>_MODEL_mandible|maxilla.stl`（**带底座的封闭模型**，不是开放的口扫曲面）+ `<病例>_REGIONS_FACES_*.pkl`（逐三角形区域号）+ `<病例>_MAPPING_*.pkl`（牙位 → 区域号）；位置 → FDI 的对应用 138 个自带 FDI 标注的病例核对过，全部一致。**左右手性与 Teeth3DS 相反**，导出时镜像。pkl 用禁止加载类的 Unpickler 读取 | 待核对：仓库没有 LICENSE 文件，README 写“intended for research purposes”；以 Zenodo 页面上的许可为准 | [Zenodo 15608906](https://zenodo.org/records/15608906)；代码仓库 [tiborkubik/lmvseg-poseidon3d](https://github.com/tiborkubik/lmvseg-poseidon3d)（commit `7cb29c2`，只有 README 和示意图） | 困难病例的分割评估（拥挤、缺牙）、编号纠错、缺牙检测 | **已下载**（用户的 Google Drive，1.0 GB zip）；许可仍待核对（压缩包和 metadata 里都没有） |
 | 先临三维牙齿分割数据集 | IEEE DataPort，DOI 10.21227/txce-st96 | 待核对 | 待核对 | [IEEE DataPort](https://ieee-dataport.org/documents/shining3d-tooth-segmentation-dataset)（需要 IEEE 账号） | 跨扫描仪（先临）评估 | 未下载 |
 | ODD | ToothCraft 训练用的完整牙弓数据 | 待核对 | 待核对 | 见 [ToothCraft 仓库](https://github.com/ikarus1211/VISAPP_ToothCraft) | 缺牙生成 | 未下载 |
 
 “待核对”的项需要你下载时在下载页面上看一下（尤其是许可），告诉我后我更新这张表。
+
+### 导出成统一格式
+
+数据放在 `data/drive/raw/`（`download_datasets.py fetch --src gdrive://...`）。全部解压要 40 GB，按需导出成 Teeth3DS 目录结构（OBJ + 逐顶点 JSON），之后评估、模板库、流程、网页都能直接用：
+
+```bash
+cd ml && python -m dental_ai.datasets teeth3ds --zips ../data/drive/raw/Teeth3DS --split <划分文件> --out ../data/teeth3ds_test --limit 100
+```
+
+```bash
+cd ml && python -m dental_ai.datasets poseidon3d --zip ../data/drive/raw/Poseidon3D/poseidon3d.zip --split test-complex --out ../data/poseidon3d/test-complex
+```
 
 ## 2. 手动下载
 
