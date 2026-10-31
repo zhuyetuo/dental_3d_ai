@@ -21,6 +21,7 @@
 | 7 | TGNet 源码 | 克隆仓库，读推理代码 | 发现几处 README 没写清楚的接口细节，见第 4 节 | services/tgnet |
 | 8 | 3DTeethSeg'22 官方仓库 | 克隆仓库，读 README 和 evaluation.py | 确认 Teeth3DS 许可（CC BY-NC-ND 4.0）；官方指标的确切实现；数据在 OSF；两种划分文件 | evaluation.md、ml/dental_ai/evaluation.py |
 | 9 | 公开数据集下载（2026-10-31） | 试 OSF、Hugging Face、Zenodo、Figshare（均被本环境网络策略拒绝）；在 GitHub 公开仓库里找带标注的真实扫描 | 3DTeethSeg'22 官方仓库自带 1 个带逐顶点标注的真实下颌口扫（`0EJBIPTC_lower`）和全部划分文件；TGNet、MeshSegNet 仓库没有可用的标注扫描 | scripts/download_datasets.py、real-data-test.md |
+| 10 | 用户提供的 Poseidon3D 链接（2026-10-31） | 克隆 GitHub 仓库（Zenodo 访问不了） | 仓库只有 README 和示意图；数据格式说明为 tbd、没有 LICENSE 文件 | datasets.md |
 
 ## 2. 资料总表
 
@@ -28,8 +29,9 @@
 
 | 名称 | 规模 / 内容 | 链接 | 许可 | 状态 |
 |---|---|---|---|---|
-| Teeth3DS / 3DTeethSeg'22 | 1800 个口扫，900 名患者，逐顶点 FDI 标注；扫描仪：Primescan、Trios3、iTero；数据在 OSF（osf.io/xctdy，6 个部分） | [GitHub](https://github.com/abenhamadou/3DTeethSeg22_challenge) | **CC BY-NC-ND 4.0，仅限非商业；商用（含训练商业模型）需单独申请商业授权** | 未下载（本环境访问不了 OSF） |
+| Teeth3DS / 3DTeethSeg'22 | 1800 个口扫，900 名患者，逐顶点 FDI 标注；扫描仪：Primescan、Trios3、iTero；数据在 OSF（osf.io/xctdy，6 个部分） | [GitHub](https://github.com/abenhamadou/3DTeethSeg22_challenge) | **CC BY-NC-ND 4.0，仅限非商业；商用（含训练商业模型）需单独申请商业授权** | 只有官方仓库里的 1 个示例病例；完整数据待用户手动下载后上传到 GCS（见 datasets.md） |
 | Teeth3DS+ / 3DTeethLand'24 | 增加牙齿关键点标注，是首个公开的 3D 牙齿关键点数据集 | [arXiv 2210.06094](https://arxiv.org/abs/2210.06094)、[arXiv 2512.08323](https://arxiv.org/html/2512.08323v1) | 待核对 | 未下载 |
+| Poseidon3D | 正畸病例真实口扫，含拥挤、缺牙等困难情况；论文 Bioengineering 2024（LMVSegRNN） | [Zenodo 15608906](https://zenodo.org/records/15608906)、[GitHub](https://github.com/tiborkubik/lmvseg-poseidon3d) | 待核对（仓库无 LICENSE，README 写研究用途） | 未下载（Zenodo 在本环境访问不了）；见 datasets.md |
 | 先临三维牙齿分割数据集 | IEEE DataPort，DOI 10.21227/txce-st96 | [链接](https://ieee-dataport.org/documents/shining3d-tooth-segmentation-dataset) | 待核对 | 未下载 |
 | ODD | ToothCraft 训练用的完整牙弓数据 | 见 ToothCraft 仓库 | 待核对 | 未下载 |
 

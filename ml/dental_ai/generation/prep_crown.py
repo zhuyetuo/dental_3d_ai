@@ -26,7 +26,7 @@ from ..fdi import Jaw
 from ..margin.cervical import boundary_loops
 from ..margin.cut import margin_field, split_along_zero
 from ..preferences import DesignPreferences
-from ..geometry import tooth_mesh
+from ..geometry import clean_crown, tooth_mesh
 from .base import GenerationContext
 from .contacts import adjust_contacts
 from .mirror_template import MirrorTemplateGenerator
@@ -96,7 +96,7 @@ def extract_die(mesh: trimesh.Trimesh, margin: np.ndarray, frame: _Frame) -> tri
     xy = np.stack([ld @ frame.u, ld @ frame.v], axis=1)
     inside_2d = _inside_polygon(xy[:, 0], xy[:, 1], poly)
     theta, _, h = frame.polar(local.vertices)
-    margin_h = frame.polar(_interp_loop(margin, frame, theta))[2]
+    margin_h = _margin_floor(margin, frame, theta)
     f = margin_field(xy, h, poly, inside_2d, margin_h)
     cut, values = split_along_zero(local, f)
     inner = (values <= 0)[cut.faces].all(axis=1)
@@ -104,8 +104,27 @@ def extract_die(mesh: trimesh.Trimesh, margin: np.ndarray, frame: _Frame) -> tri
         raise ValueError("颈缘线以内没有预备体表面，请检查颈缘线")
     die = cut.submesh([np.nonzero(inner)[0]], append=True, repair=False)
     die.merge_vertices()
-    parts = die.split(only_watertight=False)
-    return max(parts, key=lambda p: len(p.faces)) if len(parts) > 1 else die
+    # 只留最大连通块，补上扫描本身的小洞（真实口扫上一颗预备体有几百个）。不补的话组织面有洞，
+    # 牙冠不封闭；内外判断在洞附近也不可靠，最小厚度的迭代会把外表面越推越远
+    return clean_crown(die)
+
+
+def _margin_floor(margin: np.ndarray, frame: _Frame, theta: np.ndarray, bins: int = 72, window: int = 3) -> np.ndarray:
+    """各方位附近（±window 个 5° 格子）颈缘线的最低高度。
+
+    切割时用来排除颈缘线以下的部分（如肩台下方、多边形内侧的牙龈）。不能直接用同一方位的颈缘线高度：
+    真实颈缘线随牙龈呈扇贝形，邻面处 2–3 mm 的升降只占很小的角度，颈缘线内侧的肩台点按方位
+    对到的却是更高的那段颈缘线，会被误判为“在颈缘线以下”而切掉，切出来的边界满是向内的尖刺。"""
+    t_m, _, h_m = frame.polar(margin)
+    k = np.floor((t_m + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+    low = np.full(bins, np.inf)
+    np.minimum.at(low, k, h_m)
+    idx = np.arange(bins)
+    ok = np.isfinite(low)
+    low = np.interp(idx, idx[ok], low[ok], period=bins)
+    low = np.min([np.roll(low, s) for s in range(-window, window + 1)], axis=0)
+    x = (theta + np.pi) / (2 * np.pi) * bins - 0.5
+    return np.interp(x, idx, low, period=bins)
 
 
 def _loop_by_angle(points: np.ndarray, frame: _Frame) -> tuple[np.ndarray, np.ndarray]:
@@ -138,7 +157,9 @@ def _distance_to_loop(points: np.ndarray, loop: np.ndarray) -> np.ndarray:
     return cKDTree(dense).query(points)[0]
 
 
-def make_intaglio(die: trimesh.Trimesh, margin: np.ndarray, frame: _Frame, cement_gap: float, gap_taper: float, block_out: bool):
+def make_intaglio(
+    die: trimesh.Trimesh, margin: np.ndarray, frame: _Frame, cement_gap: float, gap_taper: float, block_out: bool, max_blockout: float = 2.0
+):
     """冠内表面顶点：外偏粘接间隙，去倒凹。返回 (顶点, 去倒凹的最大外推量)。"""
     d = _distance_to_loop(die.vertices, margin)
     weight = np.clip(d / gap_taper, 0.0, 1.0)
@@ -147,20 +168,21 @@ def make_intaglio(die: trimesh.Trimesh, margin: np.ndarray, frame: _Frame, cemen
     shift_max = 0.0
     if block_out:
         # 倒凹 = 从就位方向（正上方）看过去，被预备体自身挡住的点。只填补这些点：
-        # 把它们沿径向推到同一方位、更高处的最大半径（填平悬突下面的凹陷）
+        # 沿径向推到正上方挡住它的那一点的半径（填平悬突下面的凹陷），最多 max_blockout。
+        # 不能推到“同一方位更高处的最大半径”：中央窝里的点（半径很小）也可能被窝沟壁挡住，
+        # 那样会被推出 4–5 mm 到轴壁外，组织面整个变形（真实口扫上出现过）
         probe = trimesh.Trimesh(verts, die.faces, process=False)
         origins = verts + frame.up * 1e-3
-        occluded = probe.ray.intersects_any(origins, np.tile(frame.up, (len(verts), 1)))
+        dirs = np.tile(frame.up, (len(verts), 1))
+        occluded = probe.ray.intersects_any(origins, dirs)
         occluded &= weight > 0.0  # 颈缘线本身不动
         if occluded.any():
-            theta, r, h = frame.polar(verts)
-            sectors = np.floor((theta + np.pi) / (2 * np.pi) * 72).astype(int) % 72
+            idx = np.nonzero(occluded)[0]
+            hits, ray, _ = probe.ray.intersects_location(origins[idx], dirs[idx], multiple_hits=False)
+            _, r, _ = frame.polar(verts[idx[ray]])
+            _, r_hit, _ = frame.polar(hits)
             push = np.zeros(len(verts))
-            for s in np.unique(sectors[occluded]):
-                idx = np.nonzero(sectors == s)[0]
-                idx = idx[np.argsort(-h[idx])]  # 从咬合面往颈部
-                need = np.maximum.accumulate(r[idx]) - r[idx]
-                push[idx] = np.where(occluded[idx], need, 0.0)
+            push[idx[ray]] = np.clip(r_hit - r, 0.0, max_blockout)
             verts = verts + frame.radial(verts) * push[:, None]
             shift_max = float(push.max())
     return verts, shift_max
@@ -218,9 +240,18 @@ def _loft(a_idx: np.ndarray, a_ang: np.ndarray, b_idx: np.ndarray, b_ang: np.nda
     return np.array(faces)
 
 
-def _signed_thickness(points: np.ndarray, inner: trimesh.Trimesh) -> np.ndarray:
+def _signed_thickness(points: np.ndarray, inner: trimesh.Trimesh, edge_margin: float = 0.3, return_normals: bool = False):
+    """外表面点到组织面的有符号距离（组织面法向一侧为正）。
+
+    最近点落在组织面开放边缘（颈缘）edge_margin 以内的点记为 +inf：那里用边缘三角形的法向判断内外不可靠，
+    会被误判成“太薄”，最小厚度的迭代就把这些点一次次往外推（真实口扫上推出了 10 mm 以上）。"""
     cp, _, tri = trimesh.proximity.closest_point(inner, points)
-    return np.einsum("ij,ij->i", points - cp, inner.face_normals[tri])
+    t = np.einsum("ij,ij->i", points - cp, inner.face_normals[tri])
+    loops = boundary_loops(inner)
+    if loops:
+        near_edge = cKDTree(inner.vertices[loops[0]]).query(cp)[0] < edge_margin
+        t[near_edge] = np.inf
+    return (t, inner.face_normals[tri]) if return_normals else t
 
 
 def generate_prep_crown(
@@ -284,11 +315,13 @@ def generate_prep_crown(
 
     def enforce_thickness():
         for _ in range(20):
-            t = _signed_thickness(outer.vertices[far], inner)
-            deficit = np.clip(prefs.crown_thickness - t, 0.0, None)
+            t, normals = _signed_thickness(outer.vertices[far], inner, return_normals=True)
+            # 每次最多外推一个冠厚；沿组织面在最近点处的法向推（一定让厚度增加）。
+            # 用外表面自己的顶点法向不行：折叠、补洞处法向朝里，越推越薄，真实口扫上推出了 10 mm
+            deficit = np.clip(prefs.crown_thickness - t, 0.0, prefs.crown_thickness)
             if deficit.max() <= 1e-4:
                 break
-            outer.vertices[far] = outer.vertices[far] + outer.vertex_normals[far] * deficit[:, None]
+            outer.vertices[far] = outer.vertices[far] + normals * deficit[:, None]
 
     enforce_thickness()
     contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)

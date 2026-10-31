@@ -10,6 +10,7 @@
 | [docs/architecture.md](docs/architecture.md) | 各任务的技术调研、论文和开源方案对比 |
 | [docs/product-analysis.md](docs/product-analysis.md) | 竞品解析（dentalai.ai / 3Shape / 先临三维）与功能规划 |
 | [docs/industry-landscape.md](docs/industry-landscape.md) | 产业界、学术界格局与 AI 提效数据 |
+| [docs/datasets.md](docs/datasets.md) | 公开数据集清单（Teeth3DS、Poseidon3D 等）、许可、手动下载 → 上传 GCS → 云端取用的步骤 |
 | [docs/real-data-test.md](docs/real-data-test.md) | 真实口扫测试记录：发现并修复的问题、缺失牙生成与真牙的对比 |
 | [docs/annotation-guidelines.md](docs/annotation-guidelines.md) | 标注规范 v1.0：牙齿分割与编号（含数据接收要求、病例登记表模板、质量控制） |
 | [docs/evaluation.md](docs/evaluation.md) | 分割评估（Teeth3DS、官方指标）与朝向归一化 |
@@ -100,7 +101,9 @@ python scripts/download_datasets.py teeth3ds-sample
 python scripts/make_demo.py --missing 46 --out samples
 ```
 
-`teeth3ds-sample` 是官方仓库里的 1 个真实下颌口扫（约 12 MB），用来冒烟测试；`teeth3ds-splits` 是官方划分文件；`teeth3ds` 是完整数据集（OSF，几十 GB）。
+加 `--prepared 46` 把 46 模拟磨成肩台预备体（上传时“预备体牙号”填 46）。
+
+`teeth3ds-sample` 是官方仓库里的 1 个真实下颌口扫（约 12 MB），用来冒烟测试；`teeth3ds-splits` 是官方划分文件；`teeth3ds` 是完整数据集（OSF，几十 GB）；`fetch --name <名字> --src gs://...` 从自己的 GCS 私有桶取（步骤见 docs/datasets.md）。
 
 运行测试（下载了示例病例时会多跑真实数据的回归测试，否则跳过）：
 

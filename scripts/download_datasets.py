@@ -3,8 +3,13 @@
     python scripts/download_datasets.py teeth3ds-sample   # 官方仓库里的 1 个真实口扫 + 标注（约 12 MB），冒烟测试用
     python scripts/download_datasets.py teeth3ds-splits   # 官方训练 / 测试划分文件
     python scripts/download_datasets.py teeth3ds          # 完整 Teeth3DS（OSF，6 个分卷，几十 GB）
+    python scripts/download_datasets.py fetch --name teeth3ds --src gs://<桶>/teeth3ds/   # 从自己的 GCS 桶取
 
-默认下载到 data/（已在 .gitignore 中，数据不进 git）。
+默认下载到 data/（已在 .gitignore 中，数据不进 git）。数据集清单和手动下载方法见 docs/datasets.md。
+
+fetch：从 Google Cloud Storage（gs://，用 gsutil）或 https 地址下载，zip 自动解压到 data/<name>/extracted。
+私有桶需要只读服务账号：在环境变量 GCS_SERVICE_ACCOUNT_JSON 里放服务账号密钥的 JSON 内容（云端环境在设置里加，
+不要贴到聊天里），脚本会先用它登录 gsutil。
 
 许可：Teeth3DS 是 CC BY-NC-ND 4.0，只能用于非商业研究和教学；训练或评估商业模型需要向 contact@udini.ai 申请商业授权。
 不要把数据或由它派生的文件（如模板）提交到仓库或分发。
@@ -15,8 +20,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -116,12 +124,63 @@ def teeth3ds_full(out: Path, extract: bool) -> None:
     print(f"解压到 {out / 'extracted'}。检查目录结构后，把 OBJ 目录和标注目录分别传给 --data-dir / --gt-dir")
 
 
+def _gsutil_login() -> None:
+    key = os.environ.get("GCS_SERVICE_ACCOUNT_JSON")
+    if not key:
+        return  # 公开桶，或本机已经登录过
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        f.write(key)
+        path = f.name
+    os.chmod(path, 0o600)
+    try:
+        subprocess.run(["gcloud", "auth", "activate-service-account", f"--key-file={path}"], check=True, capture_output=True)
+    finally:
+        os.unlink(path)
+
+
+def fetch_sources(sources: list[str], out: Path, extract: bool) -> None:
+    raw = out / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    if any(s.startswith("gs://") for s in sources):
+        if not shutil.which("gsutil"):
+            raise SystemExit("需要 gsutil（Google Cloud SDK）")
+        _gsutil_login()
+    for src in sources:
+        if src.startswith("gs://"):
+            print(f"同步 {src}")
+            pattern = src + "*" if src.endswith("/") else src
+            subprocess.run(["gsutil", "-m", "cp", "-r", "-n", pattern, str(raw)], check=True)
+        else:
+            fetch(src, raw / Path(src.split("?")[0]).name)
+    if not extract:
+        return
+    for path in sorted(raw.rglob("*.zip")):
+        target = out / "extracted" / path.stem
+        if target.exists():
+            print(f"已解压 {target}")
+            continue
+        print(f"解压 {path.name}")
+        with zipfile.ZipFile(path) as z:
+            z.extractall(target)
+    objs = list(out.rglob("*.obj"))
+    jsons = list(out.rglob("*.json"))
+    print(f"完成：{len(objs)} 个 OBJ、{len(jsons)} 个 JSON。评估时 --data-dir 和 --gt-dir 都可以直接给 {out}（按文件名配对）")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="下载公开牙科数据集（遵守各数据集许可）")
-    p.add_argument("dataset", choices=["teeth3ds-sample", "teeth3ds-splits", "teeth3ds"])
+    p.add_argument("dataset", choices=["teeth3ds-sample", "teeth3ds-splits", "teeth3ds", "fetch"])
+    p.add_argument("--name", help="fetch：数据集名，决定输出目录 data/<name>")
+    p.add_argument("--src", nargs="+", help="fetch：gs:// 路径（目录以 / 结尾）或 https 地址，可以多个")
     p.add_argument("--out", type=Path, help="输出目录（默认 data/<数据集>）")
     p.add_argument("--no-extract", action="store_true", help="完整数据集只下载不解压")
     args = p.parse_args()
+    if args.dataset == "fetch":
+        if not args.name or not args.src:
+            p.error("fetch 需要 --name 和 --src")
+        print("请遵守数据集自己的许可（见 docs/datasets.md）。", file=sys.stderr)
+        fetch_sources(args.src, args.out or ROOT / "data" / args.name, extract=not args.no_extract)
+        return
     out = args.out or ROOT / "data" / args.dataset.replace("-", "_")
     print("Teeth3DS 许可：CC BY-NC-ND 4.0，仅限非商业研究；商用需另行授权（contact@udini.ai）。", file=sys.stderr)
     if args.dataset == "teeth3ds-sample":

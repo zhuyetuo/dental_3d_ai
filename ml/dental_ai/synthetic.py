@@ -124,3 +124,100 @@ def simulate_missing(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, teeth)
         labels[t] = 0
     mesh.vertices = v
     return mesh, labels
+
+
+def simulate_preparation(
+    mesh: trimesh.Trimesh,
+    labels: np.ndarray,
+    jaw: Jaw,
+    fdi: int,
+    margin_above_gum: float = 0.8,
+    axial: float = 1.0,
+    occlusal: float = 1.5,
+    taper_deg: float = 6.0,
+    scallop: float = 0.4,
+) -> tuple[trimesh.Trimesh, np.ndarray]:
+    """在真实口扫上把一颗牙“磨”成肩台预备体，返回 (网格, 真值颈缘线上的点)。
+
+    颈缘线放在牙颈线（低通平滑、起伏幅度乘 scallop）上方 margin_above_gum mm；颈缘线以上的部分沿水平方向向牙轴内收
+    axial mm（越往上收得越多，形成 taper_deg 的聚合角），并整体压低 occlusal mm。跨过颈缘线的三角形
+    被拉成近似水平的肩台，肩台外缘就是颈缘线。顶点、三角形和标签都不变（整颗牙仍标为 fdi）。
+    返回的真值颈缘线是肩台外缘那一圈没有移动的顶点。"""
+    from .geometry import estimate_arch_frame
+    from .margin.cervical import cervical_line
+
+    mesh = mesh.copy()
+    up = estimate_arch_frame(mesh, labels, jaw).occlusal
+    t = np.nonzero(labels == fdi)[0]
+    v = mesh.vertices
+    axis = v[t].mean(axis=0)
+    u = np.cross(up, [1.0, 0.0, 0.0])
+    u = u / np.linalg.norm(u)
+    w = np.cross(up, u)
+
+    def polar(p):
+        d = p - axis
+        return np.arctan2(d @ w, d @ u), d @ up
+
+    # 牙颈线高度随方位角变化：取 4 阶以内的傅里叶分量（保留邻面处的扇贝形起伏，去掉锯齿）
+    theta_c, h_c = polar(cervical_line(mesh, labels, fdi, smooth_iters=0))
+    k = np.arange(5)
+    basis = np.concatenate([np.cos(np.outer(theta_c, k)), np.sin(np.outer(theta_c, k[1:]))], axis=1)
+    coef = np.linalg.lstsq(basis, h_c, rcond=None)[0]
+
+    # 标签边界在邻面处一直升到接触点（高 3–4 mm），真实预备体的颈缘线只随牙龈起伏 1–2 mm：起伏幅度压到 40%
+    floor = float((basis @ coef).min())
+
+    def margin_height(theta):
+        b = np.concatenate([np.cos(np.outer(theta, k)), np.sin(np.outer(theta, k[1:]))], axis=1)
+        return floor + scallop * (b @ coef - floor) + margin_above_gum
+
+    theta, h = polar(v[t])
+    hm = margin_height(theta)
+    above = h > hm
+    idx = t[above]
+    d = v[idx] - axis
+    horiz = d - np.outer(d @ up, up)
+    r = np.linalg.norm(horiz, axis=1)
+    rise = h[above] - hm[above]
+    # 颈缘线处（各方位）牙面的半径；轴壁从这里内收 axial，再按聚合角向上收拢。
+    # 牙冠最凸处比颈部宽，只按比例内收会留下倒凹，真实预备体的轴壁不会有倒凹
+    bins = 72
+    near = np.abs(h - hm) < 0.3
+    kb = np.floor((theta[near] + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+    rd = np.linalg.norm((v[t][near] - axis) - np.outer((v[t][near] - axis) @ up, up), axis=1)
+    r_margin = np.full(bins, np.nan)
+    for b in range(bins):
+        if (kb == b).any():
+            r_margin[b] = rd[kb == b].max()
+    ok = ~np.isnan(r_margin)
+    r_margin = np.interp(np.arange(bins), np.nonzero(ok)[0], r_margin[ok], period=bins)
+    x = (theta[above] + np.pi) / (2 * np.pi) * bins - 0.5
+    wall = np.interp(x, np.arange(bins), r_margin, period=bins) - axial - rise * np.tan(np.radians(taper_deg))
+    target = np.minimum(r - axial, wall)
+    scale = np.maximum(target, 0.35 * r) / np.maximum(r, 1e-9)  # 细的切牙不要收过轴心
+    top = rise.max()
+    lowered = rise * max(top - occlusal, 0.5 * top) / top  # 高度按比例压低，颈缘线处不动
+    # 邻面：口扫只拍到接触点，标签边界以下没有牙面。在那里照样内收会在预备体和牙龈之间拉出一道
+    # 竖直的“悬崖”（大倒凹）。离非本牙顶点 1 mm 以内逐渐减小磨除量，邻面成为刃状边缘
+    others = np.nonzero(labels != fdi)[0]
+    dist = cKDTree(v[others]).query(v[idx])[0]
+    weight = np.clip(dist / 1.0, 0.0, 1.0)
+    weight = weight * weight * (3 - 2 * weight)
+    scale = 1.0 - weight * (1.0 - scale)
+    new = axis + horiz * scale[:, None] + np.outer(hm[above] + lowered, up)
+    v[idx] = v[idx] + weight[:, None] * (new - v[idx])
+    mesh.vertices = v
+
+    # 真值颈缘线：颊舌侧是肩台外缘（与磨过的顶点相邻、没有动的本牙顶点），
+    # 邻面是磨过的区域贴着非本牙顶点的那一圈（刃状边缘）
+    moved = np.zeros(len(v), dtype=bool)
+    moved[idx] = True
+    e = mesh.edges_unique
+    cross = e[moved[e[:, 0]] != moved[e[:, 1]]]
+    ends = np.unique(cross.ravel())
+    outer = ends[~moved[ends] & (labels[ends] == fdi)]
+    rim = e[(labels[e[:, 0]] == fdi) != (labels[e[:, 1]] == fdi)].ravel()
+    rim = np.unique(rim[moved[rim]])
+    truth = np.concatenate([outer, rim])
+    return mesh, mesh.vertices[truth]
