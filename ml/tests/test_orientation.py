@@ -9,12 +9,8 @@ from dental_ai.synthetic import synthetic_arch
 
 
 def canonical(jaw):
-    """Teeth3DS 标准坐标系下的合成牙弓：上颌牙冠朝 -Z（关于 XY 平面镜像）。"""
-    mesh, labels = synthetic_arch(jaw, band=12)
-    if jaw == "upper":
-        mesh.vertices[:, 2] *= -1
-        mesh.invert()
-    return mesh, labels
+    """Teeth3DS 标准坐标系下的合成牙弓（synthetic_arch 已经按这个约定生成）。"""
+    return synthetic_arch(jaw, band=12)
 
 
 def random_pose(seed):

@@ -270,10 +270,27 @@ def rotation_angle(r: np.ndarray) -> float:
     return float(np.degrees(np.arccos(np.clip((np.trace(r) - 1) / 2, -1.0, 1.0))))
 
 
+def label_frame(mesh, labels: np.ndarray, jaw) -> np.ndarray | None:
+    """用真值标签算出的标准坐标轴（3x3，行 = X、Y、Z 在原坐标中的方向），与 orientation.py 的约定相同：
+    Z = 牙冠方向，X = 下颌指向患者左侧 / 上颌指向患者右侧（左右方向用左右同名牙对估计，见
+    geometry.estimate_arch_frame，单侧缺牙时不会偏），Y = Z × X（后方）。牙不够时返回 None。"""
+    from .geometry import estimate_arch_frame
+
+    try:
+        arch = estimate_arch_frame(mesh, labels, jaw)
+    except ValueError:
+        return None
+    z = arch.occlusal
+    x = arch.lateral if jaw == "lower" else -arch.lateral
+    return np.stack([x, np.cross(z, x), z])
+
+
 def check_orientation(scans: list[Scan], out_dir: Path, trials: int = 3, seed: int = 0) -> dict:
-    """在已标准化的数据集（如 Teeth3DS）上验证朝向归一化：
-    1. 用真值标签检查数据本身是否符合约定的坐标系（左侧象限在 +X、磨牙在 +Y、牙冠方向）；
-    2. 随机旋转后做归一化，统计恢复误差（角度）。"""
+    """验证朝向归一化。
+    1. 数据本身是否符合约定（只对 Teeth3DS 这类已标准化的数据有意义）：牙冠朝 +Z、磨牙在 +Y、
+       患者左侧在 +X（下颌）/ -X（上颌）；
+    2. 随机旋转后做归一化，与“用真值标签算出的标准坐标轴”（label_frame）比较，统计角度误差。
+       不依赖数据原来的朝向，所以原始坐标系不同的数据集（如 Poseidon3D）也能用。"""
     from scipy.spatial.transform import Rotation
 
     from .fdi import QUADRANTS
@@ -285,19 +302,22 @@ def check_orientation(scans: list[Scan], out_dir: Path, trials: int = 3, seed: i
     for i, scan in enumerate(scans, 1):
         mesh = load_mesh(scan.mesh_path)
         gt, _ = load_labels(scan.gt_path)
+        reference = label_frame(mesh, gt, scan.jaw)
+        if reference is None:
+            print(f"[{i}/{len(scans)}] {scan.name} 牙齿太少，跳过")
+            continue
         v = mesh.vertices
         right_q, left_q = QUADRANTS[scan.jaw]
         left = v[(gt // 10 == left_q)]
         right = v[(gt // 10 == right_q)]
         incisors = v[np.isin(gt, [right_q * 10 + 1, left_q * 10 + 1])]
         molars = v[np.isin(gt, [right_q * 10 + 6, left_q * 10 + 6, right_q * 10 + 7, left_q * 10 + 7])]
-        teeth_z, gum_z = v[gt != 0][:, 2].mean(), v[gt == 0][:, 2].mean()
-        crown_up = teeth_z > gum_z
+        left_sign = 1 if scan.jaw == "lower" else -1
         row = {
             "scan": scan.name,
-            "left_is_pos_x": bool(len(left) and len(right) and left[:, 0].mean() > right[:, 0].mean()),
+            "left_x_ok": bool(len(left) and len(right) and (left[:, 0].mean() - right[:, 0].mean()) * left_sign > 0),
             "molars_pos_y": bool(len(incisors) and len(molars) and molars[:, 1].mean() > incisors[:, 1].mean()),
-            "crown_dir_ok": bool(crown_up == (scan.jaw == "lower")),
+            "crown_pos_z": bool(v[gt != 0][:, 2].mean() > v[gt == 0][:, 2].mean()),
         }
         errors = []
         for _ in range(trials):
@@ -307,11 +327,12 @@ def check_orientation(scans: list[Scan], out_dir: Path, trials: int = 3, seed: i
             transform[:3, :3] = rot
             moved.apply_transform(transform)
             result = normalize_orientation(moved, scan.jaw)
-            errors.append(rotation_angle(result.transform[:3, :3] @ rot))
+            # 结果坐标轴（原坐标中）= result 的行 @ rot；与真值坐标轴比较
+            errors.append(rotation_angle(result.transform[:3, :3] @ rot @ reference.T))
         row["angle_err_mean"] = float(np.mean(errors))
         row["angle_err_max"] = float(np.max(errors))
         rows.append(row)
-        print(f"[{i}/{len(scans)}] {scan.name} 约定检查 {row['left_is_pos_x']}/{row['molars_pos_y']}/{row['crown_dir_ok']} 恢复误差 {row['angle_err_max']:.1f}°")
+        print(f"[{i}/{len(scans)}] {scan.name} 约定检查 {row['left_x_ok']}/{row['molars_pos_y']}/{row['crown_pos_z']} 误差 {row['angle_err_max']:.1f}°")
 
     if rows:
         with open(out_dir / "orientation.csv", "w", newline="") as f:
@@ -321,7 +342,7 @@ def check_orientation(scans: list[Scan], out_dir: Path, trials: int = 3, seed: i
     errs = np.array([r["angle_err_max"] for r in rows]) if rows else np.zeros(0)
     summary = {
         "n_scans": len(rows),
-        "convention_ok_rate": float(np.mean([r["left_is_pos_x"] and r["molars_pos_y"] and r["crown_dir_ok"] for r in rows])) if rows else 0.0,
+        "convention_ok_rate": float(np.mean([r["left_x_ok"] and r["molars_pos_y"] and r["crown_pos_z"] for r in rows])) if rows else 0.0,
         "angle_err_median": float(np.median(errs)) if len(errs) else 0.0,
         "within_10deg_rate": float(np.mean(errs <= 10)) if len(errs) else 0.0,
         "flipped_rate": float(np.mean(errs >= 90)) if len(errs) else 0.0,

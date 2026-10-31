@@ -24,8 +24,8 @@ def synthetic_arch(
 ) -> tuple[trimesh.Trimesh, np.ndarray]:
     """返回 (网格, 逐顶点 FDI 标签)。
 
-    坐标：单位 mm，牙冠朝 +Z，+Y 指向后方（磨牙），+X 为患者左侧。下颌与 Teeth3DS 标准坐标系一致；
-    Teeth3DS 中上颌牙冠朝 -Z，需要时把上颌关于 XY 平面镜像（见 tests 中的 canonical_upper）。
+    坐标：单位 mm，与 Teeth3DS 标准坐标系一致（见 orientation.py）：牙冠朝 +Z，+Y 指向后方（磨牙），
+    +X 下颌为患者左侧、上颌为患者右侧。
     band：只保留离牙弓曲线 band mm 以内的部分，得到真实口扫那样的马蹄形轮廓；None 表示保留整块矩形。
     prepared：做成肩台预备体的牙号。预备体是“平顶 + 陡峭轴壁 + 0.8 mm 宽的水平肩台”，
         颈缘线就是肩台外缘（一个圆），真值记在 mesh.metadata["margins"][fdi] = (cx, cy, 半径)。
@@ -84,6 +84,11 @@ def synthetic_arch(
     a, b, c, d = idx[:-1, :-1], idx[:-1, 1:], idx[1:, :-1], idx[1:, 1:]
     faces = np.concatenate([np.stack([a, b, d], -1).reshape(-1, 3), np.stack([a, d, c], -1).reshape(-1, 3)])
     verts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+    if jaw == "upper":
+        # 上颌“翻过来”看，患者左侧在 -X：关于 YZ 平面镜像（并翻转三角形绕序，保持法向朝外）
+        verts[:, 0] *= -1
+        faces = faces[:, ::-1]
+        margins = {f: (-x0, y0, r) for f, (x0, y0, r) in margins.items()}
     mesh = trimesh.Trimesh(verts, faces, process=False)
     mesh.metadata["margins"] = margins
     labels = labels.ravel()

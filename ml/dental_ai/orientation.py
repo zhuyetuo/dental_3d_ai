@@ -1,10 +1,13 @@
 """朝向归一化：不依赖分割结果，把任意朝向的单颌口扫旋转到统一坐标系。
 
-目标坐标系与 Teeth3DS / TGNet 一致（右手系，单位 mm）：
-    +Z  上方（解剖学上的上方）。下颌牙冠朝 +Z，上颌牙冠朝 -Z，上下颌 Z 方向相同
+目标坐标系与 Teeth3DS 原始数据（也就是 TGNet 训练时的坐标系）一致（右手系，单位 mm）：
+    +Z  牙冠方向（上下颌都是牙冠朝 +Z：上颌模型是“翻过来、从咬合面看”的）
     +Y  后方（从切牙指向磨牙）
-    +X  患者左侧（= Y × Z）
+    +X  = Y × Z。下颌是患者左侧，上颌是患者右侧（上颌翻过来后左右对调）
     原点  网格质心
+
+（以前写的是“上颌牙冠朝 -Z、+X 都是患者左侧”，在 Teeth3DS 的 952 个上颌扫描上核对，实际是上面这样：
+两者相差绕前后轴转 180°。按旧约定转过去再交给 TGNet，上颌的分割会出错。）
 
 步骤：
 1. 咬合方向：顶点分布的最小主成分（单颌口扫是一块马蹄形的“薄片”），
@@ -14,7 +17,8 @@
 
 已知限制：
 - 只能识别镜像对称面，左右是由右手系推出来的；如果原始扫描本身被镜像过，左右会反；
-- 带底座的封闭石膏模型扫描，法向投票失效，会退化为“开放边界在牙龈侧”的判断。
+- 带底座的封闭模型（如 Poseidon3D）：法向投票失效，改用“底座底面是大片朝外的平面”判断牙冠方向，
+  前后方向只用牙冠一侧的部分判断。
 """
 
 from __future__ import annotations
@@ -44,19 +48,26 @@ class OrientationResult:
         return np.linalg.inv(self.transform)
 
 
-def _crown_direction(mesh: trimesh.Trimesh, axis: np.ndarray) -> np.ndarray:
-    """返回指向牙冠一侧的咬合方向。"""
+def _crown_direction(mesh: trimesh.Trimesh, axis: np.ndarray) -> tuple[np.ndarray, bool]:
+    """返回 (指向牙冠一侧的咬合方向, 是否是封闭模型)。"""
     vote = float((mesh.area_faces * (mesh.face_normals @ axis)).sum())
     if abs(vote) > 0.1 * mesh.area:
-        return axis if vote > 0 else -axis
-    # 封闭网格：法向投票接近 0。改用开放边界（扫描边缘，位于牙龈侧）的位置判断
+        return (axis if vote > 0 else -axis), False
+    # 封闭模型（带底座的模型，如 Poseidon3D）：法向投票为 0。底座底面是一大片朝外的平面
+    # （实测占表面积的 16–24%，牙冠一侧只有 2–4%），牙冠在它的另一侧
+    n = mesh.face_normals @ axis
+    flat_pos = float(mesh.area_faces[n > 0.95].sum())
+    flat_neg = float(mesh.area_faces[n < -0.95].sum())
+    if max(flat_pos, flat_neg) > 2.0 * min(flat_pos, flat_neg) and max(flat_pos, flat_neg) > 0.05 * mesh.area:
+        return (-axis if flat_pos > flat_neg else axis), True
+    # 再退一步：开放边界（扫描边缘，位于牙龈侧）
     edges = mesh.edges_sorted
     uniq, counts = np.unique(edges, axis=0, return_counts=True)
     boundary = np.unique(uniq[counts == 1])
     if len(boundary):
         side = (mesh.vertices.mean(axis=0) - mesh.vertices[boundary].mean(axis=0)) @ axis
-        return axis if side > 0 else -axis
-    return axis
+        return (axis if side > 0 else -axis), True
+    return axis, True
 
 
 def _symmetry_axis(points: np.ndarray, up: np.ndarray, steps: int = 180) -> tuple[np.ndarray, float]:
@@ -102,15 +113,18 @@ def normalize_orientation(
 
     # 1. 咬合方向
     _, _, vt = np.linalg.svd(pts, full_matrices=False)
-    crown = _crown_direction(mesh, vt[2])
-    up = crown if jaw == "lower" else -crown
+    up, closed = _crown_direction(mesh, vt[2])  # 上下颌都是牙冠朝 +Z
 
     # 2. 左右方向（符号待定）
     lateral, sym_err = _symmetry_axis(pts, up)
     flat = pts - (pts @ up)[:, None] * up
 
-    # 3. 前后方向：两端各取最远的 3% 点，离中线更近的一端是前牙
+    # 3. 前后方向：两端各取最远的 3% 点，离中线更近的一端是前牙。
+    # 封闭模型只看牙冠一侧一半高度以上的部分：底座的轮廓（前端常是宽的弧形）会让判断反过来
     ap = np.cross(up, lateral)
+    if closed:
+        h = pts @ up
+        flat = flat[h > h.min() + 0.5 * np.ptp(h)]
     proj = flat @ ap
     side = np.abs(flat @ lateral)
     k = max(10, len(proj) // 33)
@@ -119,8 +133,8 @@ def normalize_orientation(
     high_end = side[order[-k:]].mean()
     posterior = ap if low_end < high_end else -ap  # 低端是前牙 → +ap 指向后方
 
-    left = np.cross(posterior, up)
-    rotation = np.stack([left, posterior, up])  # 行向量 = 新坐标轴在原坐标中的方向
+    x_axis = np.cross(posterior, up)
+    rotation = np.stack([x_axis, posterior, up])  # 行向量 = 新坐标轴在原坐标中的方向
     transform = np.eye(4)
     transform[:3, :3] = rotation
     transform[:3, 3] = -rotation @ center

@@ -45,7 +45,8 @@ class Weights:
     mirror: float = 0.3  # 与模型原牙号是左右对称的同名牙（左右混淆，比任意错号便宜）
     side: float = 2.0  # 实例在中线另一侧
     width: float = 2.0  # 宽度不符（相对误差）
-    gap: float = 3.0  # 缺隙与跳过的牙位不符（按 7 mm 归一化）
+    gap: float = 3.0  # 有缺隙却没有跳过牙位（按 7 mm 归一化）：缺牙后整体错位的典型表现
+    closed_gap: float = 0.3  # 跳过了牙位却没有缺隙，相对 gap 的比例：正畸拔牙后间隙关闭很常见（真实数据上），只轻罚
     margin: float = 0.5  # 新方案至少要好这么多才修改
     merged: float = 1.0  # 一个实例占两个牙位（两颗牙连成一块）的额外代价
     side_tolerance_mm: float = 3.0  # 离中线这么近的实例不判断左右
@@ -101,13 +102,25 @@ def _side_of(fdi: int, jaw: Jaw) -> int:
     return -1 if quadrant(fdi) == right_q else 1
 
 
-def _measure(instances: list[ToothInstance], points: np.ndarray) -> None:
-    """拟合牙弓抛物线 y = a x² + b x + c，按切线方向测每颗牙的宽度。"""
+def _arch_fit(instances: list[ToothInstance]) -> np.ndarray:
     c = np.array([t.centroid for t in instances])
-    if len(c) >= 3:
-        a, b, _ = np.polyfit(c[:, 0], c[:, 1], 2)
-    else:
-        a, b = 0.0, 0.0
+    return np.polyfit(c[:, 0], c[:, 1], 2) if len(c) >= 3 else np.array([0.0, 0.0, float(c[:, 1].mean())])
+
+
+def _arch_position(instances: list[ToothInstance], coef: np.ndarray) -> np.ndarray:
+    """每颗牙在牙弓上的位置：质心投影到拟合的牙弓抛物线上，取投影点的 x（沿曲线单调）。
+
+    直接按质心 x 排序不行：真实牙弓上拥挤、颊侧错位的牙（常见是尖牙），以及后牙区牙弓接近平行于 y 轴的地方，
+    相邻两颗牙的质心 x 会颠倒（Teeth3DS 测试集上 13% 的正确编号因此被误改）。"""
+    xs = np.linspace(-60, 60, 4001)
+    curve = np.stack([xs, np.polyval(coef, xs)], axis=1)
+    tree = cKDTree(curve)
+    return np.array([xs[tree.query(t.centroid[:2])[1]] for t in instances])
+
+
+def _measure(instances: list[ToothInstance], points: np.ndarray, coef: np.ndarray) -> None:
+    """按牙弓抛物线 y = a x² + b x + c 的切线方向测每颗牙的宽度。"""
+    a, b, _ = coef
     for t in instances:
         x = t.centroid[0]
         tangent = np.array([1.0, 2 * a * x + b])
@@ -161,8 +174,10 @@ class _Scorer:
     def pair(self, i: int, j: int, k: int) -> float:
         """实例 i 结束于牙位 j、实例 i+1 开始于牙位 k（k > j）之间的缺隙代价。"""
         skipped = sum(expected_width(self.slots[s]) for s in range(j + 1, k)) * self.scale
-        miss = max(0.0, abs(self.gaps[i] - skipped) - self.w.gap_tolerance_mm)
-        return self.w.gap * min(2.0, miss / 7.0)
+        diff = self.gaps[i] - skipped
+        miss = max(0.0, abs(diff) - self.w.gap_tolerance_mm)
+        weight = self.w.gap if diff > 0 else self.w.gap * self.w.closed_gap
+        return weight * min(2.0, miss / 7.0)
 
     def assignment_cost(self, slots: list[int]) -> float:
         cost = sum(self.unary(i, k) for i, k in enumerate(slots))
@@ -211,7 +226,8 @@ def correct_numbering(
     canonical_vertices: np.ndarray | None = None,
     weights: Weights | None = None,
 ) -> NumberingResult:
-    """canonical_vertices：标准坐标系下的顶点（+X 患者左侧，+Y 后方）；不提供时内部做一次朝向归一化。"""
+    """canonical_vertices：标准坐标系下的顶点（见 orientation.py：+Y 后方，下颌 +X 为患者左侧、上颌为患者右侧）；
+    不提供时内部做一次朝向归一化。"""
     w = weights or Weights()
     labels = np.asarray(labels).copy()
     if canonical_vertices is None:
@@ -219,6 +235,9 @@ def correct_numbering(
 
         canonical_vertices = normalize_orientation(mesh, jaw).apply(mesh).vertices
     points = np.asarray(canonical_vertices)
+    if jaw == "upper":
+        # 标准坐标系里上颌的患者左侧在 -X（见 orientation.py），这里统一成“患者左侧 = +X”
+        points = points * np.array([-1.0, 1.0, 1.0])
 
     groups = tooth_instances(mesh, labels)
     if len(groups) < 3:
@@ -241,8 +260,10 @@ def correct_numbering(
         for t in instances:
             t.centroid = t.centroid * np.array([-1.0, 1.0, 1.0])
         warnings.append("模型的左右与朝向估计相反，已按模型的左右处理，请人工确认左右是否正确")
-    instances.sort(key=lambda t: t.centroid[0])  # 患者右侧 → 左侧
-    _measure(instances, points)
+    coef = _arch_fit(instances)
+    position = _arch_position(instances, coef)
+    instances = [instances[i] for i in np.argsort(position)]  # 沿牙弓，患者右侧 → 左侧
+    _measure(instances, points, coef)
     scorer = _Scorer(instances, points, jaw, w)
 
     for t in instances:
