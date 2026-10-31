@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.spatial import cKDTree
 import trimesh
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
@@ -11,11 +12,17 @@ from ..fdi import Jaw, arch_order
 from ..geometry import estimate_arch_frame, tooth_centroids
 
 
-def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices: int = 50, iters: int = 5) -> np.ndarray:
-    """同一标签的每个连通块中，只保留最大的一块；其它小块按邻居多数票重新赋值。"""
+def remove_small_islands(
+    mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices: int = 50, iters: int = 5, keep_fraction: float = 0.3
+) -> np.ndarray:
+    """同一标签的连通块中，小于 min_vertices、或小于最大块 keep_fraction 的小块按邻居多数票重新赋值。"""
     labels = labels.copy()
     edges = mesh.edges_unique
     n = len(mesh.vertices)
+    # 没有被三角形引用的孤立顶点（真实 Teeth3DS 扫描里约 7%）自己就是一个“连通块”，又没有邻居可以投票，
+    # 以前会被一律改成牙龈，牙齿少了 7% 的顶点，官方指标明显下降。这里跳过它们，最后跟随最近的被引用顶点
+    referenced = np.zeros(n, dtype=bool)
+    referenced[mesh.faces] = True
     for _ in range(iters):
         changed = False
         same = labels[edges[:, 0]] == labels[edges[:, 1]]
@@ -23,13 +30,15 @@ def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices
         graph = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n))
         _, comp = connected_components(graph, directed=False)
         sizes = np.bincount(comp)
-        # 每个标签最大的连通块
+        # 每个标签保留最大的连通块，以及不小于它 keep_fraction 的块。不能只留最大的一块：模型输出常被一条错分带
+        # 把一颗牙切成两大块，第二块四周是牙龈，按邻居投票会整块变成牙龈（CPU 基线上 37 一次丢掉 1450 个顶点）
         keep = set()
         for lab in np.unique(labels):
             comps = np.unique(comp[labels == lab])
-            keep.add(comps[np.argmax(sizes[comps])])
+            largest = sizes[comps].max()
+            keep.update(comps[sizes[comps] >= keep_fraction * largest].tolist())
         bad = ~np.isin(comp, list(keep)) | (sizes[comp] < min_vertices)
-        bad &= labels != 0
+        bad &= (labels != 0) & referenced
         if not bad.any():
             break
         neighbors = mesh.vertex_neighbors
@@ -44,6 +53,21 @@ def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices
                 changed = True
         if not changed:
             break
+    return follow_nearest_referenced(mesh, labels, referenced)
+
+
+def follow_nearest_referenced(mesh: trimesh.Trimesh, labels: np.ndarray, referenced: np.ndarray | None = None) -> np.ndarray:
+    """孤立顶点（没有三角形引用）的标签取最近的被引用顶点的标签。"""
+    if referenced is None:
+        referenced = np.zeros(len(mesh.vertices), dtype=bool)
+        referenced[mesh.faces] = True
+    isolated = np.nonzero(~referenced)[0]
+    if len(isolated) == 0:
+        return labels
+    ref = np.nonzero(referenced)[0]
+    _, nearest = cKDTree(np.asarray(mesh.vertices)[ref]).query(np.asarray(mesh.vertices)[isolated])
+    labels = labels.copy()
+    labels[isolated] = labels[ref[nearest]]
     return labels
 
 
@@ -58,8 +82,19 @@ def check_arch_order(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw) -> lis
     order = [f for f in arch_order(jaw, include_third_molars=True) if f in cents]
     issues = []
     x = {f: float((cents[f] - frame.origin) @ frame.lateral) for f in order}
+    # 顺序按“投影到牙弓曲线上的位置”比较，不直接比左右坐标：拥挤、颊侧错位的牙（常见是尖牙）
+    # 左右坐标会颠倒，但沿牙弓的顺序是对的（Poseidon3D 正畸病例上的正确标注也会被误报）
+    posterior = np.cross(frame.occlusal, frame.lateral)
+    pts = np.array([[x[f], float((cents[f] - frame.origin) @ posterior)] for f in order])
+    along = np.array([x[f] for f in order])
+    if len(pts) >= 3:
+        coef = np.polyfit(pts[:, 0], pts[:, 1], 2)
+        xs = np.linspace(pts[:, 0].min() - 10, pts[:, 0].max() + 10, 4001)
+        _, idx = cKDTree(np.stack([xs, np.polyval(coef, xs)], axis=1)).query(pts)
+        along = xs[idx]
+    pos = dict(zip(order, along))
     for a, b in zip(order, order[1:]):
-        if a // 10 == b // 10 and x[b] < x[a]:
+        if a // 10 == b // 10 and pos[b] < pos[a]:
             issues.append(f"{a} 与 {b} 的左右顺序颠倒，可能编号错误")
     for f in order:
         side = x[f]

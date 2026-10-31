@@ -16,7 +16,7 @@ from dental_ai.fdi import arch_order
 from dental_ai.io import load_labels, save_labels
 from dental_ai.preferences import DesignPreferences
 
-from . import storage
+from . import demos, storage
 from .worker import process_case
 
 app = FastAPI(title="Dental 3D AI", version="0.1.0")
@@ -78,6 +78,31 @@ async def create_case(
     if antagonist is not None:
         files["antagonist"] = await _save_upload(case["id"], antagonist, "antagonist", MESH_SUFFIXES)
     storage.save_case(case)
+    return case
+
+
+@app.get("/api/demos")
+def list_demos() -> list[dict]:
+    """网页演示用的示例病例（仓库 demo/ 目录）。"""
+    return demos.list_demos()
+
+
+@app.post("/api/demos/{demo_id}", status_code=201)
+def create_demo_case(demo_id: str, background: BackgroundTasks) -> dict:
+    """用示例病例新建一个病例并开始处理。"""
+    try:
+        demo = demos.get_demo(demo_id)
+    except KeyError:
+        raise HTTPException(404, "示例不存在") from None
+    if not demo["available"]:
+        raise HTTPException(409, demo["unavailable_reason"])
+    case = storage.create_case(demo["jaw"], DesignPreferences().to_dict())
+    case["files"] = demos.materialize(demo, storage.case_path(case["id"]))
+    case["prepared_teeth"] = sorted(demo.get("prepared", []))
+    case["demo"] = {"id": demo["id"], "title": demo["title"]}
+    case["status"] = "queued"
+    storage.save_case(case)
+    background.add_task(process_case, case["id"])
     return case
 
 

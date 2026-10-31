@@ -55,3 +55,8 @@ form label.pref input { width: 90px; margin: 0; }
   .toolbar { top: 8px; left: 8px; right: 8px; padding: 8px; }
   .chip { min-width: 28px; }
 }
+.demos { list-style: none; padding: 0; margin: 0 0 4px; }
+.demos li { margin-bottom: 8px; }
+.demos button { width: 100%; text-align: left; padding: 6px 8px; cursor: pointer; }
+.demos small { display: block; color: #666; margin-top: 2px; line-height: 1.35; }
+.note { color: #888; font-size: 12px; margin: 4px 0 12px; }

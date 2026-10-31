@@ -83,7 +83,11 @@ def tooth_frame(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, fdi: int, a
     except ValueError:
         origin = centroid - arch.occlusal * (np.ptp(pts @ arch.occlusal) / 2)
     mes, dis = mesial_neighbors(labels, jaw, fdi)
-    if mes is not None:
+    if mes is not None and dis is not None:
+        # 两侧都有邻牙：中心差分近似牙弓切线。只朝近中邻牙质心看，在前牙区牙弓弯曲处偏得多
+        # （用 3DTeethLand 的近远中接触点标注核对：尖牙偏 23°，改成中心差分后见 docs/real-data-test.md）
+        direction = mesh.vertices[labels == mes].mean(axis=0) - mesh.vertices[labels == dis].mean(axis=0)
+    elif mes is not None:
         direction = mesh.vertices[labels == mes].mean(axis=0) - centroid
     elif dis is not None:
         direction = centroid - mesh.vertices[labels == dis].mean(axis=0)

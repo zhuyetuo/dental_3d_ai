@@ -62,33 +62,72 @@ def extract_crown(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, fdi: int)
     return frame.to_local(tooth_mesh(mesh, labels, fdi))
 
 
-def build_library(scans, out_dir: str | Path, min_vertices: int = 200) -> dict:
-    """从 Teeth3DS 格式的数据集构建模板库：每个牙位取近远中宽度最接近中位数的那颗牙冠。
+def _load_scan(scan) -> tuple[trimesh.Trimesh, np.ndarray]:
+    if hasattr(scan, "load"):  # datasets.ZipScan：直接从压缩包读
+        return scan.load()
+    return load_mesh(scan.mesh_path), load_labels(scan.gt_path)[0]
 
-    scans：evaluation.find_scans 的结果（每项有 mesh_path、gt_path、jaw）。"""
+
+def _measure_scan(args) -> list[tuple[str, tuple[float, float, float], int, int]]:
+    """第一遍：每颗牙冠在局部坐标系下的尺寸（近远中宽、颊舌宽、高），不保留网格。"""
+    i, scan, min_vertices = args
+    try:
+        mesh, labels = _load_scan(scan)
+    except (OSError, ValueError, KeyError):
+        return []
+    out = []
+    for fdi in sorted(int(v) for v in np.unique(labels) if v != 0):
+        if (labels == fdi).sum() < min_vertices or jaw_of(fdi) != scan.jaw:
+            continue
+        try:
+            crown = extract_crown(mesh, labels, scan.jaw, fdi)
+        except (ValueError, IndexError):
+            continue
+        v = crown.vertices
+        out.append((template_key(scan.jaw, position(fdi)), (float(np.ptp(v[:, 0])), float(np.ptp(v[:, 1])), float(v[:, 2].max())), i, fdi))
+    return out
+
+
+def build_library(scans, out_dir: str | Path, min_vertices: int = 200, workers: int = 1) -> dict:
+    """从带标注的数据集构建模板库：每个牙位取尺寸（近远中宽、颊舌宽、冠高）最接近中位数的那颗真实牙冠（medoid）。
+
+    不做平均：不同牙冠的网格没有对应关系，直接平均会糊掉。分两遍：第一遍只量尺寸（并行，内存只存数字），
+    第二遍只重新读入被选中的那几个扫描取出牙冠。
+    scans：evaluation.find_scans 的结果，或 datasets.teeth3ds_zip_scans（直接读压缩包，不用解压）。"""
+    from concurrent.futures import ProcessPoolExecutor
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    candidates: dict[str, list[tuple[float, trimesh.Trimesh, str]]] = {}
-    for scan in scans:
-        mesh = load_mesh(scan.mesh_path)
-        labels, _ = load_labels(scan.gt_path)
-        for fdi in sorted(int(v) for v in np.unique(labels) if v != 0):
-            if (labels == fdi).sum() < min_vertices or jaw_of(fdi) != scan.jaw:
-                continue
-            try:
-                crown = extract_crown(mesh, labels, scan.jaw, fdi)
-            except (ValueError, IndexError):
-                continue
-            key = template_key(scan.jaw, position(fdi))
-            candidates.setdefault(key, []).append((float(np.ptp(crown.vertices[:, 0])), crown, f"{scan.name}:{fdi}"))
+    jobs = [(i, scan, min_vertices) for i, scan in enumerate(scans)]
+    if workers > 1:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            measured = [m for part in pool.map(_measure_scan, jobs, chunksize=4) for m in part]
+    else:
+        measured = [m for job in jobs for m in _measure_scan(job)]
+
+    candidates: dict[str, list[tuple[np.ndarray, int, int]]] = {}
+    for key, dims, i, fdi in measured:
+        candidates.setdefault(key, []).append((np.array(dims), i, fdi))
 
     index = {}
     for key, items in sorted(candidates.items()):
-        widths = np.array([w for w, _, _ in items])
-        median = float(np.median(widths))
-        w, crown, src = min(items, key=lambda it: abs(it[0] - median))
+        dims = np.array([d for d, _, _ in items])
+        median = np.median(dims, axis=0)
+        score = np.linalg.norm((dims - median) / median, axis=1)  # 各尺寸按中位数归一化
+        best = int(np.argmin(score))
+        _, i, fdi = items[best]
+        scan = scans[i]
+        mesh, labels = _load_scan(scan)
+        crown = extract_crown(mesh, labels, scan.jaw, fdi)
         crown.export(out / f"{key}.stl")
-        index[key] = {"source": src, "samples": len(items), "width_mm": round(w, 2), "median_width_mm": round(median, 2)}
+        index[key] = {
+            "source": f"{scan.name}:{fdi}",
+            "samples": len(items),
+            "dims_mm": [round(float(x), 2) for x in dims[best]],
+            "median_dims_mm": [round(float(x), 2) for x in median],
+            "width_mm": round(float(dims[best][0]), 2),
+            "median_width_mm": round(float(median[0]), 2),
+        }
     (out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2))
     return index
 

@@ -21,14 +21,17 @@
 ```
 ml/        核心算法包 dental_ai（与 Web 无关，可单独使用）
   dental_ai/fdi.py              FDI 牙位编号工具
-  dental_ai/segmentation/       分割接口、远程分割服务客户端、编号纠错、后处理
+  dental_ai/segmentation/       分割接口、远程分割服务客户端、CPU 分割基线（梯度提升树）、编号纠错、后处理
   dental_ai/detection/          缺牙检测
   dental_ai/generation/         缺失牙生成（对侧镜像 / 标准牙模板 + 缺隙拟合）、预备体牙冠生成
   dental_ai/templates/          标准牙模板库（牙齿局部坐标系、内置参数化模板、从标注数据构建）
   dental_ai/margin/             牙颈线提取、预备体颈缘线检测、贴合牙龈的底面生成
   dental_ai/preferences.py      设计参数（邻接距离、咬合距离、粘接间隙等）
   dental_ai/orientation.py      朝向归一化（分割前把任意朝向的口扫转到标准坐标系）
-  dental_ai/evaluation.py       分割评估（挑战赛官方指标、TGNet 口径、论文口径）
+  dental_ai/evaluation.py       分割评估（挑战赛官方指标、TGNet 口径、论文口径）、朝向评估
+  dental_ai/eval_generation.py  缺失牙生成评估（在真实口扫上模拟缺牙，与真牙比较）
+  dental_ai/keypoints.py        牙齿关键点（3DTeethLand 标注）解析和统计
+  dental_ai/datasets.py         从 Teeth3DS / Poseidon3D 压缩包按划分导出、直接读取
   dental_ai/pipeline.py         端到端流程 / 命令行入口
   dental_ai/synthetic.py        合成牙弓，用于测试和联调
 backend/   FastAPI 服务
@@ -127,6 +130,40 @@ TGNet 服务的接口测试（用假模型，不需要 GPU）：
 pytest -q services/tgnet/tests
 ```
 
+## 数据集、训练和评估
+
+数据集清单、许可和下载方法见 [docs/datasets.md](docs/datasets.md)。密钥（`GOOGLE_API_KEY` 等）放在仓库根目录的 `.env`（模板 `.env.example`，不会提交）或云端环境的环境变量里。
+
+```bash
+python scripts/download_datasets.py fetch --name drive --src gdrive://<Drive 文件夹 ID> --no-extract
+```
+
+按划分导出（全部解压要 40 GB）：
+
+```bash
+cd ml && python -m dental_ai.datasets teeth3ds --zips ../data/drive/raw/Teeth3DS --split <划分文件> --out ../data/teeth3ds_test
+```
+
+缺失牙生成评估、模板库、关键点、CPU 分割基线：
+
+```bash
+cd ml && python -m dental_ai.eval_generation --data-dir ../data/teeth3ds_test --out ../eval_generation
+```
+
+```bash
+cd ml && python -m dental_ai.templates build --zips ../data/drive/raw/Teeth3DS --split <训练集划分> --out ../models/templates --workers 4
+```
+
+```bash
+cd ml && python -m dental_ai.keypoints --zips ../data/drive/raw/Teeth3DS --out ../eval_keypoints
+```
+
+```bash
+cd ml && python -m dental_ai.segmentation.baseline train --zips ../data/drive/raw/Teeth3DS --split <training_lower.txt> <training_upper.txt> --scans 300 --out ../models/segmentation/baseline.joblib
+```
+
+用 Teeth3DS（CC BY-NC-ND）构建的模板、训练出的模型只能用于研究，`.gitignore` 已排除，不要提交或分发。结果见 [docs/real-data-test.md](docs/real-data-test.md)。
+
 ## 标注编辑器
 
 处理完成后，右侧就是编辑器：
@@ -142,7 +179,7 @@ pytest -q services/tgnet/tests
 
 ## 当前状态
 
-- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化，分割后自动做编号纠错（纠错可用 `NUMBERING_FIX=0` 关闭）；
+- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；没有 GPU 时用 CPU 基线（`BASELINE_MODEL`，Teeth3DS 测试集挑战赛综合分 94.8%，牙齿边界较粗，见 docs/real-data-test.md 3.6.2）；上传标签文件时直接使用标签。调用前会先做朝向归一化，分割后自动做编号纠错（纠错可用 `NUMBERING_FIX=0` 关闭）；
 - 真实口扫：已在 Teeth3DS 的 1 个示例病例上跑通完整流程，修复了 11 个只在真实数据上出现的问题（孤立顶点、扫描小洞、牙颈线夹点、封底非流形、两颗牙连成一块等），见 docs/real-data-test.md。完整数据集在 OSF，本开发环境访问不了，待在能访问的机器上下载后重跑；
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
 - 生成：外形供体优先用对侧同名牙镜像，对侧也缺（或是预备体）时用标准牙模板库；支持两侧都有邻牙的缺隙、牙弓末端（游离端，如最后一颗磨牙）和连续多颗缺牙。放置位置：沿牙弓方向按缺隙和各牙标准宽度分配，颊舌方向用对侧镜像位置或局部牙弓曲线；游离端优先用对侧同名牙的镜像位置，对侧也没有时沿牙弓局部外推。真实口扫上（模拟缺牙后与真牙比较）：对侧镜像的表面偏差 0.3–0.65 mm，内置模板约 1 mm；

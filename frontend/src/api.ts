@@ -54,6 +54,20 @@ export interface Case {
   label_edits?: { version: number; file: string; created_at: string; changed_vertices: number }[];
   prepared_teeth?: number[];
   margin_edits?: { version: number; file: string; created_at: string; teeth: number[] }[];
+  /** 从示例病例创建 */
+  demo?: { id: string; title: string };
+}
+
+/** 网页演示用的示例病例（仓库 demo/ 目录） */
+export interface Demo {
+  id: string;
+  title: string;
+  description: string;
+  jaw: Jaw;
+  available: boolean;
+  unavailable_reason?: string | null;
+  /** 本地示例（demo/local，不在仓库里） */
+  local?: boolean;
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -66,6 +80,8 @@ async function json<T>(res: Response): Promise<T> {
 
 export const api = {
   listCases: () => fetch("/api/cases").then((r) => json<Case[]>(r)),
+  listDemos: () => fetch("/api/demos").then((r) => json<Demo[]>(r)),
+  createDemoCase: (id: string) => fetch(`/api/demos/${id}`, { method: "POST" }).then((r) => json<Case>(r)),
   getCase: (id: string) => fetch(`/api/cases/${id}`).then((r) => json<Case>(r)),
   createCase: (form: FormData) => fetch("/api/cases", { method: "POST", body: form }).then((r) => json<Case>(r)),
   runCase: (id: string) => fetch(`/api/cases/${id}/run`, { method: "POST" }).then((r) => json<Case>(r)),

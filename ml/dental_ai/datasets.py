@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import pickle
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -53,30 +55,80 @@ def face_to_vertex_labels(faces: np.ndarray, face_labels: np.ndarray, n_vertices
     return values[best].astype(np.int64)
 
 
-def export_teeth3ds(zip_dir: Path, out: Path, split: Path | None = None, limit: int | None = None) -> list[str]:
-    wanted = None
-    if split:
-        wanted = [line.strip() for line in split.read_text().splitlines() if line.strip()]
-    members = {}
-    for z in sorted(zip_dir.glob("data_part_*.zip")):
+def teeth3ds_members(zip_dir: Path) -> dict[str, dict[str, tuple[Path, str]]]:
+    """{扫描名: {"obj": (zip, 成员名), "json": ..., "kpt": ...}}。关键点在 3DTeethLand_landmarks_annotation/*.zip。"""
+    members: dict[str, dict[str, tuple[Path, str]]] = {}
+    for z in sorted(zip_dir.glob("data_part_*.zip")) + sorted(zip_dir.glob("3DTeethLand_landmarks_annotation/*.zip")):
         for name in zipfile.ZipFile(z).namelist():
-            if name.endswith((".obj", ".json")):
-                stem = Path(name).stem
-                members.setdefault(stem, []).append((z, name))
-    stems = [s for s in (wanted or sorted(m for m in members if not m.endswith("__kpt"))) if s in members]
+            stem = Path(name).stem
+            if name.endswith("__kpt.json"):
+                members.setdefault(stem[: -len("__kpt")], {})["kpt"] = (z, name)
+            elif name.endswith((".obj", ".json")):
+                members.setdefault(stem, {})[name.rsplit(".", 1)[-1]] = (z, name)
+    return members
+
+
+@dataclass
+class ZipScan:
+    """压缩包里的一个扫描，load() 时才读（可以传给多进程）。"""
+
+    name: str
+    jaw: str
+    obj: tuple[Path, str]
+    labels: tuple[Path, str]
+
+    def load(self) -> tuple[trimesh.Trimesh, np.ndarray]:
+        from .io import parse_obj
+
+        with zipfile.ZipFile(self.obj[0]) as zf:
+            mesh = parse_obj(zf.read(self.obj[1]).decode("utf-8", errors="replace").splitlines())
+        with zipfile.ZipFile(self.labels[0]) as zf:
+            labels = np.asarray(json.loads(zf.read(self.labels[1]))["labels"], dtype=np.int64)
+        return mesh, labels
+
+
+def teeth3ds_zip_scans(zip_dir: Path, split: Path | None = None) -> list[ZipScan]:
+    members = teeth3ds_members(zip_dir)
+    wanted = [line.strip() for line in split.read_text().splitlines() if line.strip()] if split else sorted(members)
+    return [ZipScan(s, s.rsplit("_", 1)[1], members[s]["obj"], members[s]["json"])
+            for s in wanted if "obj" in members.get(s, {}) and "json" in members[s]]
+
+
+def iter_teeth3ds(zip_dir: Path, stems: list[str] | None = None, members=None):
+    """直接从压缩包读（不解压到磁盘）：逐个产出 (扫描名, 颌位, 网格, 逐顶点标签, 关键点 JSON 或 None)。"""
+    from .io import parse_obj
+
+    members = members or teeth3ds_members(zip_dir)
+    for stem in stems or sorted(members):
+        m = members.get(stem, {})
+        if "obj" not in m or "json" not in m:
+            continue
+        with zipfile.ZipFile(m["obj"][0]) as zf:
+            mesh = parse_obj(zf.read(m["obj"][1]).decode("utf-8", errors="replace").splitlines())
+            labels = np.asarray(json.loads(zf.read(m["json"][1]))["labels"], dtype=np.int64)
+        kpt = None
+        if "kpt" in m:
+            with zipfile.ZipFile(m["kpt"][0]) as zf:
+                kpt = json.loads(zf.read(m["kpt"][1]))
+        yield stem, stem.rsplit("_", 1)[1], mesh, labels, kpt
+
+
+def export_teeth3ds(zip_dir: Path, out: Path, split: Path | None = None, limit: int | None = None) -> list[str]:
+    """按划分把扫描（OBJ + 标注 JSON，有关键点时连同 __kpt.json）从压缩包拷出来。"""
+    members = teeth3ds_members(zip_dir)
+    wanted = [line.strip() for line in split.read_text().splitlines() if line.strip()] if split else sorted(members)
+    stems = [s for s in wanted if "obj" in members.get(s, {}) and "json" in members[s]]
     if limit:
         stems = stems[:limit]
-    done = []
     for stem in stems:
         case = stem.rsplit("_", 1)[0]
-        for z, name in members[stem]:
+        for z, name in members[stem].values():
             dest = out / case / Path(name).name
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zipfile.ZipFile(z) as zf, zf.open(name) as src, open(dest, "wb") as dst:
                     dst.write(src.read())
-        done.append(stem)
-    return done
+    return stems
 
 
 def poseidon3d_split(zf: zipfile.ZipFile) -> dict[str, list[str]]:

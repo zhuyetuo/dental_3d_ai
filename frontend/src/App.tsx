@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, Case } from "./api";
+import { api, Case, Demo } from "./api";
 import type { MarginMap } from "./editor/margins";
 import { LabelEditor } from "./editor/LabelEditor";
 import { Viewer } from "./Viewer";
@@ -18,6 +18,7 @@ const PREFERENCE_FIELDS = [
 
 export function App() {
   const [cases, setCases] = useState<Case[]>([]);
+  const [demos, setDemos] = useState<Demo[]>([]);
   const [current, setCurrent] = useState<Case | null>(null);
   const [cervical, setCervical] = useState<Record<string, number[][]>>();
   const [showCervical, setShowCervical] = useState(true);
@@ -65,7 +66,20 @@ export function App() {
   const refresh = () => api.listCases().then(setCases).catch((e) => setError(String(e)));
   useEffect(() => {
     refresh();
+    api.listDemos().then(setDemos).catch(() => setDemos([]));
   }, []);
+
+  async function openDemo(d: Demo) {
+    if (dirty && !window.confirm("当前病例有未保存的标注修改，确定要离开吗？")) return;
+    setError(null);
+    try {
+      setDirty(false);
+      setCurrent(await api.createDemoCase(d.id));
+      refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
 
   // 任务运行中时轮询状态；生产环境可以换成 WebSocket 推送
   useEffect(() => {
@@ -158,11 +172,28 @@ export function App() {
         </form>
         {error && <p className="error">{error}</p>}
 
+        {demos.length > 0 && (
+          <>
+            <h2>示例病例</h2>
+            <ul className="demos">
+              {demos.map((d) => (
+                <li key={d.id}>
+                  <button type="button" disabled={!d.available} onClick={() => openDemo(d)} title={d.description}>
+                    {d.title}
+                  </button>
+                  <small>{d.available ? d.description : d.unavailable_reason}</small>
+                </li>
+              ))}
+            </ul>
+            <p className="note">示例数据：Teeth3DS（CC BY-NC-ND 4.0），仅用于非商业演示</p>
+          </>
+        )}
+
         <h2>病例</h2>
         <ul className="cases">
           {cases.map((c) => (
             <li key={c.id} className={c.id === current?.id ? "active" : ""} onClick={() => select(c)}>
-              {c.jaw === "upper" ? "上颌" : "下颌"} · {new Date(c.created_at).toLocaleString()} · {c.status}
+              {c.demo ? `示例：${c.demo.title}` : c.jaw === "upper" ? "上颌" : "下颌"} · {new Date(c.created_at).toLocaleString()} · {c.status}
             </li>
           ))}
         </ul>
