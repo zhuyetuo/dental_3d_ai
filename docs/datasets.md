@@ -27,6 +27,24 @@
 1. 打开 https://zenodo.org/records/15608906 ，下载全部文件；
 2. 记下页面上的许可（License）和文件格式说明。
 
+## 3A. 放在 Google Drive（更简单）
+
+云端环境访问不了 `drive.google.com`、`drive.usercontent.google.com`，但 Drive API（`www.googleapis.com`）可以访问。做法：
+
+1. Drive 文件夹（含子文件夹）共享设置为“**知道链接的任何人** → 查看者”；
+2. 在 Google Cloud 控制台：选一个项目 → “API 和服务” → 启用 **Google Drive API** → “凭据” → 创建 **API 密钥**；
+   建议在密钥的“API 限制”里只勾选 Google Drive API；
+3. 把 API 密钥放到云端环境的环境变量 `GOOGLE_API_KEY`（环境设置里加，**不要贴到聊天里**），新开会话；
+4. 我运行（文件夹 ID 是链接里 `folders/` 后面那一段）：
+
+```bash
+python scripts/download_datasets.py fetch --name drive_datasets --src gdrive://<文件夹 ID>
+```
+
+会递归下载整个文件夹到 `data/drive_datasets/raw/`（保持子文件夹结构），zip 自动解压。下载日志不打印密钥。
+
+另一种办法：在环境的网络设置里放行 `drive.google.com` 和 `drive.usercontent.google.com`，再用 gdown 下载（不需要 API 密钥）。
+
 ## 3. 上传到 Google Cloud Storage
 
 建议的目录结构（文件保持下载时的样子，zip 不用解压）：
