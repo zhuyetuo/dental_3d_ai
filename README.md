@@ -94,6 +94,12 @@ cd frontend && npm install && npm run dev
 python scripts/download_datasets.py teeth3ds-sample
 ```
 
+用这个真实口扫生成缺牙演示数据（默认去掉 46），在网页上同时上传 `samples/demo_lower.obj` 和 `samples/demo_lower.json`，颌位选下颌：
+
+```bash
+python scripts/make_demo.py --missing 46 --out samples
+```
+
 `teeth3ds-sample` 是官方仓库里的 1 个真实下颌口扫（约 12 MB），用来冒烟测试；`teeth3ds-splits` 是官方划分文件；`teeth3ds` 是完整数据集（OSF，几十 GB）。
 
 运行测试（下载了示例病例时会多跑真实数据的回归测试，否则跳过）：

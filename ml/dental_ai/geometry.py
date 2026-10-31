@@ -56,6 +56,25 @@ def clean_crown(crown: trimesh.Trimesh) -> trimesh.Trimesh:
     return trimesh.Trimesh(np.vstack(vertices), np.vstack(new_faces), process=False)
 
 
+def fill_small_holes(mesh: trimesh.Trimesh, max_perimeter: float = 15.0) -> trimesh.Trimesh:
+    """补上周长不超过 max_perimeter（mm）的洞，只加三角形、不加顶点，逐顶点标签仍然对得上。
+
+    真实口扫（如 Teeth3DS）有几千个零点几毫米的小洞，显示时会透出背景，满屏黑点。扫描外缘很长，不受影响。"""
+    from .margin.cervical import boundary_loops  # 避免循环导入
+
+    new_faces = [mesh.faces]
+    for loop in boundary_loops(mesh):
+        p = mesh.vertices[loop]
+        if np.linalg.norm(p - np.roll(p, -1, axis=0), axis=1).sum() > max_perimeter:
+            continue
+        # 以第一个顶点为扇心；环的走向与所在三角形的绕序相同，补洞的三角形要反过来
+        i = np.arange(1, len(loop) - 1)
+        new_faces.append(np.column_stack([loop[i + 1], loop[i], np.full(len(i), loop[0])]))
+    out = mesh.copy()
+    out.faces = np.vstack(new_faces)
+    return out
+
+
 def gum_mesh(mesh: trimesh.Trimesh, labels: np.ndarray) -> trimesh.Trimesh:
     return submesh(mesh, face_labels(mesh, labels) == 0)
 

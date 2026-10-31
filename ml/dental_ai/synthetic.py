@@ -96,3 +96,31 @@ def synthetic_arch(
         mesh.metadata["margins"] = margins
         labels = labels[used]
     return mesh, labels
+
+
+def simulate_missing(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, teeth) -> tuple[trimesh.Trimesh, np.ndarray]:
+    """在真实口扫上模拟缺牙：把牙齿顶点沿咬合方向压到周围一圈牙龈的高度（再低 0.3 mm），并标成牙龈。
+
+    顶点和三角形都不删，顶点顺序不变，原来的真牙可以直接用作生成结果的对照。"""
+    from .geometry import estimate_arch_frame
+
+    mesh, labels = mesh.copy(), np.asarray(labels).copy()
+    up = estimate_arch_frame(mesh, labels, jaw).occlusal
+    v = mesh.vertices.copy()
+    edges = mesh.edges_unique
+
+    def flat(p):
+        return p - np.outer(p @ up, up)
+
+    for fdi in teeth:
+        t = labels == fdi
+        if not t.any():
+            raise ValueError(f"网格中没有牙齿 {fdi}")
+        cross = edges[t[edges[:, 0]] != t[edges[:, 1]]].ravel()
+        ring = np.unique(cross[labels[cross] == 0])
+        _, idx = cKDTree(flat(v[ring])).query(flat(v[t]), k=6)
+        target = (v[ring] @ up)[idx].mean(axis=1) - 0.3
+        v[t] += np.outer(target - v[t] @ up, up)
+        labels[t] = 0
+    mesh.vertices = v
+    return mesh, labels

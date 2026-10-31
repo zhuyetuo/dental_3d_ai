@@ -44,6 +44,7 @@
 | 牙颈线 | 每颗牙一条完整闭合线，周长 35–77 mm（含邻面升高部分） |
 | 完整流程（`pipeline`，真值标签） | 约 2 秒，无警告 |
 | 后端 API（上传 → 运行 → 下载） | 正常；结果标签 110 804 个，与输入一致 |
+| 网页（浏览器实测：上传 `make_demo.py` 生成的缺 46 数据） | 牙齿着色、牙颈线、缺牙检测、生成的 46 都正常显示。扫描的几千个小洞原来显示成满屏黑点，现在导出显示用网格时补上（只加三角形，顶点和标签不变；`geometry.fill_small_holes`），剩下的是扫描底座上的几个大洞 |
 
 ### 3.2 缺失牙生成
 
@@ -90,4 +91,10 @@
 ```bash
 python scripts/download_datasets.py teeth3ds-sample
 cd ml && pytest -q tests/test_real_data.py
+```
+
+网页演示数据（去掉 46，上传 `samples/demo_lower.obj` 和 `.json`）：
+
+```bash
+python scripts/make_demo.py --missing 46 --out samples
 ```

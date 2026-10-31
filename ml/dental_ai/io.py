@@ -77,6 +77,9 @@ def label_colors(labels: np.ndarray) -> np.ndarray:
 
 
 def export_colored_ply(path: str | Path, mesh: trimesh.Trimesh, labels: np.ndarray) -> None:
-    colored = mesh.copy()
+    """供前端显示和编辑的彩色网格。补上扫描里的小洞（只加三角形，顶点和标签不变）。"""
+    from .geometry import fill_small_holes
+
+    colored = fill_small_holes(mesh)
     colored.visual = trimesh.visual.ColorVisuals(colored, vertex_colors=label_colors(labels))
     colored.export(path)

@@ -19,6 +19,7 @@ from dental_ai.margin.cervical import boundary_loops, cervical_line
 from dental_ai.pipeline import run
 from dental_ai.segmentation.base import Segmenter
 from dental_ai.segmentation.numbering import correct_numbering
+from dental_ai.synthetic import simulate_missing
 
 SAMPLE = Path(__file__).resolve().parents[2] / "data" / "teeth3ds_sample"
 OBJ = SAMPLE / "obj" / "0EJBIPTC" / "0EJBIPTC_lower.obj"
@@ -41,27 +42,6 @@ class Fixed(Segmenter):
 
     def predict(self, m, jaw):
         return self.labels
-
-
-def remove_tooth(mesh, labels, teeth):
-    """模拟缺牙：把牙齿压到周围牙龈的高度并标成牙龈。"""
-    from scipy.spatial import cKDTree
-
-    mesh, labels = mesh.copy(), labels.copy()
-    up = estimate_arch_frame(mesh, labels, "lower").occlusal
-    v = mesh.vertices
-    e = mesh.edges_unique
-    for fdi in teeth:
-        t = labels == fdi
-        cross = e[t[e[:, 0]] != t[e[:, 1]]].ravel()
-        ring = np.unique(cross[(labels[cross] == 0)])
-        flat = lambda p: p - np.outer(p @ up, up)
-        _, idx = cKDTree(flat(v[ring])).query(flat(v[t]), k=6)
-        target = (v[ring] @ up)[idx].mean(axis=1) - 0.3
-        v[t] += np.outer(target - v[t] @ up, up)
-        labels[t] = 0
-    mesh.vertices = v
-    return mesh, labels
 
 
 def test_obj_keeps_all_labelled_vertices(scan):
@@ -92,7 +72,7 @@ def test_numbering_keeps_ground_truth_and_handles_merged_pair(scan):
 @pytest.mark.parametrize("teeth", [(46,), (36, 46)])
 def test_generated_tooth_matches_real_one(scan, tmp_path, teeth):
     mesh0, gt = scan
-    mesh, labels = remove_tooth(mesh0, gt, teeth)
+    mesh, labels = simulate_missing(mesh0, gt, "lower", teeth)
     assert {m.fdi for m in detect_missing(mesh, labels, "lower")} == set(teeth)
     report = run(mesh, "lower", Fixed(labels), tmp_path)
     up = estimate_arch_frame(mesh0, gt, "lower").occlusal
@@ -112,3 +92,13 @@ def test_generated_tooth_matches_real_one(scan, tmp_path, teeth):
         # 实测：对侧镜像约 0.3 mm，内置模板约 1 mm
         assert d.mean() < (0.5 if len(teeth) == 1 else 1.3)
         assert abs((solid.vertices @ up).max() - h.max()) < 2.0
+
+
+def test_display_mesh_fills_scan_holes_without_new_vertices(scan, tmp_path):
+    from dental_ai.geometry import fill_small_holes
+
+    mesh, _ = scan
+    filled = fill_small_holes(mesh)
+    assert len(filled.vertices) == len(mesh.vertices)  # 标签仍然一一对应
+    assert len(boundary_loops(mesh)) > 4000 and len(boundary_loops(filled)) < 30
+    assert filled.is_winding_consistent
