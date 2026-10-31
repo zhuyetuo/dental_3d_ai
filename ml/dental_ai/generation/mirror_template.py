@@ -181,8 +181,16 @@ class MirrorTemplateGenerator(ToothGenerator):
             skipped = sum(expected_width(f) for f in _between(ctx.jaw, neighbor, target.fdi)) * scale
             distance = neighbor_width / 2 + skipped + width / 2 - self.prefs.contacts_distance
             contra = mirror(target.fdi)
-            if np.any(labels == contra):
-                # 对侧同名牙在：用它关于正中矢状面的镜像位置（牙弓基本左右对称，比外推准）
+            if np.any(labels == contra) and np.any(labels == mirror(neighbor)):
+                # 对侧同名牙和它的邻牙都在：把对侧“牙相对邻牙”的偏移镜像过来，加到本侧邻牙上。
+                # 不直接用对侧牙的镜像位置：真实牙弓不完全对称，末端偏出 2–8 mm（Teeth3DS 测试集上）
+                offset = mesh.vertices[labels == contra].mean(axis=0) - mesh.vertices[labels == mirror(neighbor)].mean(axis=0)
+                offset = offset - 2.0 * (offset @ arch.lateral) * arch.lateral
+                point = cn + offset
+                mesial_dir = _horizontal(cn - point, up) if toward_distal else _horizontal(point - cn, up)
+                placed_by = "mirror_offset"
+            elif np.any(labels == contra):
+                # 对侧同名牙在：用它关于正中矢状面的镜像位置
                 point = arch.reflect(mesh.vertices[labels == contra].mean(axis=0)[None])[0]
                 mesial_dir = _horizontal(cn - point, up) if toward_distal else _horizontal(point - cn, up)
                 placed_by = "mirror_position"
@@ -233,8 +241,9 @@ class MirrorTemplateGenerator(ToothGenerator):
         along = ((crown.vertices - c) @ tangent)[:, None] * tangent
         crown.vertices = crown.vertices + along * (scale - 1.0)
 
-        height_info = {}
-        if not source.startswith("mirror:"):
+        if source.startswith("mirror:"):
+            height_info = self._transfer_height(ctx, crown, target, up)
+        else:
             height_info = self._fit_height(ctx, crown, target, place, up)
 
         drop = 0.0
@@ -256,6 +265,26 @@ class MirrorTemplateGenerator(ToothGenerator):
                 **height_info,
             },
         )
+
+    def _transfer_height(self, ctx: GenerationContext, crown: trimesh.Trimesh, target: MissingTooth, up: np.ndarray) -> dict:
+        """镜像牙的高度：对侧牙冠顶相对它两侧邻牙冠顶的高度差，搬到本侧邻牙上。
+
+        镜像只保证关于正中矢状面对称；咬合平面左右倾斜、牙弓不对称时，直接沿用对侧的绝对高度会差 2–4 mm
+        （Teeth3DS 测试集上）。只用左右两侧都在的邻牙。"""
+        mesh, labels = ctx.mesh, ctx.labels
+        pairs = [(f, mirror(f)) for f in (target.mesial, target.distal) if f is not None and np.any(labels == f) and np.any(labels == mirror(f))]
+        contra = mirror(target.fdi)
+        if not pairs or not np.any(labels == contra):
+            return {}
+
+        def top(f):
+            return float((mesh.vertices[labels == f] @ up).max())
+
+        relative = top(contra) - np.mean([top(m) for _, m in pairs])
+        target_top = np.mean([top(f) for f, _ in pairs]) + relative
+        shift = target_top - float((crown.vertices @ up).max())
+        crown.vertices = crown.vertices + shift * up
+        return {"height_shift_mm": round(shift, 3)}
 
     def _fit_height(self, ctx: GenerationContext, crown: trimesh.Trimesh, target: MissingTooth, place: Placement, up: np.ndarray) -> dict:
         """模板牙（不是对侧镜像）的高度：牙尖顶对齐邻牙牙尖的平均高度（咬合平面），底边放在缺牙区牙龈上方，

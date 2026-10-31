@@ -132,7 +132,7 @@ def summarize(rows: list[dict]) -> dict:
             continue
 
         def med(k):
-            return round(float(np.median([r[k] for r in ok])), 3) if ok else None
+            return round(float(np.nanmedian([r[k] for r in ok])), 3) if ok else None
 
         summary[kind] = {
             "teeth": len(sub),
