@@ -17,6 +17,10 @@ def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices
     labels = labels.copy()
     edges = mesh.edges_unique
     n = len(mesh.vertices)
+    # 没有被三角形引用的孤立顶点（真实 Teeth3DS 扫描里约 7%）自己就是一个“连通块”，又没有邻居可以投票，
+    # 以前会被一律改成牙龈，牙齿少了 7% 的顶点，官方指标明显下降。这里跳过它们，最后跟随最近的被引用顶点
+    referenced = np.zeros(n, dtype=bool)
+    referenced[mesh.faces] = True
     for _ in range(iters):
         changed = False
         same = labels[edges[:, 0]] == labels[edges[:, 1]]
@@ -30,7 +34,7 @@ def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices
             comps = np.unique(comp[labels == lab])
             keep.add(comps[np.argmax(sizes[comps])])
         bad = ~np.isin(comp, list(keep)) | (sizes[comp] < min_vertices)
-        bad &= labels != 0
+        bad &= (labels != 0) & referenced
         if not bad.any():
             break
         neighbors = mesh.vertex_neighbors
@@ -45,6 +49,21 @@ def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices
                 changed = True
         if not changed:
             break
+    return follow_nearest_referenced(mesh, labels, referenced)
+
+
+def follow_nearest_referenced(mesh: trimesh.Trimesh, labels: np.ndarray, referenced: np.ndarray | None = None) -> np.ndarray:
+    """孤立顶点（没有三角形引用）的标签取最近的被引用顶点的标签。"""
+    if referenced is None:
+        referenced = np.zeros(len(mesh.vertices), dtype=bool)
+        referenced[mesh.faces] = True
+    isolated = np.nonzero(~referenced)[0]
+    if len(isolated) == 0:
+        return labels
+    ref = np.nonzero(referenced)[0]
+    _, nearest = cKDTree(np.asarray(mesh.vertices)[ref]).query(np.asarray(mesh.vertices)[isolated])
+    labels = labels.copy()
+    labels[isolated] = labels[ref[nearest]]
     return labels
 
 
