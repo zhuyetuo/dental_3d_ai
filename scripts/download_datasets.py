@@ -11,6 +11,10 @@ fetch：从 Google Cloud Storage（gs://，用 gsutil）或 https 地址下载�
 私有桶需要只读服务账号：在环境变量 GCS_SERVICE_ACCOUNT_JSON 里放服务账号密钥的 JSON 内容（云端环境在设置里加，
 不要贴到聊天里），脚本会先用它登录 gsutil。
 
+也可以从 Google Drive 文件夹取：--src gdrive://<文件夹 ID>（文件夹要设成“知道链接的任何人可查看”）。
+走 Drive API（www.googleapis.com），需要环境变量 GOOGLE_API_KEY（启用了 Google Drive API 的 API 密钥）。
+云端环境访问不了 drive.google.com 本身，但 API 地址可以访问。
+
 许可：Teeth3DS 是 CC BY-NC-ND 4.0，只能用于非商业研究和教学；训练或评估商业模型需要向 contact@udini.ai 申请商业授权。
 不要把数据或由它派生的文件（如模板）提交到仓库或分发。
 """
@@ -56,7 +60,7 @@ def fetch(url: str, dest: Path, sha256: str | None = None) -> Path:
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    print(f"下载 {url}")
+    print(f"下载 {url.split('?')[0]} → {dest}")  # 不打印查询参数（里面可能有 API 密钥）
     with urllib.request.urlopen(url, timeout=60) as r, open(tmp, "wb") as f:
         shutil.copyfileobj(r, f, length=1 << 20)
     if sha256 and _sha256(tmp) != sha256:
@@ -138,6 +142,45 @@ def _gsutil_login() -> None:
         os.unlink(path)
 
 
+DRIVE_API = "https://www.googleapis.com/drive/v3/files"
+
+
+def _drive_list(folder: str, key: str, prefix: str = ""):
+    """递归列出 Drive 文件夹：(相对路径, 文件 ID, 大小)。"""
+    from urllib.parse import urlencode
+
+    token = None
+    while True:
+        query = {"q": f"'{folder}' in parents and trashed = false", "key": key, "pageSize": 1000,
+                 "fields": "nextPageToken, files(id, name, mimeType, size)"}
+        if token:
+            query["pageToken"] = token
+        with urllib.request.urlopen(f"{DRIVE_API}?{urlencode(query)}", timeout=60) as r:
+            page = json.load(r)
+        for f in page.get("files", []):
+            if f["mimeType"] == "application/vnd.google-apps.folder":
+                yield from _drive_list(f["id"], key, f"{prefix}{f['name']}/")
+            else:
+                yield f"{prefix}{f['name']}", f["id"], int(f.get("size", 0))
+        token = page.get("nextPageToken")
+        if not token:
+            return
+
+
+def _fetch_drive(folder: str, raw: Path) -> None:
+    key = os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        raise SystemExit("gdrive:// 需要环境变量 GOOGLE_API_KEY（启用了 Google Drive API 的 API 密钥），见 docs/datasets.md")
+    files = list(_drive_list(folder, key))
+    print(f"Drive 文件夹里有 {len(files)} 个文件，共 {sum(s for _, _, s in files) / 1e9:.2f} GB")
+    for rel, file_id, size in files:
+        dest = raw / rel
+        if dest.exists() and dest.stat().st_size == size:
+            print(f"已存在 {rel}")
+            continue
+        fetch(f"{DRIVE_API}/{file_id}?alt=media&key={key}", dest)
+
+
 def fetch_sources(sources: list[str], out: Path, extract: bool) -> None:
     raw = out / "raw"
     raw.mkdir(parents=True, exist_ok=True)
@@ -146,7 +189,9 @@ def fetch_sources(sources: list[str], out: Path, extract: bool) -> None:
             raise SystemExit("需要 gsutil（Google Cloud SDK）")
         _gsutil_login()
     for src in sources:
-        if src.startswith("gs://"):
+        if src.startswith("gdrive://"):
+            _fetch_drive(src.removeprefix("gdrive://").strip("/"), raw)
+        elif src.startswith("gs://"):
             print(f"同步 {src}")
             pattern = src + "*" if src.endswith("/") else src
             subprocess.run(["gsutil", "-m", "cp", "-r", "-n", pattern, str(raw)], check=True)
