@@ -23,3 +23,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["dental_ai*"]
+
+[tool.setuptools.package-data]
+# 随包分发的统计数据（如 generation/free_end_stats.py 用的 data/free_end_stats.json）
+dental_ai = ["data/*.json"]
