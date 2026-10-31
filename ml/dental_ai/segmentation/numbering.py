@@ -22,6 +22,8 @@
 已知不能区分的情况：一侧所有牙号整体错一位、中间又没有缺隙（与“拔牙后间隙已关闭”在几何上几乎一样），保持原样。
 
 只做“重新分配牙号”，不改变分割边界。两颗牙被分成一块、一颗牙被切成两块这类错误，只给出警告。
+两颗相邻的牙被标成同一个号时它们是连通的一块，宽度约为两倍：动态规划允许这样的实例占两个相邻牙位，
+它自己的牙号不动（等人工在编辑器里拆开），但两侧的牙不会因为“少了一颗牙”而被错误地整体移位。
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ class Weights:
     width: float = 2.0  # 宽度不符（相对误差）
     gap: float = 3.0  # 缺隙与跳过的牙位不符（按 7 mm 归一化）
     margin: float = 0.5  # 新方案至少要好这么多才修改
+    merged: float = 1.0  # 一个实例占两个牙位（两颗牙连成一块）的额外代价
     side_tolerance_mm: float = 3.0  # 离中线这么近的实例不判断左右
     gap_tolerance_mm: float = 2.0
 
@@ -142,8 +145,21 @@ class _Scorer:
         cost += w.width * min(1.0, abs(t.width - expected) / expected)
         return cost
 
+    def unary_merged(self, i: int, k: int) -> float:
+        """实例 i 同时占牙位 k-1 和 k（两颗牙被标成同一个号、连成一块）。"""
+        t, w = self.inst[i], self.w
+        a, b = self.slots[k - 1], self.slots[k]
+        cost = w.merged + (0.0 if t.label in (a, b) else w.label)
+        for fdi in (a, b):
+            x = t.centroid[0] * _side_of(fdi, self.jaw)
+            if x < -w.side_tolerance_mm - 4.0:  # 跨中线的一对（41 + 31）质心就在中线附近
+                cost += w.side * min(1.0, (-x - w.side_tolerance_mm - 4.0) / 5.0)
+        expected = (expected_width(a) + expected_width(b)) * self.scale
+        cost += w.width * min(1.0, abs(t.width - expected) / expected)
+        return cost
+
     def pair(self, i: int, j: int, k: int) -> float:
-        """实例 i 在牙位 j、实例 i+1 在牙位 k（k > j）之间的缺隙代价。"""
+        """实例 i 结束于牙位 j、实例 i+1 开始于牙位 k（k > j）之间的缺隙代价。"""
         skipped = sum(expected_width(self.slots[s]) for s in range(j + 1, k)) * self.scale
         miss = max(0.0, abs(self.gaps[i] - skipped) - self.w.gap_tolerance_mm)
         return self.w.gap * min(2.0, miss / 7.0)
@@ -153,29 +169,38 @@ class _Scorer:
         cost += sum(self.pair(i, slots[i], slots[i + 1]) for i in range(len(slots) - 1))
         return cost
 
-    def solve(self) -> tuple[list[int], float]:
+    def solve(self) -> tuple[list[tuple[int, int]], float]:
+        """返回每个实例占的牙位区间 (起, 止)（下标；起 == 止 是一颗牙，止 == 起 + 1 是连成一块的两颗牙）和总代价。"""
         n, m = len(self.inst), len(self.slots)
-        dp = np.full((n, m), np.inf)
-        back = np.zeros((n, m), dtype=int)
-        for k in range(m):
-            dp[0, k] = self.unary(0, k)
-        for i in range(1, n):
-            for k in range(i, m):
-                best, arg = np.inf, -1
-                for j in range(i - 1, k):
-                    if np.isfinite(dp[i - 1, j]):
-                        c = dp[i - 1, j] + self.pair(i - 1, j, k)
-                        if c < best:
-                            best, arg = c, j
-                if arg >= 0:
-                    dp[i, k] = best + self.unary(i, k)
-                    back[i, k] = arg
-        k = int(np.argmin(dp[n - 1]))
-        cost = float(dp[n - 1, k])
-        path = [k]
-        for i in range(n - 1, 0, -1):
-            k = int(back[i, k])
-            path.append(k)
+        # 状态：(实例 i, 结束牙位 k, 是否占两个牙位)
+        dp = np.full((n, m, 2), np.inf)
+        back = np.zeros((n, m, 2, 2), dtype=int)
+        for i in range(n):
+            for k in range(m):
+                for merged in (0, 1):
+                    start = k - merged
+                    if start < 0:
+                        continue
+                    own = self.unary_merged(i, k) if merged else self.unary(i, k)
+                    if i == 0:
+                        dp[i, k, merged] = own
+                        continue
+                    best, arg = np.inf, (-1, 0)
+                    for j in range(start):
+                        for pm in (0, 1):
+                            if np.isfinite(dp[i - 1, j, pm]):
+                                c = dp[i - 1, j, pm] + self.pair(i - 1, j, start)
+                                if c < best:
+                                    best, arg = c, (j, pm)
+                    if arg[0] >= 0:
+                        dp[i, k, merged] = best + own
+                        back[i, k, merged] = arg
+        k, merged = np.unravel_index(int(np.argmin(dp[n - 1])), (m, 2))
+        cost = float(dp[n - 1, k, merged])
+        path = []
+        for i in range(n - 1, -1, -1):
+            path.append((int(k - merged), int(k)))
+            k, merged = back[i, k, merged]
         return path[::-1], cost
 
 
@@ -222,7 +247,7 @@ def correct_numbering(
 
     for t in instances:
         if t.label in slots and t.width > 1.7 * expected_width(t.label) * scorer.scale:
-            warnings.append(f"{t.label} 的宽度约为正常的 {t.width / (expected_width(t.label) * scorer.scale):.1f} 倍，可能把两颗牙分成了一颗")
+            warnings.append(f"{t.label} 的宽度约为正常的 {t.width / (expected_width(t.label) * scorer.scale):.1f} 倍，可能是两颗牙连成了一块")
 
     original = [slots.index(t.label) if t.label in slots else -1 for t in instances]
     valid = all(k >= 0 for k in original) and all(a < b for a, b in zip(original, original[1:]))
@@ -237,9 +262,22 @@ def correct_numbering(
 
     changes = []
     out = labels.copy()
-    for t, k in zip(instances, path):
-        new = slots[k]
+    for t, (start, end) in zip(instances, path):
+        if start != end:
+            pair = tuple(sorted((slots[start], slots[end])))
+            new = t.label if t.label in pair else slots[start]
+            warnings.append(f"{t.label} 这一块应该是 {pair[0]} 和 {pair[1]} 两颗牙，请在编辑器里用画笔拆开")
+        else:
+            new = slots[start]
         if new != t.label:
             changes.append({"from": t.label, "to": new, "vertices": int(len(t.vertices))})
         out[t.vertices] = new
+    # 没有被任何面引用的孤立顶点（真实 Teeth3DS 扫描里约 7%）不属于任何实例，跟随最近的被引用顶点
+    referenced = np.zeros(len(labels), dtype=bool)
+    referenced[mesh.faces] = True
+    isolated = np.nonzero(~referenced & (labels != 0))[0]
+    if changes and len(isolated):
+        ref = np.nonzero(referenced)[0]
+        _, nearest = cKDTree(np.asarray(mesh.vertices)[ref]).query(np.asarray(mesh.vertices)[isolated])
+        out[isolated] = out[ref[nearest]]
     return NumberingResult(out, applied=bool(changes), changes=changes, warnings=warnings, cost_before=cost_before, cost_after=cost_after)

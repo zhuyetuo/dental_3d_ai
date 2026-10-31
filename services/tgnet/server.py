@@ -22,7 +22,7 @@ import threading
 from typing import Callable
 
 import numpy as np
-import trimesh
+from scipy.spatial import cKDTree
 from fastapi import FastAPI, HTTPException, Query, Request
 
 # predict(obj 路径, 颌位) -> 去重后顶点的 FDI 标签
@@ -50,6 +50,36 @@ def load_tgnet_predictor() -> Predictor:
         return sem
 
     return predict
+
+
+def parse_obj(body: bytes) -> tuple[np.ndarray, np.ndarray]:
+    """按文件顺序读出全部顶点和面。不用 trimesh：它会丢掉没有面引用的孤立顶点（真实 Teeth3DS 扫描里约 7%），
+    调用方的标签按全部 v 行编号。"""
+    vertices, faces = [], []
+    for line in body.decode(errors="replace").splitlines():
+        if line.startswith("v "):
+            vertices.append(line.split()[1:4])
+        elif line.startswith("f "):
+            idx = [int(t.split("/")[0]) for t in line.split()[1:]]
+            idx = [i - 1 if i > 0 else len(vertices) + i for i in idx]
+            faces += [[idx[0], idx[k], idx[k + 1]] for k in range(1, len(idx) - 1)]
+    if not vertices or not faces:
+        raise ValueError("没有顶点或面")
+    return np.asarray(vertices, dtype=np.float64), np.asarray(faces, dtype=np.int64)
+
+
+def map_to_input_vertices(vertices: np.ndarray, faces: np.ndarray, labels: np.ndarray) -> np.ndarray:
+    """TGNet 用 trimesh 读 OBJ（丢掉孤立顶点），再去重。先把标签映射回被面引用的顶点，
+    孤立顶点取最近的被引用顶点的标签（它们离表面约 0.1–0.2 mm，模型没有对它们预测）。"""
+    referenced = np.unique(faces)
+    if len(referenced) == len(vertices):
+        return expand_to_input_vertices(vertices, labels)
+    out = np.zeros(len(vertices), dtype=np.int64)
+    out[referenced] = expand_to_input_vertices(vertices[referenced], labels)
+    isolated = np.setdiff1d(np.arange(len(vertices)), referenced)
+    _, nearest = cKDTree(vertices[referenced]).query(vertices[isolated])
+    out[isolated] = out[referenced][nearest]
+    return out
 
 
 def expand_to_input_vertices(vertices: np.ndarray, labels: np.ndarray) -> np.ndarray:
@@ -93,14 +123,14 @@ def create_app(load_predictor: Callable[[], Predictor] = load_tgnet_predictor) -
             with open(path, "wb") as f:
                 f.write(body)
             try:
-                mesh = trimesh.load(path, file_type="obj", process=False, force="mesh")
-            except Exception as exc:
+                vertices, faces = parse_obj(body)
+            except ValueError as exc:
                 raise HTTPException(400, f"无法解析 OBJ: {exc}") from None
             predict = predictor()
             with lock:
                 labels = predict(path, jaw)
         try:
-            labels = expand_to_input_vertices(np.asarray(mesh.vertices), np.asarray(labels))
+            labels = map_to_input_vertices(vertices, faces, np.asarray(labels))
         except ValueError as exc:
             raise HTTPException(500, str(exc)) from None
         return {"labels": labels.tolist(), "model": "tgnet"}

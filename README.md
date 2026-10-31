@@ -10,6 +10,7 @@
 | [docs/architecture.md](docs/architecture.md) | 各任务的技术调研、论文和开源方案对比 |
 | [docs/product-analysis.md](docs/product-analysis.md) | 竞品解析（dentalai.ai / 3Shape / 先临三维）与功能规划 |
 | [docs/industry-landscape.md](docs/industry-landscape.md) | 产业界、学术界格局与 AI 提效数据 |
+| [docs/real-data-test.md](docs/real-data-test.md) | 真实口扫测试记录：发现并修复的问题、缺失牙生成与真牙的对比 |
 | [docs/annotation-guidelines.md](docs/annotation-guidelines.md) | 标注规范 v1.0：牙齿分割与编号（含数据接收要求、病例登记表模板、质量控制） |
 | [docs/evaluation.md](docs/evaluation.md) | 分割评估（Teeth3DS、官方指标）与朝向归一化 |
 | [docs/research-log.md](docs/research-log.md) | 全部调研记录汇总（时间线、资料总表、待核对、改正记录） |
@@ -34,7 +35,8 @@ services/  算法服务（每个模型一个容器）
   tgnet/                        TGNet 分割服务（需要 NVIDIA GPU）
 models/    模型权重（不提交到 git，见 models/README.md）
 frontend/  React + Three.js 查看器和标注编辑器（src/editor）
-scripts/   工具脚本
+scripts/   工具脚本（合成数据、公开数据集下载）
+data/      下载的数据集（不提交到 git）
 docs/      设计文档
 ```
 
@@ -86,7 +88,15 @@ cd backend && uvicorn app.main:app --reload --port 8000
 cd frontend && npm install && npm run dev
 ```
 
-运行测试：
+下载公开数据集（Teeth3DS 许可 CC BY-NC-ND 4.0，仅限非商业研究；数据放在 `data/`，不进 git）：
+
+```bash
+python scripts/download_datasets.py teeth3ds-sample
+```
+
+`teeth3ds-sample` 是官方仓库里的 1 个真实下颌口扫（约 12 MB），用来冒烟测试；`teeth3ds-splits` 是官方划分文件；`teeth3ds` 是完整数据集（OSF，几十 GB）。
+
+运行测试（下载了示例病例时会多跑真实数据的回归测试，否则跳过）：
 
 ```bash
 cd ml && pytest -q
@@ -123,10 +133,11 @@ pytest -q services/tgnet/tests
 
 ## 当前状态
 
-- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化，分割后自动做编号纠错（都在合成数据上验证过，真实口扫待验证；纠错可用 `NUMBERING_FIX=0` 关闭）；
+- 分割：TGNet 已做成独立的 GPU 服务（`services/tgnet`），后端通过 `SEGMENTER_URL` 调用；上传标签文件时直接使用标签。调用前会先做朝向归一化，分割后自动做编号纠错（纠错可用 `NUMBERING_FIX=0` 关闭）；
+- 真实口扫：已在 Teeth3DS 的 1 个示例病例上跑通完整流程，修复了 11 个只在真实数据上出现的问题（孤立顶点、扫描小洞、牙颈线夹点、封底非流形、两颗牙连成一块等），见 docs/real-data-test.md。完整数据集在 OSF，本开发环境访问不了，待在能访问的机器上下载后重跑；
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
-- 生成：外形供体优先用对侧同名牙镜像，对侧也缺（或是预备体）时用标准牙模板库；支持两侧都有邻牙的缺隙、牙弓末端（游离端，如最后一颗磨牙）和连续多颗缺牙。放置位置：缺隙按各牙标准宽度分配；游离端优先用对侧同名牙的镜像位置，对侧也没有时沿牙弓局部外推（合成数据上误差：镜像位置约 0.05 mm，外推约 1.2 mm）；
+- 生成：外形供体优先用对侧同名牙镜像，对侧也缺（或是预备体）时用标准牙模板库；支持两侧都有邻牙的缺隙、牙弓末端（游离端，如最后一颗磨牙）和连续多颗缺牙。放置位置：沿牙弓方向按缺隙和各牙标准宽度分配，颊舌方向用对侧镜像位置或局部牙弓曲线；游离端优先用对侧同名牙的镜像位置，对侧也没有时沿牙弓局部外推。真实口扫上（模拟缺牙后与真牙比较）：对侧镜像的表面偏差 0.3–0.65 mm，内置模板约 1 mm；
 - 标准牙模板库：默认用内置的参数化模板（按教科书平均尺寸程序生成的**简化形态**，只是占位）。有标注数据后用 `python -m dental_ai.templates build --data-dir <obj> --gt-dir <标注> --out models/templates` 构建真实模板，后端通过 `TEMPLATE_DIR` 读取（docker-compose 已挂载 `models/templates`）。注意 Teeth3DS 是 CC BY-NC-ND 4.0，用它构建的模板不能直接商用；
-- 底面：缺失牙场景（底面贴合牙龈）已实现；
+- 底面：缺失牙场景（底面贴合牙龈）已实现；先把牙冠底边切成光滑的扇贝形再封底，真实口扫上导出的 STL 封闭且是流形；
 - 预备体颈缘线：自动检测（几何方法，合成肩台预备体上平均误差约 0.13 mm）+ 编辑器人工编辑；上传时填写预备体牙号，或在编辑器里设置；
 - 预备体牙冠：沿颈缘线精确切开预备体，组织面贴合（粘接间隙、颈缘处渐变为 0、去倒凹），外表面用对侧同名牙镜像，邻接距离按设计参数调整，保证最小冠厚度，颈缘处缝合成封闭 STL（`result/crown_<牙号>.stl`）。缺失牙同样做邻接调整。限制见 docs/algorithm-architecture.md 的 E2 一节。

@@ -104,3 +104,17 @@ def test_pipeline_reports_numbering_fix(tmp_path):
 
     report = run(mesh, "lower", Model(), tmp_path / "off", fix_numbering=False)
     assert report["numbering"] is None and 37 in [m["fdi"] for m in report["missing"]]
+
+
+def test_merged_pair_does_not_shift_neighbours():
+    # 真实口扫上相邻两颗牙常连成一块：45 被标成 44（与 44 连通），46 被标成 45。
+    # 不能把这一块当成一颗牙、再把后面的牙往后挪；应该只把 46 改回来，这一块提示人工拆开
+    mesh, gt = synthetic_arch("lower", band=12)
+    labels = relabel(gt, {45: 44, 46: 45})
+    d44, _ = cKDTree(mesh.vertices[gt == 44]).query(mesh.vertices)
+    d45, _ = cKDTree(mesh.vertices[gt == 45]).query(mesh.vertices)
+    labels[(gt == 0) & (d44 < 2.5) & (d45 < 2.5)] = 44  # 把两颗牙之间的牙龈也标上，连成一块
+    result = correct_numbering(mesh, labels, "lower", canonical_vertices=mesh.vertices)
+    assert {(c["from"], c["to"]) for c in result.changes} == {(45, 46)}
+    assert (result.labels[gt == 46] == 46).all() and (result.labels[gt == 47] == 47).all()
+    assert any("44 和 45" in w for w in result.warnings)

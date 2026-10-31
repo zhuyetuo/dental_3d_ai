@@ -20,6 +20,7 @@
 | 6 | 产业界、学术界、提效数据 | 网络搜索（中英文） | 国内外厂商、研究团队、多篇 2026 年综述和荟萃分析的设计时间数据；先临 AI Design（2025-09 发布） | industry-landscape.md |
 | 7 | TGNet 源码 | 克隆仓库，读推理代码 | 发现几处 README 没写清楚的接口细节，见第 4 节 | services/tgnet |
 | 8 | 3DTeethSeg'22 官方仓库 | 克隆仓库，读 README 和 evaluation.py | 确认 Teeth3DS 许可（CC BY-NC-ND 4.0）；官方指标的确切实现；数据在 OSF；两种划分文件 | evaluation.md、ml/dental_ai/evaluation.py |
+| 9 | 公开数据集下载（2026-10-31） | 试 OSF、Hugging Face、Zenodo、Figshare（均被本环境网络策略拒绝）；在 GitHub 公开仓库里找带标注的真实扫描 | 3DTeethSeg'22 官方仓库自带 1 个带逐顶点标注的真实下颌口扫（`0EJBIPTC_lower`）和全部划分文件；TGNet、MeshSegNet 仓库没有可用的标注扫描 | scripts/download_datasets.py、real-data-test.md |
 
 ## 2. 资料总表
 
@@ -99,7 +100,8 @@
 | 3DTeethSAM 的代码 / 权重是否公开 | 页面里没有写 | 去 GitHub 搜索作者和论文名 |
 | 先临数据集、ODD 的许可 | 没读到许可条款 | 下载前确认（Teeth3DS 已确认，见上表） |
 | 评估指标与官方代码的直接比对 | 本环境不允许执行下载来的外部代码 | 拿到数据后用官方 evaluation.py 跑同一批预测对比 |
-| 朝向归一化在真实口扫上的效果 | 本环境访问不了 OSF，拿不到真实数据 | 下载 Teeth3DS 后跑 `--check-orientation` |
+| 朝向归一化在真实口扫上的效果 | 只在 1 个示例病例上测过（8.7°）；本环境访问不了 OSF | 下载完整 Teeth3DS 后在测试集上跑 `--check-orientation` |
+| 完整 Teeth3DS 下载脚本 | 本环境的网络策略禁止访问 osf.io、huggingface.co、zenodo.org、figshare.com | 在能访问的机器上运行 `scripts/download_datasets.py teeth3ds` |
 | ToothCR 原文 | Springer 付费页面 | 需要时找机构访问 |
 | 先临三维设计软件 AI 分割的技术细节 | 没有公开资料 | 拿同一批扫描做实测对比 |
 | 各种厂商效率数字 | 都是厂商自己宣传的 | 与技工所做实测对比 |
@@ -116,6 +118,8 @@
 | 2026-10-30 | RTX 40 系“有兼容问题”（README 原话） | 原因是 pointops 写死了只编译 sm_61 / sm_75；Dockerfile 改成可配置的架构列表 |
 | 2026-10-30 | 评估指标最初按论文文字描述实现（最近质心匹配、包围盒对角线归一化、TSA 为牙齿前景 F1） | 改为复刻官方 evaluation.py：匈牙利匹配、逐轴尺寸归一化、TSA 为二分类 micro-F1（即准确率）、TIR 分母为匹配数 |
 | 2026-10-30 | Teeth3DS 许可“待核对” | CC BY-NC-ND 4.0，仅限非商业，商用需单独授权 |
+| 2026-10-31 | 编号纠错“两颗牙被标成同一个号”只给警告即可 | 真实口扫上相邻牙接触，同号后连成一块，纠错会把后面的牙整体错改一位；动态规划要允许一块占两个牙位 |
+| 2026-10-31 | Teeth3DS 的 OBJ 顶点都被三角形引用，用 trimesh 读入即可 | 约 7% 是孤立顶点，trimesh 会丢掉，标签就对不上；TGNet 也是 trimesh 读入，所以它的输出比顶点数少（官方示例输出正好少了这些） |
 | 2026-10-30 | 3DTeethSAM 公开集 mIoU 92.03 | 这是 TSegAgent 作者复现的数字；3DTeethSAM 论文自己报告的是 91.90 |
 
 ## 5. TGNet 源码要点（2026-10-30，commit d7e16a4）

@@ -92,6 +92,25 @@ def _extrapolate_arch(mesh: trimesh.Trimesh, labels: np.ndarray, jaw, neighbor: 
     return at(x), -tangent
 
 
+def _arch_curve_point(mesh: trimesh.Trimesh, labels: np.ndarray, jaw, mesial: int, distal: int, point: np.ndarray, up: np.ndarray) -> np.ndarray:
+    """缺隙两侧各取最多两颗现存牙的质心，拟合局部二次曲线，返回曲线上与 point 沿牙弓位置相同的点。
+
+    只用两颗邻牙质心的连线不行：前牙区牙弓弯曲大，31、41 都缺时连线比真实位置偏舌侧约 4 mm。"""
+    order = arch_order(jaw, include_third_molars=True)
+    present = {int(v) for v in np.unique(labels) if v != 0}
+    i, j = sorted((order.index(mesial), order.index(distal)))
+    left = [f for f in reversed(order[:i + 1]) if f in present][:2]
+    right = [f for f in order[j:] if f in present][:2]
+    pts = np.array([mesh.vertices[labels == f].mean(axis=0) for f in left[::-1] + right])
+    ca, cb = mesh.vertices[labels == order[i]].mean(axis=0), mesh.vertices[labels == order[j]].mean(axis=0)
+    e1 = _horizontal(cb - ca, up)
+    e2 = np.cross(up, e1)
+    x, y = (pts - ca) @ e1, (pts - ca) @ e2
+    coef = np.polyfit(x, y, 2 if len(pts) >= 3 else 1)
+    xp = (point - ca) @ e1
+    return ca + xp * e1 + np.polyval(coef, xp) * e2
+
+
 class MirrorTemplateGenerator(ToothGenerator):
     name = "mirror_template"
 
@@ -134,6 +153,16 @@ class MirrorTemplateGenerator(ToothGenerator):
             if center is None and len(run) > 1 and np.any(labels == contra):
                 # 连续缺失、对侧同名牙在：用镜像位置，比按标准宽度比例分配准
                 c = arch.reflect(mesh.vertices[labels == contra].mean(axis=0)[None])[0]
+            elif center is None:
+                # 沿牙弓方向用缺隙位置（真实口扫上误差 ≤ 0.4 mm），颊舌方向不能用：接触点不在牙冠颊舌向的中间，
+                # 偏差 1–3 mm。颊舌位置取对侧同名牙的镜像位置，没有对侧牙时取缺隙两侧牙齿质心拟合的局部牙弓曲线
+                if np.any(labels == contra):
+                    ref = arch.reflect(mesh.vertices[labels == contra].mean(axis=0)[None])[0]
+                else:
+                    ref = _arch_curve_point(mesh, labels, ctx.jaw, target.mesial, target.distal, c, up)
+                d = ref - c
+                d -= (d @ up) * up + (d @ mesial_dir) * mesial_dir  # 只取水平面内垂直于牙弓的分量
+                c = c + d
             height = (_cervical_height(mesh, labels, target.mesial, up) + _cervical_height(mesh, labels, target.distal, up)) / 2
             width = expected_width(target.fdi) * share - 2 * self.prefs.contacts_distance
             kind = "space"
@@ -204,6 +233,10 @@ class MirrorTemplateGenerator(ToothGenerator):
         along = ((crown.vertices - c) @ tangent)[:, None] * tangent
         crown.vertices = crown.vertices + along * (scale - 1.0)
 
+        height_info = {}
+        if not source.startswith("mirror:"):
+            height_info = self._fit_height(ctx, crown, target, place, up)
+
         drop = 0.0
         if ctx.antagonist is not None:
             drop = self._occlusal_drop(crown, ctx.antagonist, up)
@@ -220,8 +253,33 @@ class MirrorTemplateGenerator(ToothGenerator):
                 "gap_mm": target.gap_mm,
                 "target_width_mm": round(place.width, 2),
                 "occlusal_drop_mm": drop,
+                **height_info,
             },
         )
+
+    def _fit_height(self, ctx: GenerationContext, crown: trimesh.Trimesh, target: MissingTooth, place: Placement, up: np.ndarray) -> dict:
+        """模板牙（不是对侧镜像）的高度：牙尖顶对齐邻牙牙尖的平均高度（咬合平面），底边放在缺牙区牙龈上方，
+        中间按比例竖直缩放。
+
+        模板的尺寸是教科书平均值，原点放在邻牙牙颈线的平均高度；真实牙颈线在邻面处向上升高 2–4 mm，
+        平均高度偏高，直接用会让模板牙比邻牙高出 4 mm 左右（真实口扫上测到的）。"""
+        mesh, labels = ctx.mesh, ctx.labels
+        tops = [float((mesh.vertices[labels == f] @ up).max()) for f in (target.mesial, target.distal) if f is not None and np.any(labels == f)]
+        if not tops:
+            return {}
+        h = crown.vertices @ up
+        top_now, bottom_now = float(h.max()), float(h.min())
+        top = float(np.mean(tops))
+        # 缺牙区牙龈高度：牙冠中心附近 3 mm 以内的牙龈顶点的中位数
+        c = place.center
+        gum = mesh.vertices[labels == 0]
+        horiz = (gum - c) - np.outer((gum - c) @ up, up)
+        near = np.linalg.norm(horiz, axis=1) < 3.0
+        bottom = float(np.median(gum[near] @ up)) + 0.5 if near.any() else bottom_now
+        s_z = float(np.clip((top - bottom) / max(top_now - bottom_now, 1e-6), 0.6, 1.3))
+        new_h = top - (top_now - h) * s_z
+        crown.vertices = crown.vertices + np.outer(new_h - h, up)
+        return {"height_scale": round(s_z, 3), "top_aligned_to": [f for f in (target.mesial, target.distal) if f is not None]}
 
     def _occlusal_drop(self, crown: trimesh.Trimesh, antagonist: trimesh.Trimesh, up: np.ndarray) -> float:
         """沿咬合方向发射射线，求需要下移多少才能与对颌保持间隙。
