@@ -121,10 +121,12 @@ class MirrorTemplateGenerator(ToothGenerator):
         preferences: DesignPreferences | None = None,
         scale_limits: tuple[float, float] = (0.8, 1.2),
         library: TemplateLibrary | None = None,
+        scale_template_buccolingual: bool = False,
     ):
         self.library = library or TemplateLibrary(template_dir)
         self.prefs = preferences or DesignPreferences()
         self.scale_limits = scale_limits
+        self.scale_template_buccolingual = scale_template_buccolingual
 
     def _arch_scale(self, ctx: GenerationContext, fdi: int, mesial_dir: np.ndarray, up: np.ndarray) -> float:
         """邻牙实测宽度 / 标准宽度，用来把标准牙宽换算到这副牙列。"""
@@ -253,6 +255,11 @@ class MirrorTemplateGenerator(ToothGenerator):
         scale = float(np.clip(place.width / width, *self.scale_limits))
         along = ((crown.vertices - c) @ tangent)[:, None] * tangent
         crown.vertices = crown.vertices + along * (scale - 1.0)
+        if self.scale_template_buccolingual and not source.startswith("mirror:"):
+            # 模板是平均尺寸：颊舌向按同样比例缩放，保持牙冠形状比例
+            buccal = np.cross(up, tangent)
+            across = ((crown.vertices - c) @ buccal)[:, None] * buccal
+            crown.vertices = crown.vertices + across * (scale - 1.0)
 
         if source.startswith("mirror:"):
             height_info = self._transfer_height(ctx, crown, target, up)

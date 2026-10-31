@@ -81,9 +81,15 @@ React 18 + TypeScript + Vite，3D 用 Three.js。生产环境由 nginx 托管静
 
 ### 3.2 任务编排
 
-现在是 FastAPI 的 BackgroundTasks，在进程内串行执行整条流水线。计划改成：
+现在（`backend/app/jobs.py`）：
 
-- **Celery + Redis** 任务队列；每个流水线步骤是一个任务，结果落盘，可以只重跑某一步（比如用户改了牙号，只重跑生成和封底）；
+- 设置了 `REDIS_URL`（docker-compose 默认设置）：处理任务进 **RQ + Redis** 队列，由单独的 `worker` 服务处理，API 进程不被重计算拖慢；`docker compose up --scale worker=3` 可以开多个 worker；
+- 没设置：在 API 进程里用 FastAPI 的 BackgroundTasks 处理（本地开发、单机演示）；
+- 病例文件通过共享卷（`DENTAL_DATA_DIR`）在 API 和 worker 之间共用，所以多个 worker 目前要在同一台机器上。
+
+计划：
+
+- 每个流水线步骤是一个任务，结果落盘，可以只重跑某一步（比如用户改了牙号，只重跑生成和封底）；
 - 进度通过 WebSocket 推给前端；
 - 批处理：一批病例拆成多个任务并行，按批次统计进度。
 
@@ -129,15 +135,19 @@ docker compose --profile gpu up --build    # 再加 TGNet（需要 NVIDIA GPU �
 | 服务 | 镜像 | 端口 |
 |---|---|---|
 | frontend | node 构建 → nginx | 8080 |
-| backend | python:3.12-slim + dental_ai | 8000 |
+| backend | python:3.12-slim + dental_ai（API） | 8000 |
+| worker | 同 backend 镜像，`rq worker dental` | — |
+| redis | redis:7-alpine（任务队列） | — |
 | tgnet | pytorch 1.13.1-cuda11.6 + TGNet + pointops | 8001 |
 
-病例数据存在 `case-data` 卷里；模型权重从 `models/` 目录只读挂载。
+病例数据存在 `case-data` 卷里（backend 和 worker 共用）；模型权重、模板库从 `models/` 目录只读挂载，示例病例从 `demo/` 挂载。
+分割模型的选择顺序：`SEGMENTER_URL`（TGNet 服务）→ `DEEP_MODEL`（自己训练的深度模型）→ `BASELINE_MODEL`（CPU 基线）。
 
 ### 6.2 以后：多机 / 云
 
 - 前端静态文件放 CDN；
-- 后端多副本放在负载均衡后面，无状态（状态在数据库和对象存储里）；
+- 后端多副本放在负载均衡后面，无状态（状态在数据库和对象存储里）。存储的迁移路径：`backend/app/storage.py` 现在是本地目录 + `case.json`，
+  所有读写都经过 `case_path` / `load_case` / `save_case`；换成 PostgreSQL（病例元数据）+ S3 / MinIO（网格和结果文件）时，worker 处理前把输入拉到本地临时目录、处理后上传结果，API 读文件时返回对象存储的签名 URL，算法代码不用改；
 - 任务队列的 worker 按队列长度扩容；
 - GPU 服务单独放在 GPU 节点上，用 Kubernetes 按负载扩缩；
 - 国内部署注意：医疗数据存储在境内，按等保要求配置。

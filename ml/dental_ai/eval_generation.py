@@ -108,7 +108,10 @@ def evaluate_scan(args) -> list[dict]:
         try:
             mesh, labels = simulate_missing(mesh0, gt, jaw, teeth)
             with tempfile.TemporaryDirectory() as out:
-                generator = MirrorTemplateGenerator(template_dir=templates) if templates else None
+                import os
+
+                bl = os.environ.get("EVAL_TEMPLATE_BL") == "1"  # 实验开关：模板颊舌向同比例缩放
+                generator = MirrorTemplateGenerator(template_dir=templates, scale_template_buccolingual=bl) if (templates or bl) else None
                 report = run(mesh, jaw, _Fixed(labels), out, generator=generator)
                 done = {g["fdi"]: g for g in report["generated"]}
                 for fdi in teeth:
