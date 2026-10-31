@@ -95,7 +95,7 @@ def create_demo_case(demo_id: str, background: BackgroundTasks) -> dict:
     except KeyError:
         raise HTTPException(404, "示例不存在") from None
     if not demo["available"]:
-        raise HTTPException(409, "这个示例需要分割模型（SEGMENTER_URL 或 BASELINE_MODEL），当前没有配置")
+        raise HTTPException(409, demo["unavailable_reason"])
     case = storage.create_case(demo["jaw"], DesignPreferences().to_dict())
     case["files"] = demos.materialize(demo, storage.case_path(case["id"]))
     case["prepared_teeth"] = sorted(demo.get("prepared", []))

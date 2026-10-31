@@ -181,7 +181,7 @@ export function App() {
                   <button type="button" disabled={!d.available} onClick={() => openDemo(d)} title={d.description}>
                     {d.title}
                   </button>
-                  <small>{d.available ? d.description : "需要分割模型（GPU 服务或 CPU 基线）"}</small>
+                  <small>{d.available ? d.description : d.unavailable_reason}</small>
                 </li>
               ))}
             </ul>

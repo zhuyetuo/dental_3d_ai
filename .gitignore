@@ -15,3 +15,5 @@ models/templates/index.json
 models/**/*.npz
 models/**/*.pt
 models/**/*.joblib
+# 本地示例病例（Poseidon3D 等不能公开分发的数据），scripts/make_demos.py --local 生成
+demo/local/

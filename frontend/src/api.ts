@@ -65,6 +65,9 @@ export interface Demo {
   description: string;
   jaw: Jaw;
   available: boolean;
+  unavailable_reason?: string | null;
+  /** 本地示例（demo/local，不在仓库里） */
+  local?: boolean;
 }
 
 async function json<T>(res: Response): Promise<T> {

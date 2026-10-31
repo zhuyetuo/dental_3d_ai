@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.spatial import cKDTree
 import trimesh
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
@@ -58,8 +59,19 @@ def check_arch_order(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw) -> lis
     order = [f for f in arch_order(jaw, include_third_molars=True) if f in cents]
     issues = []
     x = {f: float((cents[f] - frame.origin) @ frame.lateral) for f in order}
+    # 顺序按“投影到牙弓曲线上的位置”比较，不直接比左右坐标：拥挤、颊侧错位的牙（常见是尖牙）
+    # 左右坐标会颠倒，但沿牙弓的顺序是对的（Poseidon3D 正畸病例上的正确标注也会被误报）
+    posterior = np.cross(frame.occlusal, frame.lateral)
+    pts = np.array([[x[f], float((cents[f] - frame.origin) @ posterior)] for f in order])
+    along = np.array([x[f] for f in order])
+    if len(pts) >= 3:
+        coef = np.polyfit(pts[:, 0], pts[:, 1], 2)
+        xs = np.linspace(pts[:, 0].min() - 10, pts[:, 0].max() + 10, 4001)
+        _, idx = cKDTree(np.stack([xs, np.polyval(coef, xs)], axis=1)).query(pts)
+        along = xs[idx]
+    pos = dict(zip(order, along))
     for a, b in zip(order, order[1:]):
-        if a // 10 == b // 10 and x[b] < x[a]:
+        if a // 10 == b // 10 and pos[b] < pos[a]:
             issues.append(f"{a} 与 {b} 的左右顺序颠倒，可能编号错误")
     for f in order:
         side = x[f]
