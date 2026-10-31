@@ -93,6 +93,7 @@ def close_with_gum_base(
     taper: float = 0.85,
     rings: int = 4,
     samples: int = 96,
+    max_depth: float = 1.0,
 ) -> trimesh.Trimesh:
     """把开放的牙冠网格封底，使底面贴合牙龈。
 
@@ -121,8 +122,14 @@ def close_with_gum_base(
         vertical = (offset @ up)[:, None] * up
         return center + vertical + (offset - vertical) * s
 
+    crest = float(_project_to_surface(center[None, :], gum, up)[0] @ up)  # 牙冠中心正下方的牙龈（牙槽嵴顶）高度
+
     def on_gum(pts: np.ndarray) -> np.ndarray:
-        return _project_to_surface(pts, gum, up) + up * relief
+        # 贴合牙龈，但不低于嵴顶 max_depth：上颌模型翻过来后腭侧牙龈一路向下斜到腭穹窿，
+        # 底面跟着斜下去会比周围牙龈低 3 mm、像一根柱子（Teeth3DS 示例病例上看到的）。斜面上留一点空隙，也更好清洁
+        p = _project_to_surface(pts, gum, up) + up * relief
+        h = p @ up
+        return p + np.maximum(0.0, crest + relief - max_depth - h)[:, None] * up
 
     order, ang = _loop_by_angle(boundary, frame)
     q = ang[0] + np.linspace(0, 2 * np.pi, samples, endpoint=False)

@@ -28,10 +28,13 @@ services:
       TEMPLATE_DIR: /models/templates
       # 没有 GPU 时的 CPU 分割基线（python -m dental_ai.segmentation.baseline train 训练出来的文件）
       BASELINE_MODEL: /models/segmentation/baseline.joblib
+      # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
+      DEMO_DIR: /demo
     volumes:
       - case-data:/data
       - ./models/templates:/models/templates:ro
       - ./models/segmentation:/models/segmentation:ro
+      - ./demo:/demo:ro
     ports:
       - "8000:8000"
 

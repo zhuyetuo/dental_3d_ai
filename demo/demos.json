@@ -1,0 +1,61 @@
+[
+  {
+    "id": "lower-missing-36",
+    "title": "下颌缺 36：对侧镜像生成",
+    "description": "完整下颌去掉 36，用对侧 46 镜像生成，底面贴合牙龈",
+    "scan": "01KTSH6A_lower",
+    "missing": [
+      36
+    ],
+    "labels": true,
+    "jaw": "lower"
+  },
+  {
+    "id": "lower-prep-46",
+    "title": "下颌 46 预备体：颈缘线 + 牙冠",
+    "description": "46 模拟磨成肩台预备体，自动检测颈缘线并生成预备体牙冠（可在编辑器里改颈缘线）",
+    "scan": "01KTSH6A_lower",
+    "prepared": [
+      46
+    ],
+    "labels": true,
+    "jaw": "lower"
+  },
+  {
+    "id": "upper-natural-gap-25",
+    "title": "上颌真实缺牙 25",
+    "description": "原始扫描本来就缺 25（缺隙约 5 mm），检测缺牙并生成",
+    "scan": "016N696F_upper",
+    "labels": true,
+    "jaw": "upper"
+  },
+  {
+    "id": "upper-missing-16-26",
+    "title": "上颌 16、26 都缺：标准牙模板",
+    "description": "左右同名牙都缺，没有对侧可镜像，用标准牙模板生成（有真实模板库时用真实牙冠）",
+    "scan": "016N696F_upper",
+    "missing": [
+      16,
+      26
+    ],
+    "labels": true,
+    "jaw": "upper"
+  },
+  {
+    "id": "lower-multiple-missing",
+    "title": "下颌多颗缺牙",
+    "description": "原始扫描缺 34（有缺隙）和两侧第二磨牙（游离端）",
+    "scan": "RXKYWHG6_lower",
+    "labels": true,
+    "jaw": "lower"
+  },
+  {
+    "id": "lower-segment",
+    "title": "只有网格：自动分割",
+    "description": "不带标签上传，用分割模型（GPU 服务或 CPU 基线）自动分割和编号",
+    "scan": "01KTSH6A_lower",
+    "labels": false,
+    "requires": "segmenter",
+    "jaw": "lower"
+  }
+]
