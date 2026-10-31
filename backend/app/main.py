@@ -16,8 +16,7 @@ from dental_ai.fdi import arch_order
 from dental_ai.io import load_labels, save_labels
 from dental_ai.preferences import DesignPreferences
 
-from . import demos, storage
-from .worker import process_case
+from . import demos, jobs, storage
 
 app = FastAPI(title="Dental 3D AI", version="0.1.0")
 app.add_middleware(
@@ -102,7 +101,7 @@ def create_demo_case(demo_id: str, background: BackgroundTasks) -> dict:
     case["demo"] = {"id": demo["id"], "title": demo["title"]}
     case["status"] = "queued"
     storage.save_case(case)
-    background.add_task(process_case, case["id"])
+    jobs.submit(case["id"], background)
     return case
 
 
@@ -123,7 +122,7 @@ def run_case(case_id: str, background: BackgroundTasks) -> dict:
         raise HTTPException(409, "任务正在运行")
     case["status"] = "queued"
     storage.save_case(case)
-    background.add_task(process_case, case_id)
+    jobs.submit(case_id, background)
     return case
 
 

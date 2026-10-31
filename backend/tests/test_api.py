@@ -214,3 +214,21 @@ def test_adjust_generated_tooth_and_export(client, tmp_path):
     from app import storage
 
     assert not list(storage.case_path(case_id, "result").glob("*.orig.stl"))
+
+
+def test_queue_dispatch_with_redis(client, tmp_path, monkeypatch):
+    """设置 REDIS_URL 时任务进 RQ 队列（这里用 fakeredis），由 worker 处理。"""
+    import fakeredis
+    from rq import Queue, SimpleWorker
+
+    from app import jobs
+
+    redis = fakeredis.FakeStrictRedis()
+    monkeypatch.setenv("REDIS_URL", "redis://fake")
+    monkeypatch.setattr(jobs, "_queue", lambda: Queue(jobs.QUEUE_NAME, connection=redis))
+    case_id = _upload(client, tmp_path).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    assert client.get(f"/api/cases/{case_id}").json()["status"] == "queued"  # API 进程没有处理
+    SimpleWorker([Queue(jobs.QUEUE_NAME, connection=redis)], connection=redis).work(burst=True)
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["status"] == "done", case["error"]
