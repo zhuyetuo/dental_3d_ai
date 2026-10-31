@@ -175,11 +175,16 @@ class Scan:
 
 
 def find_scans(data_dir: Path, gt_dir: Path, split: Path | None = None) -> list[Scan]:
-    """Teeth3DS 目录结构：<data>/<病例>/<病例>_<upper|lower>.obj 与 <gt>/<病例>/<病例>_<upper|lower>.json。"""
+    """Teeth3DS 目录结构：<data>/<病例>/<病例>_<upper|lower>.obj 与 <gt>/<病例>/<病例>_<upper|lower>.json。
+    标注也可以在 gt_dir 下的任意子目录里，按文件名（<病例>_<颌位>.json）配对。"""
     # 划分文件每行可以是病例名（挑战赛划分），也可以是“病例_颌位”（Teeth3DS 官方划分）
     allowed = None
     if split:
         allowed = {line.strip() for line in split.read_text().splitlines() if line.strip()}
+    # 标注按文件名配对，不要求固定的目录层级：各数据集、各分卷解压出来的目录结构不一样
+    labels_by_stem = {}
+    for path in sorted(gt_dir.rglob("*.json")):
+        labels_by_stem.setdefault(path.stem, path)
     scans = []
     for obj in sorted(data_dir.rglob("*.obj")):
         stem = obj.stem
@@ -189,7 +194,7 @@ def find_scans(data_dir: Path, gt_dir: Path, split: Path | None = None) -> list[
         if jaw not in ("upper", "lower") or (allowed is not None and case not in allowed and stem not in allowed):
             continue
         candidates = [gt_dir / case / f"{stem}.json", gt_dir / f"{stem}.json"]
-        gt = next((c for c in candidates if c.exists()), None)
+        gt = next((c for c in candidates if c.exists()), labels_by_stem.get(stem))
         if gt:
             scans.append(Scan(case, jaw, obj, gt))
     return scans

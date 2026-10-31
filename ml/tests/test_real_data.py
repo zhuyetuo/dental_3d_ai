@@ -102,3 +102,26 @@ def test_display_mesh_fills_scan_holes_without_new_vertices(scan, tmp_path):
     assert len(filled.vertices) == len(mesh.vertices)  # 标签仍然一一对应
     assert len(boundary_loops(mesh)) > 4000 and len(boundary_loops(filled)) < 30
     assert filled.is_winding_consistent
+
+
+def test_prep_crown_on_simulated_real_preparation(scan):
+    """真实牙齿磨成肩台预备体（simulate_preparation）：自动检测颈缘线 → 预备体牙冠。
+
+    以前在真实数据上：组织面有几百个洞、切割边界满是尖刺、去倒凹把窝沟点推出 4–5 mm、
+    最小厚度迭代把外表面推飞（体积几百万 mm³）。"""
+    from scipy.spatial import cKDTree
+
+    from dental_ai.generation.prep_crown import generate_prep_crown
+    from dental_ai.margin.detect import detect_margin
+    from dental_ai.synthetic import simulate_preparation
+
+    mesh0, gt = scan
+    mesh, truth = simulate_preparation(mesh0, gt, "lower", 46)
+    up = estimate_arch_frame(mesh, gt, "lower").occlusal
+    margin = detect_margin(mesh, gt, 46, up=up)
+    assert cKDTree(truth).query(margin.points)[0].mean() < 0.25  # 实测 0.16 mm
+    crown = generate_prep_crown(mesh, gt, "lower", 46, margin.points, up)
+    assert crown.mesh.is_watertight and not crown.warnings
+    assert crown.info["min_thickness_mm"] >= 0.5 - 1e-3
+    assert 100 < crown.info["volume_mm3"] < 600
+    assert all(abs(v - (-0.03)) < 0.015 for v in crown.info["contacts_mm"].values())
