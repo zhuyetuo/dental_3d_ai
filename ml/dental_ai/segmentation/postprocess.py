@@ -12,8 +12,10 @@ from ..fdi import Jaw, arch_order
 from ..geometry import estimate_arch_frame, tooth_centroids
 
 
-def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices: int = 50, iters: int = 5) -> np.ndarray:
-    """同一标签的每个连通块中，只保留最大的一块；其它小块按邻居多数票重新赋值。"""
+def remove_small_islands(
+    mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices: int = 50, iters: int = 5, keep_fraction: float = 0.3
+) -> np.ndarray:
+    """同一标签的连通块中，小于 min_vertices、或小于最大块 keep_fraction 的小块按邻居多数票重新赋值。"""
     labels = labels.copy()
     edges = mesh.edges_unique
     n = len(mesh.vertices)
@@ -28,11 +30,13 @@ def remove_small_islands(mesh: trimesh.Trimesh, labels: np.ndarray, min_vertices
         graph = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n))
         _, comp = connected_components(graph, directed=False)
         sizes = np.bincount(comp)
-        # 每个标签最大的连通块
+        # 每个标签保留最大的连通块，以及不小于它 keep_fraction 的块。不能只留最大的一块：模型输出常被一条错分带
+        # 把一颗牙切成两大块，第二块四周是牙龈，按邻居投票会整块变成牙龈（CPU 基线上 37 一次丢掉 1450 个顶点）
         keep = set()
         for lab in np.unique(labels):
             comps = np.unique(comp[labels == lab])
-            keep.add(comps[np.argmax(sizes[comps])])
+            largest = sizes[comps].max()
+            keep.update(comps[sizes[comps] >= keep_fraction * largest].tolist())
         bad = ~np.isin(comp, list(keep)) | (sizes[comp] < min_vertices)
         bad &= (labels != 0) & referenced
         if not bad.any():
