@@ -194,8 +194,10 @@ def main() -> None:
     t = sub.add_parser("train")
     t.add_argument("--zips", type=Path, required=True, help="Teeth3DS 压缩包目录")
     t.add_argument("--split", type=Path, nargs="+", required=True, help="训练集划分文件（可多个）")
-    t.add_argument("--scans", type=int, default=300, help="用多少个训练扫描（随机抽取）")
+    t.add_argument("--extra-dir", type=Path, nargs="*", default=[], help="额外的训练数据目录（Teeth3DS 目录结构，如导出的 Poseidon3D 训练集），全部使用")
+    t.add_argument("--scans", type=int, default=300, help="从 Teeth3DS 划分里随机抽多少个扫描（0 = 全部）")
     t.add_argument("--per-scan", type=int, default=6000)
+    t.add_argument("--max-iter", type=int, default=300, help="梯度提升的最大轮数（有早停）")
     t.add_argument("--workers", type=int, default=4)
     t.add_argument("--out", type=Path, required=True)
     q = sub.add_parser("predict")
@@ -208,8 +210,10 @@ def main() -> None:
     if args.cmd == "train":
         scans = [s for f in args.split for s in teeth3ds_zip_scans(args.zips, f)]
         rng = np.random.default_rng(0)
-        scans = [scans[i] for i in rng.permutation(len(scans))[: args.scans]]
-        train(scans, args.out, args.per_scan, args.workers)
+        scans = [scans[i] for i in rng.permutation(len(scans))[: args.scans or None]]
+        for d in args.extra_dir:
+            scans += find_scans(d, d)
+        train(scans, args.out, args.per_scan, args.workers, max_iter=args.max_iter)
         return
 
     segmenter = BaselineSegmenter(args.model)
