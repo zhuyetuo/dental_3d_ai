@@ -3,7 +3,8 @@
 ## 1. 准备 Teeth3DS
 
 1. **许可**：Teeth3DS 是 **CC BY-NC-ND 4.0**，只能用于非商业研究和教学。用于商业产品，包括训练或评估商业模型，需要向数据集作者单独申请商业授权（见 [3DTeethSeg22_challenge](https://github.com/abenhamadou/3DTeethSeg22_challenge) 的 “Dataset License and Commercial Use”）。
-2. **下载**：数据在 OSF（https://osf.io/xctdy/），分 6 个部分，全部下载后合并成同一目录结构。
+2. **下载**：数据在 OSF（https://osf.io/xctdy/），分 6 个部分，全部下载后合并成同一目录结构。`python scripts/download_datasets.py teeth3ds` 会通过 OSF API 下载并解压（未实测，开发环境访问不了 OSF）；`teeth3ds-sample` 只下载官方仓库里的 1 个示例病例，`teeth3ds-splits` 下载划分文件。
+   - 注意：真实 OBJ 里约 7% 的顶点没有被三角形引用，标签按全部 `v` 行编号。用 `dental_ai.io.load_mesh` 读取（trimesh 会丢掉这些顶点）。
 3. **划分文件**在挑战赛仓库的 `dataset/` 下：
    - `Teeth3DS_split/testing_lower.txt`、`testing_upper.txt`：官方划分，每行是 `病例_颌位`；
    - `3DTeethSeg_challenge_split/private-testing-set.txt`：挑战赛划分。
@@ -95,7 +96,7 @@ python -m dental_ai.evaluation --data-dir teeth3ds/obj --gt-dir teeth3ds/gt --sp
 
 后端调用分割服务前默认会做朝向归一化（`SEGMENTER_ORIENT=1`），命令行用 `--no-orient` 关闭。标签是逐顶点的，所以不需要把结果变换回去，生成的牙也仍然在用户原来的坐标系里。
 
-在合成牙弓上，任意随机旋转后，恢复误差 < 2°，单颌耗时约 1 秒。**在真实口扫上的效果还没有验证**：Teeth3DS 在 OSF 上，本环境访问不了。拿到数据后先跑 `--check-orientation`。
+在合成牙弓上，任意随机旋转后，恢复误差 < 2°，单颌耗时约 1 秒。在 1 个真实口扫（Teeth3DS 示例病例）上：约定检查通过，恢复误差 8.7°，没有整体反向。只有一个病例，拿到完整数据集后要在测试集上跑 `--check-orientation`。
 
 已知风险：
 - 原始扫描如果被镜像过，左右会反；

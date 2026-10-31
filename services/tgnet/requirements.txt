@@ -3,6 +3,7 @@ numpy==1.24.4
 open3d==0.17.0
 trimesh==4.0.10
 scikit-learn==1.3.2
+scipy==1.10.1  # 服务端孤立顶点的最近邻映射（scikit-learn 本身也依赖它）
 matplotlib==3.7.5
 psutil==5.9.8
 # HTTP 服务

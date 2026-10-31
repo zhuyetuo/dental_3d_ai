@@ -20,13 +20,34 @@ def load_mesh(path: str | Path) -> trimesh.Trimesh:
 
     STL 每个三角形单独存三个顶点，没有共享顶点，读入后需要合并，否则无法求边界和连通性。
     因此 STL 不能和逐顶点标签文件搭配使用，带标签的数据请用 OBJ/PLY（Teeth3DS 用 OBJ）。
+
+    OBJ 用自己的解析器：trimesh 即使 process=False 也会丢掉没有被任何面引用的孤立顶点，
+    而真实的 Teeth3DS 扫描里有这种顶点（约 7%），标签按文件中全部 v 行编号，丢掉后就对不上了。
     """
+    if Path(path).suffix.lower() == ".obj":
+        return _load_obj(path)
     mesh = trimesh.load(path, force="mesh", process=False)
     if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
         raise ValueError(f"无法读取为三角网格: {path}")
     if Path(path).suffix.lower() == ".stl":
         mesh.merge_vertices()
     return mesh
+
+
+def _load_obj(path: str | Path) -> trimesh.Trimesh:
+    """只读顶点和面（多边形按扇形三角化，支持 v/vt/vn 写法和负索引），保留全部顶点及其顺序。"""
+    vertices, faces = [], []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("v "):
+                vertices.append(line.split()[1:4])
+            elif line.startswith("f "):
+                idx = [int(t.split("/")[0]) for t in line.split()[1:]]
+                idx = [i - 1 if i > 0 else len(vertices) + i for i in idx]
+                faces += [[idx[0], idx[k], idx[k + 1]] for k in range(1, len(idx) - 1)]
+    if not faces:
+        raise ValueError(f"无法读取为三角网格: {path}")
+    return trimesh.Trimesh(np.asarray(vertices, dtype=np.float64), np.asarray(faces, dtype=np.int64), process=False)
 
 
 def load_labels(path: str | Path) -> tuple[np.ndarray, Jaw | None]:

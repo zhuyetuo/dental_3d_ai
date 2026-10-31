@@ -18,19 +18,28 @@ from scipy.spatial import cKDTree
 from ..margin.cervical import boundary_loops
 
 
-def signed_distance_to_surface(points: np.ndarray, surface: trimesh.Trimesh, edge_margin: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
+def signed_distance_to_surface(
+    points: np.ndarray, surface: trimesh.Trimesh, edge_margin: float = 0.5, cutoff: float = 4.0
+) -> tuple[np.ndarray, np.ndarray]:
     """到开放曲面（邻牙牙冠）的有符号距离（沿最近三角形法向，法向一侧为正）。返回 (距离, 最近三角形的法向)。
 
     最近点落在曲面开放边缘 edge_margin 以内的点记为 +inf：邻牙在牙颈线以下没有面，
-    靠近边缘时用边缘三角形的法向判断内外不可靠，会把牙龈高度上并未接触的点误判为穿入。"""
-    cp, _, tri = trimesh.proximity.closest_point(surface, points)
-    normals = surface.face_normals[tri]
-    d = np.einsum("ij,ij->i", points - cp, normals)
-    loops = boundary_loops(surface)
-    if loops and edge_margin > 0:
-        edge = surface.vertices[np.concatenate(loops)]
-        near_edge = cKDTree(edge).query(cp)[0] < edge_margin
-        d = np.where(near_edge, np.inf, d)
+    靠近边缘时用边缘三角形的法向判断内外不可靠，会把牙龈高度上并未接触的点误判为穿入。
+
+    离邻牙顶点超过 cutoff 的点不算精确距离，直接用到最近顶点的距离（正数，法向记为 0）：
+    真实口扫的牙冠有上万个顶点，全部求最近三角形要十几秒，而邻接只关心靠近邻牙的那一小片。"""
+    d = cKDTree(surface.vertices).query(points)[0]
+    normals = np.zeros_like(points, dtype=float)
+    near = np.nonzero(d <= cutoff)[0]
+    if len(near):
+        cp, _, tri = trimesh.proximity.closest_point(surface, points[near])
+        normals[near] = surface.face_normals[tri]
+        d[near] = np.einsum("ij,ij->i", points[near] - cp, normals[near])
+        loops = boundary_loops(surface)
+        if loops and edge_margin > 0:
+            edge = surface.vertices[np.concatenate(loops)]
+            near_edge = cKDTree(edge).query(cp)[0] < edge_margin
+            d[near[near_edge]] = np.inf
     return d, normals
 
 

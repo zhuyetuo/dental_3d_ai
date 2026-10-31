@@ -75,3 +75,16 @@ def test_expand_identity_and_mismatch():
     v[5] = v[2]
     out = expand_to_input_vertices(v, np.arange(9))
     assert out[5] == out[2] == 2 and out[9] == 8
+
+
+def test_isolated_vertices_get_nearest_label():
+    # 真实 Teeth3DS 扫描里有没被面引用的孤立顶点；TGNet（trimesh 读入）会丢掉它们
+    body, verts = _obj_with_duplicates()
+    extra = np.array([[0.6, 0.1, 0.1], [-0.6, -0.2, 0.0]])
+    head, tail = body.split(b"\nf ", 1)
+    body = head + b"".join(b"\nv %f %f %f" % tuple(p) for p in extra) + b"\nf " + tail
+    res = TestClient(create_app(_stub_loader([]))).post("/segment?jaw=lower", content=body)
+    assert res.status_code == 200, res.text
+    labels = np.array(res.json()["labels"])
+    assert len(labels) == len(verts) + 2
+    assert labels[-2:].tolist() == [41, 31]

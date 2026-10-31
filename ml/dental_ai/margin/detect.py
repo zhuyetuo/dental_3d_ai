@@ -84,6 +84,7 @@ def detect_margin(
     max_height_diff: float = 1.2,
     up: np.ndarray | None = None,
     sharpness: np.ndarray | None = None,
+    start_candidates: int = 8,
 ) -> MarginResult:
     """up：咬合方向（牙冠朝向）。不提供时用该牙表面法向的面积加权平均估计。"""
     initial = resample_loop(cervical_line(mesh, labels, fdi, smooth_iters=3), stations)
@@ -115,30 +116,34 @@ def detect_margin(
         cand_idx.append(c)
         cand_cost.append(-score[c] + slide_weight * slide + prior_weight * (offset**2).sum(axis=1))
 
-    # 闭合线：先在“最明确”的站点固定起点（候选里棱强度最高的那个），再做一遍开放的动态规划，
-    # 最后一个站点到起点的连接也计入平滑代价
+    # 闭合线：在“最明确”的站点（候选里棱强度最高的那个）固定起点，做开放的动态规划，
+    # 最后一个站点回到起点的连接也计入平滑代价。起点的候选只取一个时，结果会受起点位置和
+    # 初始线走向影响（真实数据上走向反过来，个别点能差 0.5 mm），所以试几个起点候选，取闭合总代价最小的
     start = int(np.argmax([score[c].max() for c in cand_idx]))
     order = [(start + k) % stations for k in range(stations)]
     first = order[0]
-    j0 = int(np.argmin(cand_cost[first]))
-    cost = np.full(len(cand_idx[first]), np.inf)
-    cost[j0] = cand_cost[first][j0]
-    backs = []
-    prev = first
-    for st in order[1:]:
-        a, b = verts[cand_idx[prev]], verts[cand_idx[st]]
-        trans = cost[:, None] + smooth_weight * ((a[:, None, :] - b[None, :, :]) ** 2).sum(axis=2)
-        arg = np.argmin(trans, axis=0)
-        cost = trans[arg, np.arange(len(arg))] + cand_cost[st]
-        backs.append(arg)
-        prev = st
-    closing = smooth_weight * ((verts[cand_idx[prev]] - verts[cand_idx[first]][j0]) ** 2).sum(axis=1)
-    j = int(np.argmin(cost + closing))
-    chosen = [j]
-    for arg in reversed(backs):
-        j = int(arg[j])
-        chosen.append(j)
-    chosen = chosen[::-1]
+    best = (np.inf, None)
+    for j0 in np.argsort(cand_cost[first])[:start_candidates]:
+        cost = np.full(len(cand_idx[first]), np.inf)
+        cost[j0] = cand_cost[first][j0]
+        backs = []
+        prev = first
+        for st in order[1:]:
+            a, b = verts[cand_idx[prev]], verts[cand_idx[st]]
+            trans = cost[:, None] + smooth_weight * ((a[:, None, :] - b[None, :, :]) ** 2).sum(axis=2)
+            arg = np.argmin(trans, axis=0)
+            cost = trans[arg, np.arange(len(arg))] + cand_cost[st]
+            backs.append(arg)
+            prev = st
+        closing = smooth_weight * ((verts[cand_idx[prev]] - verts[cand_idx[first]][j0]) ** 2).sum(axis=1)
+        j = int(np.argmin(cost + closing))
+        if cost[j] + closing[j] < best[0]:
+            chosen = [j]
+            for arg in reversed(backs):
+                j = int(arg[j])
+                chosen.append(j)
+            best = (float(cost[chosen[0]] + closing[chosen[0]]), chosen[::-1])
+    chosen = best[1]
     picked = np.array([cand_idx[st][c] for st, c in zip(order, chosen)])
     # 恢复成按初始线顺序排列
     picked = np.roll(picked, start)

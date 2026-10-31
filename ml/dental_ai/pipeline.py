@@ -172,7 +172,7 @@ def main() -> None:
     p.add_argument("--no-fix-numbering", action="store_true", help="不做编号纠错")
     p.add_argument("--prepared", type=int, nargs="*", default=[], help="预备体牙号，为它们检测颈缘线，如 --prepared 46 36")
     p.add_argument("--antagonist", help="对颌网格，用于咬合约束")
-    p.add_argument("--templates", help="牙齿模板库目录（<FDI>.stl）")
+    p.add_argument("--templates", help="标准牙模板库目录（<jaw>_<position>.stl，见 models/README.md）")
     p.add_argument("--preferences", help="设计参数 JSON 文件，字段见 dental_ai.preferences")
     p.add_argument("--out", default="out")
     args = p.parse_args()

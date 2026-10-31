@@ -24,8 +24,36 @@ def submesh(mesh: trimesh.Trimesh, face_mask: np.ndarray) -> trimesh.Trimesh:
     return mesh.submesh([faces], append=True, repair=False)
 
 
-def tooth_mesh(mesh: trimesh.Trimesh, labels: np.ndarray, fdi: int) -> trimesh.Trimesh:
-    return submesh(mesh, face_labels(mesh, labels) == fdi)
+def tooth_mesh(mesh: trimesh.Trimesh, labels: np.ndarray, fdi: int, clean: bool = True) -> trimesh.Trimesh:
+    crown = submesh(mesh, face_labels(mesh, labels) == fdi)
+    return clean_crown(crown) if clean and len(crown.faces) else crown
+
+
+def clean_crown(crown: trimesh.Trimesh) -> trimesh.Trimesh:
+    """把按标签切出来的牙冠整理成“一个开放边界（牙颈）”的曲面。
+
+    真实口扫上，切出来的牙冠有几十到几百个小洞（扫描本身的小洞、个别三角形归了牙龈），
+    还有脱离主体的小碎片，牙颈边界也常有夹点（边界自己碰到自己）。只保留面积最大的连通块，
+    除最长的边界环（牙颈）外的环都用扇形补上。"""
+    parts = crown.split(only_watertight=False)
+    if len(parts) > 1:
+        crown = max(parts, key=lambda m: m.area)
+    crown = trimesh.Trimesh(crown.vertices.copy(), crown.faces.copy(), process=False)
+    crown.remove_unreferenced_vertices()
+
+    from .margin.cervical import boundary_loops  # 避免循环导入
+
+    loops = boundary_loops(crown)  # 按三角形绕序、在夹点处拆开的简单环，最长的是牙颈
+    if len(loops) <= 1:
+        return crown
+    vertices, new_faces = [crown.vertices], [crown.faces]
+    n = len(crown.vertices)
+    for loop in loops[1:]:
+        center = n + len(vertices) - 1
+        vertices.append(crown.vertices[loop].mean(axis=0)[None])
+        # 环的走向与所在三角形的绕序相同，补洞的三角形要反过来
+        new_faces.append(np.column_stack([np.roll(loop, -1), loop, np.full(len(loop), center)]))
+    return trimesh.Trimesh(np.vstack(vertices), np.vstack(new_faces), process=False)
 
 
 def gum_mesh(mesh: trimesh.Trimesh, labels: np.ndarray) -> trimesh.Trimesh:
