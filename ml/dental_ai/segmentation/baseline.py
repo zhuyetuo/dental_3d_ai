@@ -63,6 +63,25 @@ def _adjacency(mesh: trimesh.Trimesh):
     return diags(1.0 / np.maximum(deg, 1)) @ a  # 行归一化：邻居平均
 
 
+def groove_adjacency(mesh: trimesh.Trimesh, sharpness: float = 4.0):
+    """边权随“凹”程度衰减的邻接矩阵（行归一化）：牙与牙龈之间、两颗牙之间是凹沟，概率不容易跨过去扩散，
+    平滑后标签边界会落在沟里。凸边、平坦处权重为 1。"""
+    n = len(mesh.vertices)
+    e = mesh.edges_unique
+    w = np.ones(len(e))
+    adj_edges = np.sort(mesh.face_adjacency_edges, axis=1)
+    concave_angle = np.where(mesh.face_adjacency_convex, 0.0, mesh.face_adjacency_angles)
+    # face_adjacency_edges 与 edges_unique 对应：按排序后的顶点对查找
+    key_all = e[:, 0].astype(np.int64) * n + e[:, 1]
+    key_adj = adj_edges[:, 0].astype(np.int64) * n + adj_edges[:, 1]
+    order = np.argsort(key_all)
+    pos = order[np.searchsorted(key_all, key_adj, sorter=order)]
+    w[pos] = np.exp(-sharpness * concave_angle)
+    a = coo_matrix((np.r_[w, w], (np.r_[e[:, 0], e[:, 1]], np.r_[e[:, 1], e[:, 0]])), shape=(n, n)).tocsr()
+    deg = np.asarray(a.sum(axis=1)).ravel()
+    return diags(1.0 / np.maximum(deg, 1e-9)) @ a
+
+
 def features(mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
     """逐顶点特征（N, len(FEATURES)），在标准坐标系下计算。"""
     canon = normalize_orientation(mesh, jaw).apply(mesh)
@@ -169,19 +188,29 @@ class BaselineSegmenter(Segmenter):
     name = "baseline_gbdt"
     postprocess = True
 
-    def __init__(self, model_path: str | Path, smooth_iters: int = 6):
+    def __init__(self, model_path: str | Path, smooth_iters: int = 6, refine_iters: int = 20, groove_sharpness: float = 8.0):
+        """refine_iters > 0：再沿“避开凹沟”的权重平滑这么多轮，让牙齿边界落到牙颈沟、邻间沟里。"""
         import joblib
 
         self.model = joblib.load(model_path)["model"]
         self.smooth_iters = smooth_iters
+        self.refine_iters = refine_iters
+        self.groove_sharpness = groove_sharpness
 
-    def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
+    def predict_proba(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
         proba = np.zeros((len(mesh.vertices), N_CLASSES))
         proba[:, self.model.classes_] = self.model.predict_proba(features(mesh, jaw))
         avg = _adjacency(mesh)
         for _ in range(self.smooth_iters):  # 沿网格平滑概率，去掉零散的错分点
             proba = 0.5 * proba + 0.5 * (avg @ proba)
-        return class_to_fdi(np.argmax(proba, axis=1), jaw)
+        if self.refine_iters:
+            groove = groove_adjacency(mesh, self.groove_sharpness)
+            for _ in range(self.refine_iters):
+                proba = 0.3 * proba + 0.7 * (groove @ proba)
+        return proba
+
+    def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
+        return class_to_fdi(np.argmax(self.predict_proba(mesh, jaw), axis=1), jaw)
 
 
 def main() -> None:

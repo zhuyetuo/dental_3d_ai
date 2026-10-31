@@ -219,14 +219,40 @@ class _Scorer:
         return path[::-1], cost
 
 
+def _split_merged(t: ToothInstance, points: np.ndarray, coef: np.ndarray, first: int, second: int) -> tuple[np.ndarray, np.ndarray]:
+    """把占两个牙位的一块沿牙弓切成两块，返回 (沿牙弓在前的部分, 在后的部分)。
+
+    沿牙弓切线把顶点投影成一维；切点先按两颗牙的标准宽度比例定，再在附近（±20% 宽度）找牙冠顶面轮廓最低的位置——
+    两颗牙之间的邻间隙。"""
+    p = points[t.vertices]
+    x = t.centroid[0]
+    tangent = np.array([1.0, 2 * coef[0] * x + coef[1]])
+    tangent /= np.linalg.norm(tangent)
+    u = p[:, :2] @ tangent
+    lo, hi = np.percentile(u, 1), np.percentile(u, 99)
+    w1, w2 = expected_width(first), expected_width(second)
+    guess = lo + (hi - lo) * w1 / (w1 + w2)
+    bins = np.linspace(lo, hi, 61)
+    idx = np.clip(np.digitize(u, bins) - 1, 0, len(bins) - 2)
+    top = np.full(len(bins) - 1, -np.inf)
+    np.maximum.at(top, idx, p[:, 2])  # 每个位置的牙冠最高点（标准坐标系牙冠朝 +Z）
+    centers = (bins[:-1] + bins[1:]) / 2
+    window = np.abs(centers - guess) <= 0.2 * (hi - lo)
+    window &= np.isfinite(top)
+    cut = centers[window][np.argmin(top[window])] if window.any() else guess
+    return t.vertices[u < cut], t.vertices[u >= cut]
+
+
 def correct_numbering(
     mesh: trimesh.Trimesh,
     labels: np.ndarray,
     jaw: Jaw,
     canonical_vertices: np.ndarray | None = None,
     weights: Weights | None = None,
+    split_merged: bool = True,
 ) -> NumberingResult:
-    """canonical_vertices：标准坐标系下的顶点（见 orientation.py：+Y 后方，下颌 +X 为患者左侧、上颌为患者右侧）；
+    """split_merged：两颗牙连成一块时自动拆开（否则只提示）。
+    canonical_vertices：标准坐标系下的顶点（见 orientation.py：+Y 后方，下颌 +X 为患者左侧、上颌为患者右侧）；
     不提供时内部做一次朝向归一化。"""
     w = weights or Weights()
     labels = np.asarray(labels).copy()
@@ -284,6 +310,15 @@ def correct_numbering(
     changes = []
     out = labels.copy()
     for t, (start, end) in zip(instances, path):
+        if start != end and split_merged:
+            first, second = _split_merged(t, points, coef, slots[start], slots[end])
+            for part, fdi in ((first, slots[start]), (second, slots[end])):
+                out[part] = fdi
+                if fdi != t.label:
+                    changes.append({"from": t.label, "to": fdi, "vertices": int(len(part))})
+            pair = tuple(sorted((slots[start], slots[end])))
+            warnings.append(f"{t.label} 这一块应该是 {pair[0]} 和 {pair[1]} 两颗牙，已在牙间最低处自动拆开，请在编辑器里确认边界")
+            continue
         if start != end:
             pair = tuple(sorted((slots[start], slots[end])))
             new = t.label if t.label in pair else slots[start]

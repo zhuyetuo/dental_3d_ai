@@ -67,6 +67,8 @@ def test_numbering_keeps_ground_truth_and_handles_merged_pair(scan):
     result = correct_numbering(mesh, wrong, "lower")
     # 边界上的孤立顶点和小碎片会有零星出入（约 0.2%）
     assert (result.labels[labels == 46] == 46).mean() > 0.99 and (result.labels[labels == 47] == 47).mean() > 0.99
+    # 连成一块的 44 + 45 自动拆开
+    assert (result.labels[labels == 44] == 44).mean() > 0.85 and (result.labels[labels == 45] == 45).mean() > 0.85
 
 
 @pytest.mark.parametrize("teeth", [(46,), (36, 46)])
