@@ -56,6 +56,8 @@ export interface Case {
   margin_edits?: { version: number; file: string; created_at: string; teeth: number[] }[];
   /** 从示例病例创建 */
   demo?: { id: string; title: string };
+  /** 生成牙的手动调整（牙号 → 4x4 矩阵） */
+  adjustments?: Record<string, { matrix: number[]; at: string }>;
 }
 
 /** 网页演示用的示例病例（仓库 demo/ 目录） */
@@ -103,6 +105,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ margins }),
     }).then((r) => json<Case>(r)),
+  saveTransform: (id: string, fdi: number, matrix: number[]) =>
+    fetch(`/api/cases/${id}/generated/${fdi}/transform`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matrix }),
+    }).then((r) => json<Case>(r)),
+  exportUrl: (id: string, version?: string) => `/api/cases/${id}/export.stl${version ? `?v=${encodeURIComponent(version)}` : ""}`,
   fileUrl: (id: string, path: string, version?: string) =>
     `/api/cases/${id}/files/${path}${version ? `?v=${encodeURIComponent(version)}` : ""}`,
 };

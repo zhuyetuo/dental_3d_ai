@@ -122,10 +122,10 @@ def test_free_end_and_consecutive_missing():
         assert g["placement"].startswith("free_end") and solid.is_watertight and err < 0.5
     assert not result[36][1].contains(result[37][1].vertices).any()  # 不重叠
 
-    # 对侧也缺：沿牙弓外推
+    # 对侧也缺：按训练数据统计的“末端牙相对近中邻牙”的偏移放置（generation/free_end_stats.py）
     result, _ = _generate((37, 47))
     for fdi, (g, solid, err) in result.items():
-        assert g["placement"] == "free_end:arch_extrapolation" and g["source"] == "builtin:lower_7" and err < 2.0
+        assert g["placement"] == "free_end:neighbor_statistics" and g["source"] == "builtin:lower_7" and err < 2.0
 
     # 连续缺三颗、两侧有邻牙
     result, _ = _generate((34, 35, 36))

@@ -114,7 +114,13 @@ def test_merged_pair_does_not_shift_neighbours():
     d44, _ = cKDTree(mesh.vertices[gt == 44]).query(mesh.vertices)
     d45, _ = cKDTree(mesh.vertices[gt == 45]).query(mesh.vertices)
     labels[(gt == 0) & (d44 < 2.5) & (d45 < 2.5)] = 44  # 把两颗牙之间的牙龈也标上，连成一块
-    result = correct_numbering(mesh, labels, "lower", canonical_vertices=mesh.vertices)
+    result = correct_numbering(mesh, labels, "lower", canonical_vertices=mesh.vertices, split_merged=False)
     assert {(c["from"], c["to"]) for c in result.changes} == {(45, 46)}
     assert (result.labels[gt == 46] == 46).all() and (result.labels[gt == 47] == 47).all()
     assert any("44 和 45" in w for w in result.warnings)
+
+    # 默认自动拆开：沿牙弓在两颗牙之间的低处切开
+    result = correct_numbering(mesh, labels, "lower", canonical_vertices=mesh.vertices)
+    for f in (44, 45, 46, 47):
+        assert (result.labels[gt == f] == f).mean() > 0.9, f
+    assert any("自动拆开" in w for w in result.warnings)

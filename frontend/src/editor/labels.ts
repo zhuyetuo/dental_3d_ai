@@ -218,3 +218,27 @@ export class Stroke {
     return { indices, before, after: new Int32Array(indices.length).fill(this.label) };
   }
 }
+
+/**
+ * 用平面把一颗牙（标签 label 的顶点）切成两块，较小的一块改成 newLabel。
+ * 用来拆开“两颗牙被分成一块”：在牙上点两下画一条切线，平面过这条线、沿视线方向。
+ */
+export function splitByPlane(
+  positions: ArrayLike<number>,
+  labels: Int32Array,
+  label: number,
+  point: [number, number, number],
+  normal: [number, number, number],
+  newLabel: number,
+): Change | null {
+  const pos: number[] = [];
+  const neg: number[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    if (labels[i] !== label) continue;
+    const d =
+      (positions[i * 3] - point[0]) * normal[0] + (positions[i * 3 + 1] - point[1]) * normal[1] + (positions[i * 3 + 2] - point[2]) * normal[2];
+    (d >= 0 ? pos : neg).push(i);
+  }
+  if (!pos.length || !neg.length) return null;
+  return makeChange(labels, pos.length <= neg.length ? pos : neg, newLabel);
+}

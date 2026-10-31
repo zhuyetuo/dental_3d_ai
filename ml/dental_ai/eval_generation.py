@@ -5,7 +5,8 @@
 每个扫描最多三个场景：
 - single：缺一颗前磨牙或第一磨牙（两侧有邻牙，对侧同名牙在 → 用对侧镜像）；
 - both_sides：左右同名的第一磨牙都缺（没有对侧可镜像 → 用模板）；
-- free_end：最后一颗第二磨牙缺（游离端，按对侧镜像位置放置）。
+- free_end：最后一颗第二磨牙缺（游离端，按对侧镜像位置放置）；
+- free_end_both：两侧第二磨牙都缺（没有对侧可镜像：模板 + 训练数据统计的相对邻牙位置和高度）。
 
 指标（只看真牙牙冠上部 60%，牙颈附近两者的定义不同）：
 - surf_mean / surf_p95：真牙表面点到生成牙表面的距离（mm）；
@@ -59,6 +60,8 @@ def scenarios(labels: np.ndarray, jaw: str, rng: np.random.Generator) -> list[tu
     free = [q * 10 + 7 for q in (right_q, left_q) if q * 10 + 7 in present and q * 10 + 6 in present and q * 10 + 8 not in present]
     if free:
         out.append(("free_end", (int(rng.choice(free)),)))
+    if len(free) == 2:  # 两侧第二磨牙都缺：没有对侧可镜像（模板 + 游离端放置）
+        out.append(("free_end_both", tuple(free)))
     return out
 
 
@@ -88,7 +91,7 @@ def evaluate_scan(args) -> list[dict]:
     from .pipeline import run
     from .synthetic import simulate_missing
 
-    mesh_path, gt_path, name, templates, seed = args
+    mesh_path, gt_path, name, templates, seed, only = args
     mesh0 = load_mesh(mesh_path)
     gt, jaw = load_labels(gt_path)
     rng = np.random.default_rng(seed)
@@ -98,12 +101,17 @@ def evaluate_scan(args) -> list[dict]:
     except ValueError:
         return rows
     for kind, teeth in scenarios(gt, jaw, rng):
+        if only and kind not in only:
+            continue
         row = {"scan": name, "jaw": jaw, "scenario": kind, "teeth": " ".join(map(str, teeth))}
         t0 = time.time()
         try:
             mesh, labels = simulate_missing(mesh0, gt, jaw, teeth)
             with tempfile.TemporaryDirectory() as out:
-                generator = MirrorTemplateGenerator(template_dir=templates) if templates else None
+                import os
+
+                bl = os.environ.get("EVAL_TEMPLATE_BL") == "1"  # 实验开关：模板颊舌向同比例缩放
+                generator = MirrorTemplateGenerator(template_dir=templates, scale_template_buccolingual=bl) if (templates or bl) else None
                 report = run(mesh, jaw, _Fixed(labels), out, generator=generator)
                 done = {g["fdi"]: g for g in report["generated"]}
                 for fdi in teeth:
@@ -125,7 +133,7 @@ def evaluate_scan(args) -> list[dict]:
 
 def summarize(rows: list[dict]) -> dict:
     summary = {}
-    for kind in ("single", "both_sides", "free_end"):
+    for kind in ("single", "both_sides", "free_end", "free_end_both"):
         sub = [r for r in rows if r["scenario"] == kind]
         ok = [r for r in sub if "surf_mean" in r]
         if not sub:
@@ -154,12 +162,13 @@ def main() -> None:
     p.add_argument("--templates", type=Path, help="标准牙模板库目录（不填用内置模板）")
     p.add_argument("--limit", type=int)
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--scenarios", nargs="*", help="只评估这些场景（single / both_sides / free_end / free_end_both）")
     p.add_argument("--out", type=Path, default=Path("eval_generation"))
     args = p.parse_args()
 
     scans = find_scans(args.data_dir, args.gt_dir or args.data_dir)[: args.limit]
     print(f"找到 {len(scans)} 个扫描", flush=True)
-    jobs = [(s.mesh_path, s.gt_path, s.name, args.templates, i) for i, s in enumerate(scans)]
+    jobs = [(s.mesh_path, s.gt_path, s.name, args.templates, i, set(args.scenarios or [])) for i, s in enumerate(scans)]
     rows = []
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         for i, part in enumerate(pool.map(evaluate_scan, jobs), 1):

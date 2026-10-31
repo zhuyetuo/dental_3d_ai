@@ -119,8 +119,16 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls
       loadGeometry(url).then((geometry) => {
         if (cancelled) return;
         geometry.computeVertexNormals();
+        // 几何中心移到原点、网格放回原位：手动调整（旋转、缩放）时绕牙自己的中心转
+        geometry.computeBoundingBox();
+        const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
+        geometry.translate(-center.x, -center.y, -center.z);
         const material = new THREE.MeshStandardMaterial({ color: 0x4fc3f7, roughness: 0.35, metalness: 0.05 });
-        group.add(new THREE.Mesh(geometry, material));
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(center);
+        const fdi = Number(/(?:tooth|crown)_(\d+)\.stl/.exec(url)?.[1] ?? NaN);
+        mesh.userData = { generated: true, fdi, url, center: center.clone() };
+        group.add(mesh);
       });
     }
     if (showCervical && cervicalLines) {

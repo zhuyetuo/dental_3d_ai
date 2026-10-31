@@ -63,6 +63,25 @@ def _adjacency(mesh: trimesh.Trimesh):
     return diags(1.0 / np.maximum(deg, 1)) @ a  # 行归一化：邻居平均
 
 
+def groove_adjacency(mesh: trimesh.Trimesh, sharpness: float = 4.0):
+    """边权随“凹”程度衰减的邻接矩阵（行归一化）：牙与牙龈之间、两颗牙之间是凹沟，概率不容易跨过去扩散，
+    平滑后标签边界会落在沟里。凸边、平坦处权重为 1。"""
+    n = len(mesh.vertices)
+    e = mesh.edges_unique
+    w = np.ones(len(e))
+    adj_edges = np.sort(mesh.face_adjacency_edges, axis=1)
+    concave_angle = np.where(mesh.face_adjacency_convex, 0.0, mesh.face_adjacency_angles)
+    # face_adjacency_edges 与 edges_unique 对应：按排序后的顶点对查找
+    key_all = e[:, 0].astype(np.int64) * n + e[:, 1]
+    key_adj = adj_edges[:, 0].astype(np.int64) * n + adj_edges[:, 1]
+    order = np.argsort(key_all)
+    pos = order[np.searchsorted(key_all, key_adj, sorter=order)]
+    w[pos] = np.exp(-sharpness * concave_angle)
+    a = coo_matrix((np.r_[w, w], (np.r_[e[:, 0], e[:, 1]], np.r_[e[:, 1], e[:, 0]])), shape=(n, n)).tocsr()
+    deg = np.asarray(a.sum(axis=1)).ravel()
+    return diags(1.0 / np.maximum(deg, 1e-9)) @ a
+
+
 def features(mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
     """逐顶点特征（N, len(FEATURES)），在标准坐标系下计算。"""
     canon = normalize_orientation(mesh, jaw).apply(mesh)
@@ -169,19 +188,29 @@ class BaselineSegmenter(Segmenter):
     name = "baseline_gbdt"
     postprocess = True
 
-    def __init__(self, model_path: str | Path, smooth_iters: int = 6):
+    def __init__(self, model_path: str | Path, smooth_iters: int = 6, refine_iters: int = 20, groove_sharpness: float = 8.0):
+        """refine_iters > 0：再沿“避开凹沟”的权重平滑这么多轮，让牙齿边界落到牙颈沟、邻间沟里。"""
         import joblib
 
         self.model = joblib.load(model_path)["model"]
         self.smooth_iters = smooth_iters
+        self.refine_iters = refine_iters
+        self.groove_sharpness = groove_sharpness
 
-    def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
+    def predict_proba(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
         proba = np.zeros((len(mesh.vertices), N_CLASSES))
         proba[:, self.model.classes_] = self.model.predict_proba(features(mesh, jaw))
         avg = _adjacency(mesh)
         for _ in range(self.smooth_iters):  # 沿网格平滑概率，去掉零散的错分点
             proba = 0.5 * proba + 0.5 * (avg @ proba)
-        return class_to_fdi(np.argmax(proba, axis=1), jaw)
+        if self.refine_iters:
+            groove = groove_adjacency(mesh, self.groove_sharpness)
+            for _ in range(self.refine_iters):
+                proba = 0.3 * proba + 0.7 * (groove @ proba)
+        return proba
+
+    def predict(self, mesh: trimesh.Trimesh, jaw: Jaw) -> np.ndarray:
+        return class_to_fdi(np.argmax(self.predict_proba(mesh, jaw), axis=1), jaw)
 
 
 def main() -> None:
@@ -194,8 +223,10 @@ def main() -> None:
     t = sub.add_parser("train")
     t.add_argument("--zips", type=Path, required=True, help="Teeth3DS 压缩包目录")
     t.add_argument("--split", type=Path, nargs="+", required=True, help="训练集划分文件（可多个）")
-    t.add_argument("--scans", type=int, default=300, help="用多少个训练扫描（随机抽取）")
+    t.add_argument("--extra-dir", type=Path, nargs="*", default=[], help="额外的训练数据目录（Teeth3DS 目录结构，如导出的 Poseidon3D 训练集），全部使用")
+    t.add_argument("--scans", type=int, default=300, help="从 Teeth3DS 划分里随机抽多少个扫描（0 = 全部）")
     t.add_argument("--per-scan", type=int, default=6000)
+    t.add_argument("--max-iter", type=int, default=300, help="梯度提升的最大轮数（有早停）")
     t.add_argument("--workers", type=int, default=4)
     t.add_argument("--out", type=Path, required=True)
     q = sub.add_parser("predict")
@@ -208,8 +239,10 @@ def main() -> None:
     if args.cmd == "train":
         scans = [s for f in args.split for s in teeth3ds_zip_scans(args.zips, f)]
         rng = np.random.default_rng(0)
-        scans = [scans[i] for i in rng.permutation(len(scans))[: args.scans]]
-        train(scans, args.out, args.per_scan, args.workers)
+        scans = [scans[i] for i in rng.permutation(len(scans))[: args.scans or None]]
+        for d in args.extra_dir:
+            scans += find_scans(d, d)
+        train(scans, args.out, args.per_scan, args.workers, max_iter=args.max_iter)
         return
 
     segmenter = BaselineSegmenter(args.model)

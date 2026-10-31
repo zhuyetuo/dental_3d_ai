@@ -4,6 +4,35 @@
 #   SEGMENTER_URL=http://tgnet:8001 docker compose --profile gpu up --build
 # 浏览器打开 http://localhost:8080
 
+x-backend-common: &backend-common
+  image: dental3d-backend  # backend 和 worker 共用一个镜像
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  environment:
+    # 处理任务进 Redis 队列，由 worker 服务处理；去掉这一行则在 API 进程里处理
+    REDIS_URL: redis://redis:6379/0
+    # 有 GPU 时设为 http://tgnet:8001（见文件开头）；为空时用 CPU 基线
+    SEGMENTER_URL: ${SEGMENTER_URL:-}
+    SEGMENTER_NAME: tgnet
+    # 调用分割前做朝向归一化；输入已是 Teeth3DS 标准朝向时可设为 "0"
+    SEGMENTER_ORIENT: "1"
+    # 分割后自动做编号纠错，"0" 关闭
+    NUMBERING_FIX: "1"
+    # 标准牙模板库目录；里面没有对应牙位时自动用内置参数化模板
+    TEMPLATE_DIR: /models/templates
+    # 没有 GPU 时的 CPU 分割基线（python -m dental_ai.segmentation.baseline train 训练出来的文件）
+    BASELINE_MODEL: /models/segmentation/baseline.joblib
+    # 自己训练的深度分割模型（python -m dental_ai.segmentation.deep train），存在时优先于 CPU 基线
+    DEEP_MODEL: /models/segmentation/deep.pt
+    # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
+    DEMO_DIR: /demo
+  volumes:
+    - case-data:/data
+    - ./models/templates:/models/templates:ro
+    - ./models/segmentation:/models/segmentation:ro
+    - ./demo:/demo:ro
+
 services:
   frontend:
     build: ./frontend
@@ -13,30 +42,22 @@ services:
       - backend
 
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    environment:
-      # 有 GPU 时设为 http://tgnet:8001（见文件开头）；为空时用 CPU 基线
-      SEGMENTER_URL: ${SEGMENTER_URL:-}
-      SEGMENTER_NAME: tgnet
-      # 调用分割前做朝向归一化；输入已是 Teeth3DS 标准朝向时可设为 "0"
-      SEGMENTER_ORIENT: "1"
-      # 分割后自动做编号纠错，"0" 关闭
-      NUMBERING_FIX: "1"
-      # 标准牙模板库目录；里面没有对应牙位时自动用内置参数化模板
-      TEMPLATE_DIR: /models/templates
-      # 没有 GPU 时的 CPU 分割基线（python -m dental_ai.segmentation.baseline train 训练出来的文件）
-      BASELINE_MODEL: /models/segmentation/baseline.joblib
-      # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
-      DEMO_DIR: /demo
-    volumes:
-      - case-data:/data
-      - ./models/templates:/models/templates:ro
-      - ./models/segmentation:/models/segmentation:ro
-      - ./demo:/demo:ro
+    <<: *backend-common
     ports:
       - "8000:8000"
+    depends_on:
+      - redis
+
+  # 处理任务的 worker：从 Redis 队列取任务（分割、生成、封底都在这里算），API 进程不被拖慢。
+  # 病例多时可以开多个：docker compose up --scale worker=3
+  worker:
+    <<: *backend-common
+    command: ["rq", "worker", "dental", "--url", "redis://redis:6379/0"]
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
 
   tgnet:
     profiles: ["gpu"]

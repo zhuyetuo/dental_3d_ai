@@ -21,8 +21,8 @@ DEMO_DIR = Path(os.environ.get("DEMO_DIR", Path(__file__).resolve().parents[2] /
 def segmenter_available() -> bool:
     if os.environ.get("SEGMENTER_URL"):
         return True
-    model = os.environ.get("BASELINE_MODEL")
-    return bool(model and os.path.exists(model))
+    models = [os.environ.get(k) for k in ("DEEP_MODEL", "BASELINE_MODEL")]
+    return any(m and os.path.exists(m) for m in models)
 
 
 def _scan_dir(demo: dict) -> Path:

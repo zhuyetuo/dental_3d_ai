@@ -2,7 +2,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv/
-data/
+/data/
 samples/
 out/
 models/**/*.h5
@@ -17,3 +17,7 @@ models/**/*.pt
 models/**/*.joblib
 # 本地示例病例（Poseidon3D 等不能公开分发的数据），scripts/make_demos.py --local 生成
 demo/local/
+# GPU 服务器上的运行结果和第三方代码
+runs/
+third_party/
+.venv-tgnet/

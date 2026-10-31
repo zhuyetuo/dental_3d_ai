@@ -33,13 +33,19 @@ def build_segmenter(case: dict) -> Segmenter:
         if os.environ.get("SEGMENTER_ORIENT", "1") != "0":
             segmenter = OrientedSegmenter(segmenter)
         return segmenter
+    deep = os.environ.get("DEEP_MODEL")
+    if deep and os.path.exists(deep):
+        # 自己训练的深度分割模型（dental_ai/segmentation/deep.py），有 GPU 时用 GPU，否则 CPU
+        from dental_ai.segmentation.deep import DeepSegmenter
+
+        return DeepSegmenter(deep)
     baseline = os.environ.get("BASELINE_MODEL")
     if baseline and os.path.exists(baseline):
         # 没有 GPU 分割服务时，用 CPU 基线（梯度提升树，见 dental_ai/segmentation/baseline.py）
         from dental_ai.segmentation.baseline import BaselineSegmenter
 
         return BaselineSegmenter(baseline)
-    raise RuntimeError("未配置分割服务（环境变量 SEGMENTER_URL 或 BASELINE_MODEL），请上传标签文件、启动 tgnet 服务或训练 CPU 基线")
+    raise RuntimeError("未配置分割模型（环境变量 SEGMENTER_URL、DEEP_MODEL 或 BASELINE_MODEL），请上传标签文件、启动 tgnet 服务或训练模型")
 
 
 def _margin_overrides(case: dict) -> dict[int, dict]:
@@ -56,6 +62,9 @@ def process_case(case_id: str) -> None:
     case.update(status="running", error=None)
     storage.save_case(case)
     try:
+        # 上一次手动调整留下的原始备份（见 main.update_generated_transform）对新结果无效
+        for stale in storage.case_path(case_id, "result").glob("*.orig.stl"):
+            stale.unlink()
         files = case["files"]
         antagonist = files.get("antagonist")
         prefs = DesignPreferences.from_dict(case.get("preferences"))
@@ -72,7 +81,8 @@ def process_case(case_id: str) -> None:
             prepared_teeth=case.get("prepared_teeth", []),
             margin_overrides=_margin_overrides(case),
         )
-        case.update(status="done", report=report)
+        # 重新计算会重新生成牙冠，之前的手动调整不再适用
+        case.update(status="done", report=report, adjustments={})
     except Exception as exc:  # 任务失败要记录到病例上，前端才能显示
         traceback.print_exc()
         case.update(status="failed", error=str(exc))

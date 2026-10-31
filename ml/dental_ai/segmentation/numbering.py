@@ -49,6 +49,7 @@ class Weights:
     closed_gap: float = 0.3  # 跳过了牙位却没有缺隙，相对 gap 的比例：正畸拔牙后间隙关闭很常见（真实数据上），只轻罚
     margin: float = 0.5  # 新方案至少要好这么多才修改
     merged: float = 1.0  # 一个实例占两个牙位（两颗牙连成一块）的额外代价
+    max_invalid_changes: int = 3  # 原编号不合法（顺序错乱、重号）时，最多自动改这么多颗牙，再多只提示
     side_tolerance_mm: float = 3.0  # 离中线这么近的实例不判断左右
     gap_tolerance_mm: float = 2.0
 
@@ -94,6 +95,22 @@ def tooth_instances(mesh: trimesh.Trimesh, labels: np.ndarray, min_fraction: flo
         return []
     threshold = max(20, min_fraction * np.median(counts))
     return [np.nonzero(comp == i)[0] for i, c in zip(ids, counts) if c >= threshold]
+
+
+def _drop_fragments(instances: list[ToothInstance], same_label: float = 0.5, overall: float = 0.3) -> list[ToothInstance]:
+    """去掉碎片：同一牙号有几块时，只留最大的一块和不小于它 same_label 的块；整体上小于中位数 overall 的块也去掉。
+
+    分割模型的输出常有几百个顶点的小块带着邻牙的牙号。把它们当成牙齿参与分配，原编号就“不满足沿牙弓递增”，
+    触发整体重排，为了给这些假牙腾牙位，真牙被整体往远中挤一位（CPU 基线全量模型上，Teeth3DS 下颌识别率 93.6% → 87.3%）。
+    这些块的牙号不在这里改，交给去碎片（postprocess.remove_small_islands）。两颗牙标成同一个号时两块大小相近，不受影响。"""
+    if not instances:
+        return instances
+    sizes = np.array([len(t.vertices) for t in instances])
+    median = float(np.median(sizes))
+    largest: dict[int, int] = {}
+    for t in instances:
+        largest[t.label] = max(largest.get(t.label, 0), len(t.vertices))
+    return [t for t in instances if len(t.vertices) >= same_label * largest[t.label] and len(t.vertices) >= overall * median]
 
 
 def _side_of(fdi: int, jaw: Jaw) -> int:
@@ -219,14 +236,40 @@ class _Scorer:
         return path[::-1], cost
 
 
+def _split_merged(t: ToothInstance, points: np.ndarray, coef: np.ndarray, first: int, second: int) -> tuple[np.ndarray, np.ndarray]:
+    """把占两个牙位的一块沿牙弓切成两块，返回 (沿牙弓在前的部分, 在后的部分)。
+
+    沿牙弓切线把顶点投影成一维；切点先按两颗牙的标准宽度比例定，再在附近（±20% 宽度）找牙冠顶面轮廓最低的位置——
+    两颗牙之间的邻间隙。"""
+    p = points[t.vertices]
+    x = t.centroid[0]
+    tangent = np.array([1.0, 2 * coef[0] * x + coef[1]])
+    tangent /= np.linalg.norm(tangent)
+    u = p[:, :2] @ tangent
+    lo, hi = np.percentile(u, 1), np.percentile(u, 99)
+    w1, w2 = expected_width(first), expected_width(second)
+    guess = lo + (hi - lo) * w1 / (w1 + w2)
+    bins = np.linspace(lo, hi, 61)
+    idx = np.clip(np.digitize(u, bins) - 1, 0, len(bins) - 2)
+    top = np.full(len(bins) - 1, -np.inf)
+    np.maximum.at(top, idx, p[:, 2])  # 每个位置的牙冠最高点（标准坐标系牙冠朝 +Z）
+    centers = (bins[:-1] + bins[1:]) / 2
+    window = np.abs(centers - guess) <= 0.2 * (hi - lo)
+    window &= np.isfinite(top)
+    cut = centers[window][np.argmin(top[window])] if window.any() else guess
+    return t.vertices[u < cut], t.vertices[u >= cut]
+
+
 def correct_numbering(
     mesh: trimesh.Trimesh,
     labels: np.ndarray,
     jaw: Jaw,
     canonical_vertices: np.ndarray | None = None,
     weights: Weights | None = None,
+    split_merged: bool = True,
 ) -> NumberingResult:
-    """canonical_vertices：标准坐标系下的顶点（见 orientation.py：+Y 后方，下颌 +X 为患者左侧、上颌为患者右侧）；
+    """split_merged：两颗牙连成一块时自动拆开（否则只提示）。
+    canonical_vertices：标准坐标系下的顶点（见 orientation.py：+Y 后方，下颌 +X 为患者左侧、上颌为患者右侧）；
     不提供时内部做一次朝向归一化。"""
     w = weights or Weights()
     labels = np.asarray(labels).copy()
@@ -243,12 +286,14 @@ def correct_numbering(
     if len(groups) < 3:
         return NumberingResult(labels, applied=False, warnings=["牙齿太少，跳过编号纠错"])
     slots = arch_order(jaw, include_third_molars=True)
-    if len(groups) > len(slots):
-        return NumberingResult(labels, applied=False, warnings=[f"识别出 {len(groups)} 块牙齿区域，多于 {len(slots)} 个牙位，可能有过度分割，跳过编号纠错"])
-
     instances = [
         ToothInstance(vertices=g, label=int(np.bincount(labels[g]).argmax()), centroid=points[g].mean(axis=0)) for g in groups
     ]
+    instances = _drop_fragments(instances)
+    if len(instances) > len(slots):
+        return NumberingResult(labels, applied=False, warnings=[f"识别出 {len(instances)} 块牙齿区域，多于 {len(slots)} 个牙位，可能有过度分割，跳过编号纠错"])
+    if len(instances) < 3:
+        return NumberingResult(labels, applied=False, warnings=["牙齿太少，跳过编号纠错"])
     warnings = []
     votes = [
         np.sign(t.centroid[0]) == _side_of(t.label, jaw)
@@ -277,6 +322,12 @@ def correct_numbering(
     path, cost_after = scorer.solve()
     apply = cost_before is None or cost_after < cost_before - w.margin
     if not valid:
+        # 原编号不合法时会强制重新分配。改动的牙太多说明分割本身有问题（拥挤、拔牙病例上分割模型的输出），
+        # 这时整体重排往往越改越错（Poseidon3D 正畸病例上识别率 67% → 57%），只做局部修正（互换、重号）
+        moved = sum(1 for t, (start, end) in zip(instances, path) if start != end or slots[start] != t.label)
+        if moved > w.max_invalid_changes:
+            warnings.append(f"原编号沿牙弓顺序有冲突，自动纠错要改 {moved} 颗牙，改动太大，没有自动修改，请人工检查编号")
+            return NumberingResult(labels, applied=False, warnings=warnings, cost_before=cost_before, cost_after=cost_after)
         warnings.append("原编号不满足沿牙弓递增（有重复或顺序错乱），已重新分配")
     if not apply:
         return NumberingResult(labels, applied=False, warnings=warnings, cost_before=cost_before, cost_after=cost_after)
@@ -284,6 +335,15 @@ def correct_numbering(
     changes = []
     out = labels.copy()
     for t, (start, end) in zip(instances, path):
+        if start != end and split_merged:
+            first, second = _split_merged(t, points, coef, slots[start], slots[end])
+            for part, fdi in ((first, slots[start]), (second, slots[end])):
+                out[part] = fdi
+                if fdi != t.label:
+                    changes.append({"from": t.label, "to": fdi, "vertices": int(len(part))})
+            pair = tuple(sorted((slots[start], slots[end])))
+            warnings.append(f"{t.label} 这一块应该是 {pair[0]} 和 {pair[1]} 两颗牙，已在牙间最低处自动拆开，请在编辑器里确认边界")
+            continue
         if start != end:
             pair = tuple(sorted((slots[start], slots[end])))
             new = t.label if t.label in pair else slots[start]
