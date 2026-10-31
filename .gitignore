@@ -7,3 +7,11 @@ samples/
 out/
 models/**/*.h5
 models/**/*.pth
+# 本地密钥（GOOGLE_API_KEY 等），模板见 .env.example
+.env
+# 用 Teeth3DS（CC BY-NC-ND）等数据构建的模板和训练出的权重不能分发
+models/templates/*.stl
+models/templates/index.json
+models/**/*.npz
+models/**/*.pt
+models/**/*.joblib

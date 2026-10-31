@@ -1,7 +1,7 @@
-# 启动前端 + 后端（无 GPU 时，只能上传标签文件来跳过分割）：
+# 启动前端 + 后端（无 GPU 时，用 CPU 分割基线 models/segmentation/baseline.joblib，或上传标签文件跳过分割）：
 #   docker compose up --build
 # 同时启动 TGNet 分割服务（需要 NVIDIA GPU 和 nvidia-container-toolkit，权重放在 models/tgnet/）：
-#   docker compose --profile gpu up --build
+#   SEGMENTER_URL=http://tgnet:8001 docker compose --profile gpu up --build
 # 浏览器打开 http://localhost:8080
 
 services:
@@ -17,7 +17,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      SEGMENTER_URL: http://tgnet:8001
+      # 有 GPU 时设为 http://tgnet:8001（见文件开头）；为空时用 CPU 基线
+      SEGMENTER_URL: ${SEGMENTER_URL:-}
       SEGMENTER_NAME: tgnet
       # 调用分割前做朝向归一化；输入已是 Teeth3DS 标准朝向时可设为 "0"
       SEGMENTER_ORIENT: "1"
@@ -25,9 +26,12 @@ services:
       NUMBERING_FIX: "1"
       # 标准牙模板库目录；里面没有对应牙位时自动用内置参数化模板
       TEMPLATE_DIR: /models/templates
+      # 没有 GPU 时的 CPU 分割基线（python -m dental_ai.segmentation.baseline train 训练出来的文件）
+      BASELINE_MODEL: /models/segmentation/baseline.joblib
     volumes:
       - case-data:/data
       - ./models/templates:/models/templates:ro
+      - ./models/segmentation:/models/segmentation:ro
     ports:
       - "8000:8000"
 

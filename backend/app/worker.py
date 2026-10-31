@@ -20,7 +20,8 @@ from . import storage
 
 
 def build_segmenter(case: dict) -> Segmenter:
-    """上传了标签文件就直接用（人工修正结果、Teeth3DS 标注），否则调用分割服务。"""
+    """上传了标签文件就直接用（人工修正结果、Teeth3DS 标注），否则调用分割服务（TGNet，需要 GPU），
+    都没有时用 CPU 基线模型（BASELINE_MODEL）。"""
     labels = case["files"].get("labels")
     if labels:
         name = "manual" if case.get("label_edits") else "label_file"
@@ -32,7 +33,13 @@ def build_segmenter(case: dict) -> Segmenter:
         if os.environ.get("SEGMENTER_ORIENT", "1") != "0":
             segmenter = OrientedSegmenter(segmenter)
         return segmenter
-    raise RuntimeError("未配置分割服务（环境变量 SEGMENTER_URL），请上传标签文件或启动 tgnet 服务")
+    baseline = os.environ.get("BASELINE_MODEL")
+    if baseline and os.path.exists(baseline):
+        # 没有 GPU 分割服务时，用 CPU 基线（梯度提升树，见 dental_ai/segmentation/baseline.py）
+        from dental_ai.segmentation.baseline import BaselineSegmenter
+
+        return BaselineSegmenter(baseline)
+    raise RuntimeError("未配置分割服务（环境变量 SEGMENTER_URL 或 BASELINE_MODEL），请上传标签文件、启动 tgnet 服务或训练 CPU 基线")
 
 
 def _margin_overrides(case: dict) -> dict[int, dict]:

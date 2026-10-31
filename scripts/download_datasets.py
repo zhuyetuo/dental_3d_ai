@@ -13,6 +13,7 @@ fetch：从 Google Cloud Storage（gs://，用 gsutil）或 https 地址下载�
 
 也可以从 Google Drive 文件夹取：--src gdrive://<文件夹 ID>（文件夹要设成“知道链接的任何人可查看”）。
 走 Drive API（www.googleapis.com），需要环境变量 GOOGLE_API_KEY（启用了 Google Drive API 的 API 密钥）。
+密钥可以放在仓库根目录的 .env 里（模板 .env.example，.env 不会提交），脚本启动时自动读取。
 云端环境访问不了 drive.google.com 本身，但 API 地址可以访问。
 
 许可：Teeth3DS 是 CC BY-NC-ND 4.0，只能用于非商业研究和教学；训练或评估商业模型需要向 contact@udini.ai 申请商业授权。
@@ -34,6 +35,23 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_dotenv(path: Path = ROOT / ".env") -> None:
+    """读取仓库根目录的 .env（KEY=VALUE，# 开头为注释），已有的环境变量优先。"""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        value = value.strip().strip("'\"")
+        if value:
+            os.environ.setdefault(key.strip(), value)
+
+
+_load_dotenv()
 REPO = "abenhamadou/3DTeethSeg22_challenge"
 COMMIT = "6220bfa6c26a1f24ab5f19ee1bc918e10a5d425e"  # 固定版本，保证可复现
 RAW = f"https://raw.githubusercontent.com/{REPO}/{COMMIT}"

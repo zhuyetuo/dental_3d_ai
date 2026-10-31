@@ -35,18 +35,26 @@ def load_mesh(path: str | Path) -> trimesh.Trimesh:
 
 
 def _load_obj(path: str | Path) -> trimesh.Trimesh:
-    """只读顶点和面（多边形按扇形三角化，支持 v/vt/vn 写法和负索引），保留全部顶点及其顺序。"""
-    vertices, faces = [], []
     with open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            if line.startswith("v "):
-                vertices.append(line.split()[1:4])
-            elif line.startswith("f "):
-                idx = [int(t.split("/")[0]) for t in line.split()[1:]]
-                idx = [i - 1 if i > 0 else len(vertices) + i for i in idx]
-                faces += [[idx[0], idx[k], idx[k + 1]] for k in range(1, len(idx) - 1)]
+        try:
+            return parse_obj(f)
+        except ValueError:
+            raise ValueError(f"无法读取为三角网格: {path}") from None
+
+
+def parse_obj(lines) -> trimesh.Trimesh:
+    """只读顶点和面（多边形按扇形三角化，支持 v/vt/vn 写法和负索引），保留全部顶点及其顺序。
+    lines：文本行的可迭代对象（打开的文件，或压缩包里读出来的文本的 splitlines()）。"""
+    vertices, faces = [], []
+    for line in lines:
+        if line.startswith("v "):
+            vertices.append(line.split()[1:4])
+        elif line.startswith("f "):
+            idx = [int(t.split("/")[0]) for t in line.split()[1:]]
+            idx = [i - 1 if i > 0 else len(vertices) + i for i in idx]
+            faces += [[idx[0], idx[k], idx[k + 1]] for k in range(1, len(idx) - 1)]
     if not faces:
-        raise ValueError(f"无法读取为三角网格: {path}")
+        raise ValueError("没有三角形")
     return trimesh.Trimesh(np.asarray(vertices, dtype=np.float64), np.asarray(faces, dtype=np.int64), process=False)
 
 

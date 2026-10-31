@@ -46,7 +46,10 @@ cd ml && python -m dental_ai.datasets poseidon3d --zip ../data/drive/raw/Poseido
 1. Drive 文件夹（含子文件夹）共享设置为“**知道链接的任何人** → 查看者”；
 2. 在 Google Cloud 控制台：选一个项目 → “API 和服务” → 启用 **Google Drive API** → “凭据” → 创建 **API 密钥**；
    建议在密钥的“API 限制”里只勾选 Google Drive API；
-3. 把 API 密钥放到云端环境的环境变量 `GOOGLE_API_KEY`（环境设置里加，**不要贴到聊天里**），新开会话；
+3. 把 API 密钥放到：
+   - 云端会话：环境设置（会话标题栏的环境菜单 → Edit）的环境变量 `GOOGLE_API_KEY`，之后每个新会话都自动可用；
+   - 自己的电脑：仓库根目录的 `.env`（复制 `.env.example`，已在 .gitignore 中），脚本会自动读取。
+   **不要把密钥提交到仓库，也不要贴到聊天里**：提交进 git 历史就删不掉了，仓库公开时 Google 会扫描到并自动吊销；
 4. 我运行（文件夹 ID 是链接里 `folders/` 后面那一段）：
 
 ```bash
