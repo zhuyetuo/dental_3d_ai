@@ -55,6 +55,11 @@ export function App() {
     refresh();
   }
 
+  async function saveTransform(fdi: number, matrix: number[]) {
+    if (!current) return;
+    setCurrent(await api.saveTransform(current.id, fdi, matrix));
+  }
+
   async function saveLabels(labels: number[]) {
     if (!current) return;
     await api.saveLabels(current.id, labels);
@@ -251,13 +256,21 @@ export function App() {
                   {report.generated.map((g) => (
                     <li key={g.fdi}>
                       {g.fdi}：{g.method === "prep_crown" ? "预备体牙冠" : "缺失牙"}（{g.source}
-                      {g.min_thickness_mm != null && `，最小厚度 ${g.min_thickness_mm} mm`}）{g.watertight ? "" : " ⚠ 非封闭"} ·{" "}
-                      <a href={api.fileUrl(current.id, `result/${g.file}`)} download>
+                      {g.min_thickness_mm != null && `，最小厚度 ${g.min_thickness_mm} mm`}）{g.watertight ? "" : " ⚠ 非封闭"}
+                      {current.adjustments?.[String(g.fdi)] && "（已手动调整）"} ·{" "}
+                      <a href={api.fileUrl(current.id, `result/${g.file}`, version)} download>
                         下载 STL
                       </a>
                     </li>
                   ))}
                 </ul>
+                {report.generated.length > 1 && (
+                  <p>
+                    <a href={api.exportUrl(current.id, version)} download>
+                      下载全部（合并成一个 STL）
+                    </a>
+                  </p>
+                )}
                 {report.warnings.length > 0 && (
                   <>
                     <h3>警告</h3>
@@ -294,6 +307,7 @@ export function App() {
             prepared={current.prepared_teeth ?? []}
             onSaveMargins={saveMargins}
             onSetPrepared={setPrepared}
+            onSaveTransform={saveTransform}
             generatedUrls={generatedUrls}
             cervicalLines={cervical}
             showCervical={showCervical}

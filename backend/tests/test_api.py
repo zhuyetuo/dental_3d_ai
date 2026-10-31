@@ -185,3 +185,32 @@ def test_prepared_and_margin_validation(client, tmp_path):
     assert bad.status_code == 400
     res = client.post("/api/cases", data={"jaw": "lower", "prepared": "4x"}, files={"mesh": ("a.ply", b"x")})
     assert res.status_code == 400
+
+
+def test_adjust_generated_tooth_and_export(client, tmp_path):
+    import trimesh
+
+    case_id = _upload(client, tmp_path).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    before = trimesh.load(io.BytesIO(client.get(f"/api/cases/{case_id}/files/result/tooth_36.stl").content), file_type="stl")
+    shift = np.eye(4)
+    shift[:3, 3] = [1.0, -0.5, 0.25]
+    res = client.put(f"/api/cases/{case_id}/generated/36/transform", json={"matrix": shift.ravel().tolist()})
+    assert res.status_code == 200 and "36" in res.json()["adjustments"]
+    after = trimesh.load(io.BytesIO(client.get(f"/api/cases/{case_id}/files/result/tooth_36.stl").content), file_type="stl")
+    assert np.allclose(after.vertices.mean(axis=0) - before.vertices.mean(axis=0), [1.0, -0.5, 0.25], atol=1e-4)
+    # 每次都从原始结果变换，不会累加
+    client.put(f"/api/cases/{case_id}/generated/36/transform", json={"matrix": shift.ravel().tolist()})
+    again = trimesh.load(io.BytesIO(client.get(f"/api/cases/{case_id}/files/result/tooth_36.stl").content), file_type="stl")
+    assert np.allclose(again.vertices, after.vertices, atol=1e-5)
+    assert client.put(f"/api/cases/{case_id}/generated/11/transform", json={"matrix": shift.ravel().tolist()}).status_code == 404
+    assert client.put(f"/api/cases/{case_id}/generated/36/transform", json={"matrix": [0] * 16}).status_code == 400
+
+    stl = client.get(f"/api/cases/{case_id}/export.stl")
+    assert stl.status_code == 200 and len(stl.content) > 1000
+
+    client.post(f"/api/cases/{case_id}/run")  # 重新计算后调整清空，原始备份也删掉
+    assert client.get(f"/api/cases/{case_id}").json()["adjustments"] == {}
+    from app import storage
+
+    assert not list(storage.case_path(case_id, "result").glob("*.orig.stl"))

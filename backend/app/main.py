@@ -235,6 +235,58 @@ def update_labels(case_id: str, body: LabelsUpdate) -> dict:
     return case
 
 
+class TransformUpdate(BaseModel):
+    matrix: list[float]  # 4x4，行优先，作用在原始生成结果上
+
+
+def _generated_file(case: dict, fdi: int) -> str:
+    report = case.get("report") or {}
+    item = next((g for g in report.get("generated", []) if g["fdi"] == fdi), None)
+    if item is None:
+        raise HTTPException(404, f"没有生成 {fdi}")
+    return item["file"]
+
+
+@app.put("/api/cases/{case_id}/generated/{fdi}/transform")
+def update_generated_transform(case_id: str, fdi: int, body: TransformUpdate) -> dict:
+    """保存生成牙的手动调整（移动、旋转、缩放）。原始生成结果另存为 *.orig.stl，每次都从原始结果变换。"""
+    import trimesh
+
+    case = _get_case(case_id)
+    if len(body.matrix) != 16:
+        raise HTTPException(400, "matrix 需要 16 个数（4x4，行优先）")
+    matrix = np.asarray(body.matrix, dtype=float).reshape(4, 4)
+    if not np.all(np.isfinite(matrix)) or abs(np.linalg.det(matrix[:3, :3])) < 1e-6 or np.any(matrix[3] != [0, 0, 0, 1]):
+        raise HTTPException(400, "matrix 不是有效的仿射变换")
+    name = _generated_file(case, fdi)
+    path = storage.case_path(case_id, "result", name)
+    original = path.with_name(path.stem + ".orig.stl")
+    if not original.exists():
+        shutil.copyfile(path, original)
+    mesh = trimesh.load(original)
+    mesh.apply_transform(matrix)  # 行列式为负（镜像）时 trimesh 会翻转三角形绕序
+    mesh.export(path)
+    case.setdefault("adjustments", {})[str(fdi)] = {"matrix": body.matrix, "at": datetime.now(timezone.utc).isoformat()}
+    case["finished_at"] = datetime.now(timezone.utc).isoformat()  # 文件版本号，前端重新加载
+    storage.save_case(case)
+    return case
+
+
+@app.get("/api/cases/{case_id}/export.stl")
+def export_generated(case_id: str) -> FileResponse:
+    """全部生成牙（缺失牙 + 预备体牙冠，含手动调整）合并成一个 STL。"""
+    import trimesh
+
+    case = _get_case(case_id)
+    files = [g["file"] for g in (case.get("report") or {}).get("generated", [])]
+    if not files:
+        raise HTTPException(404, "没有生成结果")
+    merged = trimesh.util.concatenate([trimesh.load(storage.case_path(case_id, "result", f)) for f in files])
+    out = storage.case_path(case_id, "result", "all_generated.stl")
+    merged.export(out)
+    return FileResponse(out, media_type="model/stl", filename=f"case_{case_id[:8]}_generated.stl")
+
+
 @app.get("/api/cases/{case_id}/files/{path:path}")
 def get_file(case_id: str, path: str) -> FileResponse:
     _get_case(case_id)

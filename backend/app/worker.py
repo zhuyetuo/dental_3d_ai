@@ -62,6 +62,9 @@ def process_case(case_id: str) -> None:
     case.update(status="running", error=None)
     storage.save_case(case)
     try:
+        # 上一次手动调整留下的原始备份（见 main.update_generated_transform）对新结果无效
+        for stale in storage.case_path(case_id, "result").glob("*.orig.stl"):
+            stale.unlink()
         files = case["files"]
         antagonist = files.get("antagonist")
         prefs = DesignPreferences.from_dict(case.get("preferences"))
@@ -78,7 +81,8 @@ def process_case(case_id: str) -> None:
             prepared_teeth=case.get("prepared_teeth", []),
             margin_overrides=_margin_overrides(case),
         )
-        case.update(status="done", report=report)
+        # 重新计算会重新生成牙冠，之前的手动调整不再适用
+        case.update(status="done", report=report, adjustments={})
     except Exception as exc:  # 任务失败要记录到病例上，前端才能显示
         traceback.print_exc()
         case.update(status="failed", error=str(exc))

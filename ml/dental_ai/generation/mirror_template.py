@@ -36,6 +36,7 @@ class Placement:
     mesial: np.ndarray  # 近中方向（水平单位向量）
     width: float  # 目标近远中宽度
     kind: str
+    top: float | None = None  # 牙冠顶的目标高度（咬合方向坐标）；None 时按两侧邻牙的平均
 
 
 def _cervical_height(mesh: trimesh.Trimesh, labels: np.ndarray, fdi: int, up: np.ndarray) -> float:
@@ -134,6 +135,7 @@ class MirrorTemplateGenerator(ToothGenerator):
     def placement(self, ctx: GenerationContext, arch: ArchFrame, target: MissingTooth, center: np.ndarray | None = None) -> Placement:
         up = arch.occlusal
         mesh, labels = ctx.mesh, ctx.labels
+        top = None
         if target.mesial is not None and target.distal is not None:
             a = mesh.vertices[labels == target.mesial]
             b = mesh.vertices[labels == target.distal]
@@ -194,6 +196,9 @@ class MirrorTemplateGenerator(ToothGenerator):
                 point = arch.reflect(mesh.vertices[labels == contra].mean(axis=0)[None])[0]
                 mesial_dir = _horizontal(cn - point, up) if toward_distal else _horizontal(point - cn, up)
                 placed_by = "mirror_position"
+            elif (stats := self._free_end_stats(ctx, arch, neighbor, target.fdi, toward_distal)) is not None:
+                point, mesial_dir, top = stats
+                placed_by = "neighbor_statistics"
             else:
                 point, mesial_dir = _extrapolate_arch(mesh, labels, ctx.jaw, neighbor, distance, up, distal=toward_distal)
                 if not toward_distal:
@@ -205,7 +210,7 @@ class MirrorTemplateGenerator(ToothGenerator):
             height = _cervical_height(mesh, labels, neighbor, up)
             kind = f"free_end:{placed_by}" if center is None else "free_end"
         c = c - (c @ up) * up + height * up
-        return Placement(center=c, mesial=mesial_dir, width=width, kind=kind)
+        return Placement(center=c, mesial=mesial_dir, width=width, kind=kind, top=top)
 
     def _donor(self, ctx: GenerationContext, arch: ArchFrame, fdi: int, place: Placement) -> tuple[trimesh.Trimesh, str]:
         contra = mirror(fdi)
@@ -294,6 +299,29 @@ class MirrorTemplateGenerator(ToothGenerator):
         crown.vertices = crown.vertices + shift * up
         return {"height_shift_mm": round(shift, 3)}
 
+    def _free_end_stats(self, ctx: GenerationContext, arch: ArchFrame, neighbor: int, fdi: int, toward_distal: bool):
+        """末端缺失、对侧也没有时，按训练数据统计的“末端牙相对近中邻牙”的偏移放置（generation/free_end_stats.py）。
+        返回 (水平位置, 近中方向, 牙冠顶高度)，没有对应统计时返回 None。"""
+        from ..fdi import position
+        from ..templates.frame import tooth_frame
+        from .free_end_stats import load
+
+        if not toward_distal or position(fdi) != position(neighbor) + 1:
+            return None
+        stats = load().get(f"{ctx.jaw}_{position(neighbor)}_{position(fdi)}")
+        if not stats:
+            return None
+        try:
+            frame = tooth_frame(ctx.mesh, ctx.labels, ctx.jaw, neighbor, arch)
+        except (ValueError, IndexError):
+            return None
+        v = ctx.mesh.vertices[ctx.labels == neighbor]
+        width = float(np.ptp(v @ frame.mesial))
+        o = np.asarray(stats["offset_over_width"]) * width
+        point = v.mean(axis=0) + o[0] * frame.mesial + o[1] * frame.buccal
+        top = float((v @ arch.occlusal).max()) + stats["dtop_mm"]
+        return point, _horizontal(v.mean(axis=0) - point, arch.occlusal), top
+
     def _fit_height(self, ctx: GenerationContext, crown: trimesh.Trimesh, target: MissingTooth, place: Placement, up: np.ndarray) -> dict:
         """模板牙（不是对侧镜像）的高度：牙尖顶对齐邻牙牙尖的平均高度（咬合平面），底边放在缺牙区牙龈上方，
         中间按比例竖直缩放。
@@ -306,7 +334,8 @@ class MirrorTemplateGenerator(ToothGenerator):
             return {}
         h = crown.vertices @ up
         top_now, bottom_now = float(h.max()), float(h.min())
-        top = float(np.mean(tops))
+        # 游离端有统计时用统计的高度差（下颌第二磨牙平均比第一磨牙高 1.7 mm，Spee 曲线），否则对齐邻牙平均
+        top = place.top if place.top is not None else float(np.mean(tops))
         # 缺牙区牙龈高度：牙冠中心附近 3 mm 以内的牙龈顶点的中位数
         c = place.center
         gum = mesh.vertices[labels == 0]

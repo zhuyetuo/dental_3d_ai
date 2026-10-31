@@ -7,6 +7,7 @@ import {
   labelColor,
   LabelState,
   makeChange,
+  splitByPlane,
   Stroke,
   verticesInSphere,
 } from "./labels";
@@ -85,5 +86,17 @@ describe("LabelState undo / redo", () => {
     state.undo();
     expect([...state.labels]).toEqual([0, 0, 0, 0, 31, 31]);
     expect(countLabels(state.labels).get(0)).toBe(4);
+  });
+});
+
+describe("splitByPlane", () => {
+  it("把一块按平面切开，较小的一半改成新牙号", () => {
+    // 5 个点沿 x 排开，前 4 个属于 44；平面 x = 2.5，右侧只有 1 个 44 的点
+    const positions = [0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0];
+    const labels = Int32Array.from([44, 44, 44, 44, 0]);
+    const change = splitByPlane(positions, labels, 44, [2.5, 0, 0], [1, 0, 0], 45)!;
+    expect(Array.from(change.indices)).toEqual([3]);
+    expect(Array.from(change.after)).toEqual([45]);
+    expect(splitByPlane(positions, labels, 44, [10, 0, 0], [1, 0, 0], 45)).toBeNull(); // 平面没切到
   });
 });
