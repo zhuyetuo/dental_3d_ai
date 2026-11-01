@@ -34,7 +34,7 @@ for i in $(seq 1 60); do curl -s localhost:8001/health | grep -q '"ok":true' && 
 deactivate
 cd "$ROOT/ml"
 mkdir -p ../runs/tgnet
-for d in challenge_test100 poseidon3d/test-complex; do
+for d in fair_test challenge_test100 poseidon3d/test-complex; do
   name=$(basename $d)
   python -m dental_ai.evaluation --data-dir ../data/$d --gt-dir ../data/$d --segmenter-url http://localhost:8001 --orient --out ../runs/tgnet/eval_$name | tail -14
   python -m dental_ai.evaluation --data-dir ../data/$d --gt-dir ../data/$d --segmenter-url http://localhost:8001 --orient --fix-numbering --out ../runs/tgnet/eval_${name}_fix | tail -14

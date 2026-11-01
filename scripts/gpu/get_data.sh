@@ -22,6 +22,9 @@ Path("/tmp/challenge_test100.txt").write_text("\n".join(private[:100]))
 PY
 python -m dental_ai.datasets teeth3ds --zips ../$Z --split /tmp/t3d_test100.txt --out ../data/teeth3ds_test100
 python -m dental_ai.datasets teeth3ds --zips ../$Z --split /tmp/challenge_test100.txt --out ../data/challenge_test100
+# 公平测试集：两套官方划分的测试集交集（174 个扫描），TGNet（挑战赛划分训练）、TeethSplineSeg 和我们的模型（Teeth3DS 划分训练）都没见过
+python -m dental_ai.external fair-split --splits ../$SPLIT --out ../data/fair_test.txt
+python -m dental_ai.datasets teeth3ds --zips ../$Z --split ../data/fair_test.txt --out ../data/fair_test
 P=../data/drive/raw/Poseidon3D/poseidon3d.zip
 for s in train test-simple test-complex; do python -m dental_ai.datasets poseidon3d --zip $P --split $s --out ../data/poseidon3d/$s; done
-echo "数据就绪：data/teeth3ds_test100、data/challenge_test100、data/poseidon3d/{train,test-simple,test-complex}"
+echo "数据就绪：data/fair_test、data/teeth3ds_test100、data/challenge_test100、data/poseidon3d/{train,test-simple,test-complex}"

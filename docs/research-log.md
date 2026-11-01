@@ -225,3 +225,7 @@
 | MADCrowner 未见代码 | 有，lullcant/MADCrowner，Apache-2.0，无权重、无数据 |
 | 颈缘线工作几乎都来自一个团队 | 漏了 MADCrowner 团队；Alsheghri 团队还有一篇 1113 例全牙位的 CBM 2025 |
 | B-Spline IoU 91.90% | 91.90% 是 3DTeethSAM 的数字（搜索摘要混在一起了）；B-Spline 自己是 T-mIoU 92.62% |
+
+**划分交叉（2026-11-01）**：Teeth3DS 划分和挑战赛划分各自 600 个测试扫描里有 426 个在对方的训练集里。
+论文里“在 3DTeethSeg22 上”的数字用的是哪套划分要看清：TeethSplineSeg 用 Teeth3DS 划分，TGNet 用挑战赛划分，两者论文数字不能直接比。
+统一对比用两个测试集的交集（174 个扫描，见 real-data-test.md 3.12）。
