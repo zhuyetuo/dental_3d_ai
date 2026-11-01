@@ -10,6 +10,8 @@
 
 指标（只看真牙牙冠上部 60%，牙颈附近两者的定义不同）：
 - surf_mean / surf_p95：真牙表面点到生成牙表面的距离（mm）；
+- chamfer_l1：双向平均距离（mm）=（真牙→生成牙 + 生成牙→真牙）/ 2，生成牙只取切割线以上的部分；
+- fscore_0.3 / fscore_0.5：距离阈值 0.3 / 0.5 mm 的 F-score（DMC 等论文用的指标，但它们在归一化坐标下算，我们用 mm）；
 - position：牙冠上部水平质心的距离（mm）；
 - top：生成牙最高点 − 真牙最高点（mm，咬合方向）；
 - watertight：导出 STL 后按坐标焊接顶点，是否封闭。
@@ -65,25 +67,36 @@ def scenarios(labels: np.ndarray, jaw: str, rng: np.random.Generator) -> list[tu
     return out
 
 
+FSCORE_MM = (0.3, 0.5)
+
+
 def compare(solid: trimesh.Trimesh, real: trimesh.Trimesh, up: np.ndarray) -> dict:
     h = real.vertices @ up
     cut = np.percentile(h, 40)
-    real_pts = trimesh.sample.sample_surface(real, 20000, seed=0)[0]
-    real_pts = real_pts[real_pts @ up > cut]
+    real_all = trimesh.sample.sample_surface(real, 20000, seed=0)[0]
+    real_pts = real_all[real_all @ up > cut]
     gen_pts = trimesh.sample.sample_surface(solid, 20000, seed=0)[0]
-    d = cKDTree(gen_pts).query(real_pts)[0]
+    d = cKDTree(gen_pts).query(real_pts)[0]  # 真牙 → 生成牙（覆盖：真牙有的地方生成牙有没有）
     gen_top = gen_pts[gen_pts @ up > cut]
+    # 生成牙 → 真牙（多余：生成牙有没有长出真牙没有的东西）。只看切割线以上的生成点，和整颗真牙比，
+    # 避免真牙在切割线处被截断造成的假误差
+    d_back = cKDTree(real_all).query(gen_top)[0] if len(gen_top) else np.array([np.nan])
 
     def flat(p):
         return p - np.outer(p @ up, up)
 
     position = np.linalg.norm(flat(gen_top.mean(axis=0)[None])[0] - flat(real_pts.mean(axis=0)[None])[0]) if len(gen_top) else np.nan
-    return {
+    row = {
         "surf_mean": float(d.mean()),
         "surf_p95": float(np.percentile(d, 95)),
+        "chamfer_l1": float((d.mean() + d_back.mean()) / 2),  # 双向平均距离（mm）
         "position": float(position),
         "top": float((solid.vertices @ up).max() - h.max()),
     }
+    for t in FSCORE_MM:  # F-score：precision = 生成点里离真牙 < t 的比例，recall = 真牙点里离生成牙 < t 的比例
+        precision, recall = float((d_back < t).mean()), float((d < t).mean())
+        row[f"fscore_{t}"] = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return row
 
 
 def evaluate_scan(args) -> list[dict]:
@@ -148,6 +161,8 @@ def summarize(rows: list[dict]) -> dict:
             "watertight": sum(bool(r.get("watertight")) for r in ok),
             "surf_mean_median": med("surf_mean"),
             "surf_p95_median": med("surf_p95"),
+            "chamfer_l1_median": med("chamfer_l1"),
+            **{f"fscore_{t}_median": med(f"fscore_{t}") for t in FSCORE_MM},
             "position_median": med("position"),
             "top_abs_median": round(float(np.median([abs(r["top"]) for r in ok])), 3) if ok else None,
             "sources": sorted({str(r.get("source", "")).split(":")[0] for r in ok}),
