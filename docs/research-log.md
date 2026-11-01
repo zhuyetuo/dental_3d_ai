@@ -43,9 +43,9 @@
 | TGNet | 3DTeethSeg'22 第一名 | 两阶段：FPS 采样粗分 + 边界感知采样精分 | 挑战赛第一 | [有代码](https://github.com/limhoyeon/ToothGroupNetwork)，有权重（Google Drive），**无 LICENSE** | 读了仓库和源码 |
 | DilatedToothSegNet | J Digit Imaging 2024 | DGCNN + 扩张边卷积 | — | [有代码](https://github.com/LucasKre/dilated_tooth_seg_net)，无权重，无 LICENSE | 读了仓库 |
 | 3D_teeth_segmentation | — | 原版 PointNet notebook，私有数据 | — | [MIT](https://github.com/MohamedAlaouiMhamdi/3D_teeth_segmentation) | 读了仓库 |
-| 3DTeethSAM | AAAI 2026 | 多视图渲染 + 冻结 SAM2 + 三个轻量模块 + DGAP | Teeth3DS T-mIoU 91.90%，第三磨牙 83.3% | 论文 CC BY 4.0；**代码是否开源未确认** | arXiv 摘要页 + 微信文章 |
-| TSegAgent | MICCAI 2026 | SAM3 + 视觉语言模型零样本，几何先验纠错 | Teeth3DS mIoU 93.37%；私有集 82.10%，整副牙列全对率 51.96% | 未确认 | 微信文章 |
-| CrossTooth | — | 边界保持的 3D 牙模分割 | TSegAgent 复现的结果偏低 | — | 搜索摘要 |
+| 3DTeethSAM | AAAI 2026 | 多视图渲染 + 冻结 SAM2 + 三个轻量模块 + DGAP | Teeth3DS T-mIoU 91.90%，第三磨牙 83.3% | 论文 CC BY 4.0；代码和权重已公开，无 LICENSE（见 7.1） | arXiv 摘要页 + 微信文章；2026-11-01 clone 核实 |
+| TSegAgent | MICCAI 2026 | SAM3 + 视觉语言模型零样本，几何先验纠错 | Teeth3DS mIoU 93.37%；私有集 82.10%，整副牙列全对率 51.96%（自报；他人实测差很多，见 7.1） | 匿名仓库 | 微信文章 |
+| CrossTooth | CVPR 2025 | 边界保持的 3D 牙模分割 | TSegAgent 复现的结果偏低 | [CrossTooth_CVPR2025](https://github.com/XiShuFan/CrossTooth_CVPR2025)，权重在仓库里，无 LICENSE（见 7.1） | 2026-11-01 clone 核实 |
 
 ### 2.3 关键点
 
@@ -166,21 +166,22 @@
 ## 7. 2026 年分割、牙冠生成、颈缘线调研（2026-11-01）
 
 方法：网络搜索 + 能 clone 的仓库直接看（arXiv 在本环境访问不了，论文细节来自搜索摘要，标注为“摘要”）。
+**2026-11-01 第二轮更正**：用户那边读了 arXiv 全文和 AAAI 正式版，找到了论文里的代码地址；我把这些仓库都浅克隆核实了一遍（“clone 核实”）。更正内容见 7.4。
 
 ### 7.1 分割（论文多，带代码和权重的少）
 
 | 名称 | 时间 | 方法 | 结果 | 代码 | 核实方式 |
 |---|---|---|---|---|---|
-| TSegAgent（arXiv 2603.19684） | 2026-03，MICCAI 2026 | 多视图渲染 + SAM3 零样本实例分割 + 视觉语言模型编号，不需要训练 | Teeth3DS mIoU 93.37% | 未见 | 摘要 |
-| 3DTeethSAM（arXiv 2512.11557） | AAAI 2026 | 多视图渲染 + SAM2 + 投票回投到网格 | T-mIoU 91.90%，第三磨牙提升 15% 以上 | 搜索结果说有，未核实 | 摘要 |
-| B-Spline 结构学习（arXiv 2608.17291） | 2026-08 | PTv3 主干 + 过牙齿中心的三次 B 样条，每个点投影到曲线上得到连续的“牙弓位置”坐标，辅助分类 | 3DTeethSeg IoU 91.90% | 未见 | 摘要 |
+| TSegAgent（arXiv 2603.19684） | 2026-03，MICCAI 2026 | 多视图渲染 + SAM3 零样本实例分割 + 视觉语言模型编号，不需要训练 | 自报 Teeth3DS mIoU 93.37%；**B-Spline 论文实测它的开源实现：OA 62.16%、T-mIoU 31.45%，每例 372.5 秒** | 匿名仓库 anonymous.4open.science/r/TSegAgent-3FB4 | 用户读全文；不建议投入 |
+| 3DTeethSAM（arXiv 2512.11557） | AAAI 2026 | 多视图渲染 + SAM2 + 投票回投到网格 | T-mIoU 91.90%，第三磨牙提升 15% 以上 | [Crisitofy/3DTeethSAM](https://github.com/Crisitofy/3DTeethSAM)，2026-03-02 更新，**无 LICENSE**；权重（SAM2 Hiera-L + 自己的模型）放在 README 里的 Google Drive 文件夹，**文件夹内容未核实** | clone 核实 |
+| **B-Spline 结构学习 / TeethSplineSeg**（arXiv 2608.17291，浙大，与 3DTeethSAM 同组） | 2026-08 | PTv3 主干 + 过牙齿中心的三次 B 样条，每个点投影到曲线上得到连续的“牙弓位置”坐标，辅助分类 | 同一张表里 T-mIoU **92.62%**（TGNet 90.16%）；4090 上训练 2 小时 15 分，推理每例 0.84 秒（比 TGNet / 3DTeethSAM 训练快 9 倍多、推理快 3–4 倍） | [blackbird2003/TeethSplineSeg](https://github.com/blackbird2003/TeethSplineSeg)，2026-08-25 更新，**无 LICENSE**；README 说权重在 Release `checkpoint`（tag 存在；本环境打不开 GitHub 网页，没列出文件名）；直接读 Teeth3DS 原始 OBJ/JSON | clone 核实；**TGNet 的首选替代** |
 | SOFTooth（arXiv 2512.23411） | 2025-12 | 语义增强 + 顺序感知的实例分割 | — | 未见 | 摘要 |
-| CrossTooth | CVPR 2025 | 边界保持；比 TGNet 牙齿 IoU +2.3%、边界 IoU +5.7% | — | 仓库 XiShuFan/CrossTooth **clone 需要登录**（私有或已删除） | clone 失败 |
+| CrossTooth（北航） | CVPR 2025 | 边界保持（多视图渲染特征 + PTv1）；比 TGNet 牙齿 IoU +2.3%、边界 IoU +5.7% | — | [XiShuFan/CrossTooth_CVPR2025](https://github.com/XiShuFan/CrossTooth_CVPR2025)，2025-06-21 更新，**无 LICENSE**；**权重就在仓库里**（`models/PTv1/point_best_model.pth`，27 MB） | clone 核实 |
 | OrthoTwin3D | 2026-10 更新 | DGCNN 在 Teeth3DS 上的可复现训练流程（分割 → 实例 → 关键点 → 几何测量） | 验证集 mIoU 0.626（未加增强） | 有代码，**无 LICENSE**，无权重 | 读了 README |
 | 分类引导的局部口扫流程（arXiv 2605.15241） | 2026-05 | 先判断全牙弓 / 局部扫描，再走不同的分割模型 | 1958 个局部扫描，DSC 0.925 | 未见 | 摘要 |
 
-结论：2026 年的主流是“多视图渲染 + 视觉基础模型（SAM2/SAM3）”和“PTv3 + 牙弓结构先验”。公开数据上的数字都在 91–93% mIoU，
-但**都没有确认可用的代码和权重**，能直接跑的仍是 TGNet。B-Spline 论文的“牙弓连续坐标”和我们编号纠错里的牙弓投影（`_arch_position`）是同一个思路，
+结论：2026 年的主流是“多视图渲染 + 视觉基础模型（SAM2/SAM3）”和“PTv3 + 牙弓结构先验”。公开数据上的数字都在 91–93% mIoU。
+**有代码和权重的不止 TGNet**：TeethSplineSeg（Release）、CrossTooth（仓库内）、3DTeethSAM（Google Drive）都给了权重，但都没有 LICENSE（个人学习可以用，商用要找作者）。GPU 上对比的优先顺序：TeethSplineSeg（最快、分数最高、读 Teeth3DS 原格式）> CrossTooth > 3DTeethSAM；TSegAgent 不投入。B-Spline 论文的“牙弓连续坐标”和我们编号纠错里的牙弓投影（`_arch_position`）是同一个思路，
 可以作为深度模型的额外输入特征。
 
 ### 7.2 牙冠 / 缺失牙生成（论文少，可用代码更少）
@@ -190,13 +191,13 @@
 | CrownGen（arXiv 2512.21890） | 2025-12 | 牙齿级点云扩散 + 边界预测模块，一次生成多颗；496 个外部扫描 + 26 例临床研究，医生评价不劣于技工 | [baejustin/CrownGen](https://github.com/baejustin/CrownGen)，2025-12-26 更新，**无 LICENSE**，带示例数据，未见权重 | 读了 README |
 | ToothForge（IPMI 2025）+ 深度谱模型（arXiv 2606.31293，2026-06，MELBA） | 2025–2026 | 谱域（拉普拉斯特征基）生成牙冠网格，不要求统一拓扑，毫秒级 | [tiborkubik/toothForge](https://github.com/tiborkubik/toothForge)，**无 LICENSE**，训练数据私有 | 读了 README |
 | ToothCraft（arXiv 2603.26588） | VISAPP 2026 | 以局部牙弓为条件的 SDF 扩散，合成残缺牙训练 | [AGPL-3.0](https://github.com/ikarus1211/VISAPP_ToothCraft)，2026-10-13 仍在更新，HF 有权重 | clone |
-| 分类引导的牙冠方案（arXiv 2605.15241） | 2026-05 | **检索 + 拟合**：用 DGCNN 特征在牙冠库里找邻牙、对颌最像的牙冠，样条对齐后用 Blender 调整邻接和咬合 | 未见 | 摘要 |
-| MADCrowner（arXiv 2603.04771） | 2026 | 模板变形 + 颈缘线分割，37.3M 参数，单次 600 ms | 未见代码 | 摘要 |
+| 分类引导的牙冠方案（arXiv 2605.15241，尼泊尔、日本企业团队） | 2026-05 | 先判断全牙弓 / 左 / 右 / 前牙局部扫描并配准到标准姿态再分割；牙冠用**检索 + 拟合**：Teeth3DS 上训练的 DGCNN 特征，按邻牙、对颌余弦相似度检索，样条对齐后用 Blender 调整邻接和咬合。作者承认检索和拟合**只有定性展示**，没和技工设计定量比 | 论文没有代码链接 | 用户读全文 |
+| **MADCrowner**（arXiv 2603.04771，港中文、商汤、上海九院等） | 2026-03 | 先分割预备体、提取颈缘线（CrownSegger），再把模板牙冠变形成目标牙冠（CrownDeformR）；37.3M 参数，单次 600 ms；颈缘分割 576 例口扫（476 训练 / 100 测试），牙冠数据来自 4602 名患者（带技工设计） | [lullcant/MADCrowner](https://github.com/lullcant/MADCrowner)，2026-07-02 更新，**Apache-2.0**；带 28 颗 FDI 模板牙冠（`fdi_template/*.ply`）；**没有权重**（README 只说“在脚本里改权重路径”），数据因隐私不公开 | clone 核实；**和我们“模板库 + 定位”最接近** |
 | DCrownFormer / DCrownFormer+ | MICCAI 2024 / MedIA 2025 | 预备体 + 对颌 → 网格 | 仓库只剩一句话：**技术已转让给韩国公司，不再公开代码** | clone |
 | 深度自适应感知 GAN（Soft Computing 2026） | 2026-07 | GAN 生成牙冠 | 未见 | 摘要 |
 
 结论：生成方向确实少，原因是需要“技工设计好的牙冠”做真值，这类数据都在技工所 / 企业手里，几篇有效果的工作数据都不公开，
-最强的 DCrownFormer 已经商业化收回。2026 年有一篇明确走**检索 + 拟合**路线（不是端到端生成），和我们“模板库 + 按邻牙定位”的思路一致，
+最强的 DCrownFormer 已经商业化收回。MADCrowner 是唯一许可清楚（Apache-2.0）的，但没有权重、没有数据，要自己训练就需要技工设计数据；它的 28 颗模板牙冠可以和我们的模板库对比。2026 年有一篇明确走**检索 + 拟合**路线（不是端到端生成），和我们“模板库 + 按邻牙定位”的思路一致，
 说明在没有大规模设计数据时这条路是实用的。值得跟进的是 CrownGen（有代码 + 示例数据）。
 
 ### 7.3 颈缘线（最少，但有一份公开的真实数据）
@@ -205,10 +206,22 @@
 |---|---|---|---|---|
 | Alsheghri 等，网格分割（arXiv 2507.22859；Mathematics and Computers in Simulation 239, 2026） | 2025–2026 | 预备体网格二分类，交界拟合样条；集成模型 13 例中 7 例达到 0.2 mm 的技工一致水平 | **数据公开，MIT**：[intellident-ai/teethPreparationData](https://github.com/intellident-ai/teethPreparationData)，52 个切牙代型 | clone 并评估（real-data-test.md 3.11） |
 | Adaptive Point Learning（Applied Sciences 2024） | 2024 | 颈缘线作为点云生成，Chamfer + infoCD，带不确定性 | 未见 | 摘要 |
-| MADCrowner 的 CrownSegger | 2026 | 颈缘线分割 | 未见 | 摘要 |
+| Alsheghri 等，全牙位（Computers in Biology and Medicine 2025） | 2025 | 3D 深度学习提取颈缘线；1113 个真实预备体扫描、覆盖所有牙位；78 个测试例中 70 例在 200 μm 内、62 例在 100 μm 内 | 数据未见公开（公开的只有切牙 52 例） | 用户读摘要 |
+| MADCrowner 的 CrownSegger | 2026-03 | 预备体分割 → 颈缘线；576 例口扫 | Hausdorff 距离 0.328 mm（**最大误差**，不能和我们的中位数直接比）；代码 Apache-2.0，无权重、无数据 | clone 核实 |
 | 自动颈缘线检测综述（Zenodo，2026-05） | 2026 | 概述性文章，没有临床数据 | — | 摘要 |
 | 专利（US 12210802、US 12236607 等） | — | 神经网络提出颈缘线 / 自动检测和修正 | — | 摘要 |
 
-结论：颈缘线需要的标注只有技工所有，学术工作几乎都来自同一个团队（Polytechnique Montréal + Intellident，也就是 DMC 的团队）。
+结论：颈缘线需要的标注只有技工所有。学术工作主要来自两个团队：Polytechnique Montréal + Intellident（DMC 的团队，切牙数据公开）和 MADCrowner 团队（港中文等，数据不公开）。
 我们的几何检测器在这份真实数据上：初始线偏差 0.6 mm 以内时误差中位数约 0.15 mm，83–88% 的点在 0.2 mm 内（详见 real-data-test.md 3.11）。
 52 个病例太少、只有切牙，训练学习模型意义不大，先作为评估集。
+
+### 7.4 第二轮更正记录（2026-11-01）
+
+| 第一轮说法 | 更正 |
+|---|---|
+| CrossTooth 仓库 clone 需要登录 | 用错了地址；正确的是 XiShuFan/CrossTooth_CVPR2025，公开，权重在仓库里 |
+| 分割论文都没确认有代码和权重 | TeethSplineSeg、3DTeethSAM、CrossTooth 都有代码和权重（都没有 LICENSE） |
+| TSegAgent mIoU 93.37% | 这是自报数字；B-Spline 论文实测它的开源实现只有 T-mIoU 31.45%，每例 372.5 秒 |
+| MADCrowner 未见代码 | 有，lullcant/MADCrowner，Apache-2.0，无权重、无数据 |
+| 颈缘线工作几乎都来自一个团队 | 漏了 MADCrowner 团队；Alsheghri 团队还有一篇 1113 例全牙位的 CBM 2025 |
+| B-Spline IoU 91.90% | 91.90% 是 3DTeethSAM 的数字（搜索摘要混在一起了）；B-Spline 自己是 T-mIoU 92.62% |
