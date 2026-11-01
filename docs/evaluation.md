@@ -9,6 +9,9 @@
    - `Teeth3DS_split/testing_lower.txt`、`testing_upper.txt`：官方划分，每行是 `病例_颌位`；
    - `3DTeethSeg_challenge_split/private-testing-set.txt`：挑战赛划分。
    TGNet 的权重用的是挑战赛的训练集，**评估 TGNet 要用挑战赛的测试集**，否则会有数据泄漏。
+   **两套划分大量交叉**（2026-11-01 用本地划分文件统计）：各 1200 训练 / 600 测试，Teeth3DS 测试集里 426 个扫描在挑战赛训练集里，
+   挑战赛测试集里 426 个在 Teeth3DS 训练集里。所以用 Teeth3DS 划分训练的模型（我们的 CPU 基线、深度模型、TeethSplineSeg）不能在挑战赛测试集上评估，反过来也一样。
+   **不同来源的模型放在一起比较，用两个测试集的交集**（174 个扫描）：`python -m dental_ai.external fair-split`，GPU 脚本导出到 `data/fair_test`。
 
 目录结构：
 
