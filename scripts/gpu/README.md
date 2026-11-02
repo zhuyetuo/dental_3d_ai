@@ -27,6 +27,10 @@ CrossTooth 没说用哪套划分训练，它的分数要打折看。
 结果在 `runs/` 下（`runs/*/summary.json` 是官方指标汇总），模型在 `models/segmentation/deep.pt`。
 跑完把 `runs/` 里的汇总发给我，或者提交到仓库（汇总文件很小，模型文件 .gitignore 已排除）。
 
+配置建议（以 RTX 4090 为例）：1 卡、16 核、64 GB 内存就够；系统盘 40 GB 放不下几个虚拟环境，**把仓库放在数据盘上**
+（数据 + 导出约 25 GB，三个虚拟环境约 20 GB，训练缓存和结果约 10 GB，数据盘 200 GB 足够）。只装驱动的 Ubuntu 22.04 镜像也可以，
+`setup.sh` 会装 PyTorch。服务器要能访问 Google Drive（`www.googleapis.com`）、GitHub、PyTorch 和 PyPI，国内机房选境外 / 香港地域或开代理。
+
 注意：
 - 服务器在国内时 GitHub、Google 可能慢或连不上：用平台的“学术加速”或代理；Drive 下载走 `www.googleapis.com`；
 - TGNet 的权重在作者的 Google Drive 里，脚本用同一个 `GOOGLE_API_KEY` 下载；
