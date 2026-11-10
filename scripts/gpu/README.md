@@ -27,6 +27,8 @@ CrossTooth 没说用哪套划分训练，它的分数要打折看。
 结果在 `runs/` 下（`runs/*/summary.json` 是官方指标汇总），模型在 `models/segmentation/deep.pt`。
 跑完把 `runs/` 里的汇总发给我，或者提交到仓库（汇总文件很小，模型文件 .gitignore 已排除）。
 
+显卡：**RTX 4090 最合适**（TeethSplineSeg 作者的参考硬件，配置建议按它估算）；**3090 也可以**（24 GB 显存一样，速度约 4090 的 60–70%，脚本自动按显卡编译算子）；**5090 暂时不要选**（Blackwell 架构要 CUDA 12.8 + PyTorch 2.7 以上，TGNet、CrossTooth、TeethSplineSeg 依赖的旧版本都不支持）。
+
 配置建议（以 RTX 4090 为例）：1 卡、16 核、64 GB 内存就够；系统盘 40 GB 放不下几个虚拟环境，**把仓库放在数据盘上**
 （数据 + 导出约 25 GB，三个虚拟环境约 20 GB，训练缓存和结果约 10 GB，数据盘 200 GB 足够）。只装驱动的 Ubuntu 22.04 镜像也可以，
 `setup.sh` 会装 PyTorch。服务器要能访问 Google Drive（`www.googleapis.com`）、GitHub、PyTorch 和 PyPI，国内机房选境外 / 香港地域或开代理。

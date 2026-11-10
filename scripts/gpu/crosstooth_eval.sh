@@ -30,7 +30,7 @@ touch "$CT/models/PointTransformer/libs/pointops/__init__.py" "$CT/models/PointT
 VENV=$ROOT/.venv-crosstooth
 [ -d "$VENV" ] || python -m venv --system-site-packages "$VENV"
 . "$VENV/bin/activate"
-export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.9}"
+export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)}"  # 按显卡自动取：3090 = 8.6，4090 = 8.9
 if ! python -c "import pointops_cuda" 2>/dev/null; then
   pip install vedo==2023.4.4 einops trimesh scipy fast-simplification
   python -c "import torchvision" 2>/dev/null || pip install torchvision
