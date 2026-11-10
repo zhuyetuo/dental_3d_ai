@@ -6,6 +6,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+CAP=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+if [ "${CAP%%.*}" -ge 10 ]; then
+  echo "警告：这张卡是 Blackwell 架构（compute capability $CAP，如 RTX 5090），需要 CUDA 12.8 版的 PyTorch 2.7 以上；"
+  echo "TGNet / CrossTooth 用的 PyTorch 2.1、TeethSplineSeg 用的 cu126 版都不支持它，那几个脚本大概率跑不起来。建议换 3090 / 4090。"
+fi
 
 if ! command -v python >/dev/null || ! python -m pip --version >/dev/null 2>&1; then
   SUDO=$([ "$(id -u)" = 0 ] && echo "" || echo sudo)

@@ -1,6 +1,6 @@
 #!/bin/bash
 # 安装 TGNet（不用 Docker），下载作者的权重，起分割服务，在挑战赛私有测试集上评估。
-# 需要 .env 里的 GOOGLE_API_KEY（下载 TGNet 作者 Google Drive 里的权重）。TORCH_CUDA_ARCH_LIST 默认 8.9（RTX 4090）。
+# 需要 .env 里的 GOOGLE_API_KEY（下载 TGNet 作者 Google Drive 里的权重）。TORCH_CUDA_ARCH_LIST 默认按显卡自动检测。
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
@@ -14,7 +14,7 @@ fi
 [ -d "$ROOT/.venv-tgnet" ] || python -m venv --system-site-packages "$ROOT/.venv-tgnet"
 . "$ROOT/.venv-tgnet/bin/activate"
 pip install open3d==0.17.0 trimesh scikit-learn fastapi uvicorn psutil
-export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.9}"
+export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)}"  # 按显卡自动取：3090 = 8.6，4090 = 8.9
 (cd "$TG/external_libs/pointops" && sed -i "s/'nvcc': \[[^]]*\]/'nvcc': ['-O2']/" setup.py && python setup.py install)
 # 权重：作者 Google Drive 文件夹里的 ckpts(new).zip，解压出 tgnet_fps.h5、tgnet_bdl.h5
 CK=$ROOT/models/tgnet
