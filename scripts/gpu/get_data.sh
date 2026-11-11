@@ -3,8 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 set -a; [ -f .env ] && . ./.env; set +a
-: "${DRIVE_FOLDER_ID:?在 .env 里设置 DRIVE_FOLDER_ID（Google Drive 共享文件夹链接里 folders/ 后面那一段）}"
-python scripts/download_datasets.py fetch --name drive --src "gdrive://${DRIVE_FOLDER_ID}" --no-extract
+if [ "$(ls data/drive/raw/Teeth3DS/data_part_*.zip 2>/dev/null | wc -l)" -ge 6 ] && [ -f data/drive/raw/Poseidon3D/poseidon3d.zip ]; then
+  echo "数据已在 data/drive/raw（如 get_data_osf.sh 下载的），跳过 Google Drive"
+else
+  : "${DRIVE_FOLDER_ID:?在 .env 里设置 DRIVE_FOLDER_ID（Google Drive 共享文件夹链接里 folders/ 后面那一段）；访问不了 Google 时改用 scripts/gpu/get_data_osf.sh}"
+  python scripts/download_datasets.py fetch --name drive --src "gdrive://${DRIVE_FOLDER_ID}" --no-extract
+fi
 Z=data/drive/raw/Teeth3DS
 SPLIT=$Z/Teeth3DS+
 cd ml

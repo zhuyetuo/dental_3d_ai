@@ -124,7 +124,9 @@ cd backend && pytest -q
 cd frontend && npm test
 ```
 
-GPU 服务器上训练分割、生成、颈缘线模型的一键脚本见 scripts/gpu/README.md。
+不用 Docker 直接启动（用仓库自带的模型，GPU 服务器上常用）：`bash scripts/serve.sh`。
+
+GPU 服务器上训练分割、生成、颈缘线模型的一键脚本，以及换服务器后怎么接着训练，见 scripts/gpu/README.md。
 
 TGNet 服务的接口测试（用假模型，不需要 GPU）：
 

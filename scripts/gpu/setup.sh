@@ -9,7 +9,8 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
 CAP=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 if [ "${CAP%%.*}" -ge 10 ]; then
   echo "警告：这张卡是 Blackwell 架构（compute capability $CAP，如 RTX 5090），需要 CUDA 12.8 版的 PyTorch 2.7 以上；"
-  echo "TGNet / CrossTooth 用的 PyTorch 2.1、TeethSplineSeg 用的 cu126 版都不支持它，那几个脚本大概率跑不起来。建议换 3090 / 4090。"
+  echo "TGNet / CrossTooth 用的 PyTorch 2.1、TeethSplineSeg 用的 cu126 版都不支持它，那几个外部模型的评估脚本（tgnet_eval / splineseg_eval / crosstooth_eval）大概率跑不起来。"
+  echo "自己的三个模型（train_deep / train_toothgen / train_margin）和 scripts/serve.sh 只需要普通的 PyTorch，这里会装 CUDA 12.8 版，可以正常用。"
 fi
 
 if ! command -v python >/dev/null || ! python -m pip --version >/dev/null 2>&1; then
@@ -18,7 +19,13 @@ if ! command -v python >/dev/null || ! python -m pip --version >/dev/null 2>&1; 
   $SUDO apt-get install -y python3-pip python3-venv python3-dev python-is-python3 build-essential git wget
 fi
 if ! python -c "import torch" 2>/dev/null; then
-  python -m pip install torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
+  if [ "${CAP%%.*}" -ge 10 ]; then
+    python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+  else
+    # 2.1.2 是 TGNet / CrossTooth 要的版本；Python 3.12 以上没有它的安装包，退而装新版（自己的模型不挑版本）
+    python -m pip install torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121 \
+      || python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+  fi
 fi
 python -c "import torch; assert torch.cuda.is_available(), '没有可用的 GPU'; print('PyTorch', torch.__version__, 'CUDA', torch.version.cuda, torch.cuda.get_device_name(0))"
 # 编译 TGNet / CrossTooth 的 CUDA 算子需要 nvcc

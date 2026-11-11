@@ -29,7 +29,7 @@ CrossTooth 没说用哪套划分训练，它的分数要打折看。
 结果在 `runs/` 下（`runs/*/summary.json` 是官方指标汇总），模型在 `models/segmentation/deep.pt`。
 跑完把 `runs/` 里的汇总发给我，或者提交到仓库（汇总文件很小，模型文件 .gitignore 已排除）。
 
-显卡：**RTX 4090 最合适**（TeethSplineSeg 作者的参考硬件，配置建议按它估算）；**3090 也可以**（24 GB 显存一样，速度约 4090 的 60–70%，脚本自动按显卡编译算子）；**5090 暂时不要选**（Blackwell 架构要 CUDA 12.8 + PyTorch 2.7 以上，TGNet、CrossTooth、TeethSplineSeg 依赖的旧版本都不支持）。
+显卡：**RTX 4090 最合适**（TeethSplineSeg 作者的参考硬件，配置建议按它估算）；**3090 也可以**（24 GB 显存一样，速度约 4090 的 60–70%，脚本自动按显卡编译算子）；**5090 只能跑自己的模型**（Blackwell 架构要 CUDA 12.8 + PyTorch 2.7 以上，`setup.sh` 会装；TGNet、CrossTooth、TeethSplineSeg 依赖的旧版本不支持它，要跑这三个外部模型的评估就不要选）。
 
 配置建议（以 RTX 4090 为例）：1 卡、16 核、64 GB 内存就够；系统盘 40 GB 放不下几个虚拟环境，**把仓库放在数据盘上**
 （数据 + 导出约 25 GB，三个虚拟环境约 20 GB，训练缓存和结果约 10 GB，数据盘 200 GB 足够）。只装驱动的 Ubuntu 22.04 镜像也可以，
@@ -38,6 +38,21 @@ CrossTooth 没说用哪套划分训练，它的分数要打折看。
 服务器访问不了 Google 时（国内机房常见）：Teeth3DS 和 Poseidon3D 可以直接从 OSF（`osf.io/xctdy`，`scripts/download_datasets.py teeth3ds` 能列出全部文件）
 和 Zenodo（`zenodo.org/records/15608906`）下载，按 `data/drive/raw/Teeth3DS/{data_part_*.zip, Teeth3DS+/<划分目录>}`、`data/drive/raw/Poseidon3D/poseidon3d.zip` 摆放，
 然后跑 `get_data.sh` 里下载之后的导出步骤。Zenodo 单连接很慢，分段并行下载（`curl -r`）快得多。
+
+### 换服务器
+
+代码和三个训练好的模型都在仓库里，换一台服务器（3090 / 4090 / 5090 都可以）后：
+
+```bash
+git clone https://github.com/zhuyetuo/dental_3d_ai.git && cd dental_3d_ai
+bash scripts/gpu/setup.sh
+```
+
+- **启动服务**（不需要数据集）：`bash scripts/serve.sh`，后端在 8000 端口，装了 Node 时前端在 5173 端口；有 Docker 的机器用 `docker compose up --build`；
+- **接着训练**：先下载数据（访问不了 Google 时 `bash scripts/gpu/get_data_osf.sh`，不需要密钥，约 10 GB，10–30 分钟；否则 `get_data.sh`），再跑 `train_deep.sh` / `train_toothgen.sh` / `train_margin.sh`，它们会从仓库自带的模型接着训练；
+- 训练出更好的模型后，`git add models/... && git commit && git push` 提交回仓库，下一台服务器就能接着用。预处理缓存（`data/deep_cache`、`data/gen_cache`）不进仓库，每台服务器重新生成（共约 30 分钟）。
+
+5090 上只有外部模型的评估脚本（TGNet / TeethSplineSeg / CrossTooth）跑不了，自己的模型不受影响。**5090 上没有实测过**，装的是 CUDA 12.8 版 PyTorch。
 
 **接着训练**：`train_deep.sh`、`train_toothgen.sh`、`train_margin.sh` 发现 `models/` 下已有对应的模型（仓库自带）时，从它接着训练（`--init`，学习率默认调小到 3e-4，用 `LR` 改），只有验证集上比原来好才覆盖原文件；`FRESH=1` 从头训练。
 
