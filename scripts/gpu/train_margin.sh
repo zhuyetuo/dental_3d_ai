@@ -22,6 +22,10 @@ python -c "import vtk" 2>/dev/null || python -m pip install -q vtk
 cd ml
 mkdir -p ../runs/margin
 python -m dental_ai.eval_margin --data-dir "../data/prep_margin/test Data" --workers 8 --out ../runs/margin/eval_geometric
-python -u -m dental_ai.margin.learned train --data-dir "../data/prep_margin/training Data" --out ../models/margin/margin.pt --epochs "${EPOCHS:-200}" | tee ../runs/margin/train.log
+M=../models/margin/margin.pt
+RESUME=()
+# 已有模型（仓库自带）时接着训练（学习率调小；只有验证集上更好才覆盖原文件）。FRESH=1 从头训练
+if [ "${FRESH:-0}" != 1 ] && [ -f "$M" ]; then RESUME=(--init "$M" --lr "${LR:-3e-4}"); echo "从 $M 接着训练"; fi
+python -u -m dental_ai.margin.learned train --data-dir "../data/prep_margin/training Data" --out "$M" --epochs "${EPOCHS:-200}" "${RESUME[@]}" | tee -a ../runs/margin/train.log
 python -m dental_ai.margin.learned eval --model ../models/margin/margin.pt --data-dir "../data/prep_margin/test Data" --out ../runs/margin/eval_test
 echo "结果：runs/margin/eval_test/summary.json（学习模型）、runs/margin/eval_geometric/margin_summary.json（几何方法）"

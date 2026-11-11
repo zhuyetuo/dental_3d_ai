@@ -342,6 +342,14 @@ def train(cache: Path, out: Path, epochs: int, batch_size: int, lr: float, worke
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * len(dl), pct_start=0.05)
     out.parent.mkdir(parents=True, exist_ok=True)
     best, t0 = float("inf"), time.time()
+
+    def score(val):
+        return val["chamfer_mm"] + (rim_weight * val["rim_mm"] if len(model.boundary) else 0.0)
+
+    if init:  # 接着训练：先量一下起点，之后只有比它好才覆盖 out（out 可以就是 init）
+        val = evaluate(model, dv, device)
+        best = score(val)
+        print(json.dumps({"epoch": 0, "val_chamfer_mm": round(val["chamfer_mm"], 4), "val_rim_mm": round(val["rim_mm"], 4), "note": "起点"}), flush=True)
     for epoch in range(1, epochs + 1):
         model.train()
         total, n = 0.0, 0
@@ -365,9 +373,8 @@ def train(cache: Path, out: Path, epochs: int, batch_size: int, lr: float, worke
         row = {"epoch": epoch, "train_loss": round(total / n, 4), "val_chamfer_mm": round(val["chamfer_mm"], 4),
                "val_rim_mm": round(val["rim_mm"], 4), "val_area_mm2": round(val["area_mm2"], 1), "minutes": round((time.time() - t0) / 60, 1)}
         print(json.dumps(row), flush=True)
-        score = val["chamfer_mm"] + (rim_weight * val["rim_mm"] if len(model.boundary) else 0.0)
-        if score < best:
-            best = score
+        if score(val) < best:
+            best = score(val)
             torch.save({"state": model.state_dict(), "epoch": epoch, "val": val, "template": template}, out)
     info = {"best_val_score": best, "epochs": epochs, "train_samples": len(tr)}
     print(json.dumps(info), flush=True)
@@ -567,7 +574,7 @@ def main() -> None:
     t.add_argument("--max-scans", type=int)
     t.add_argument("--edge-weight", type=float, default=0.2)
     t.add_argument("--template", choices=["sphere", "dome"], default="dome")
-    t.add_argument("--init", type=Path, help="从已有权重开始（如球面模板训练的模型）")
+    t.add_argument("--init", type=Path, help="从已有权重接着训练（可以和 --out 是同一个文件：只有验证集上更好才覆盖）；建议同时把 --lr 调小，如 3e-4")
     t.add_argument("--lap-weight", type=float, default=0.5, help="拉普拉斯平滑项（防止折叠）")
     t.add_argument("--rim-weight", type=float, default=1.0, help="模板边界环对齐真牙边界环（牙颈线）")
     e = sub.add_parser("eval")

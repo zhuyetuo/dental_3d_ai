@@ -149,7 +149,7 @@ def detect(model, mesh: trimesh.Trimesh, device: str, feats: np.ndarray | None =
 # ---------------------------------------------------------------- 训练 / 评估
 
 
-def train(data_dir: Path, out: Path, epochs: int, batch_size: int, lr: float, repeats: int) -> dict:
+def train(data_dir: Path, out: Path, epochs: int, batch_size: int, lr: float, repeats: int, init: Path | None = None) -> dict:
     import torch
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -167,9 +167,24 @@ def train(data_dir: Path, out: Path, epochs: int, batch_size: int, lr: float, re
     rng = np.random.default_rng(1)
     out.parent.mkdir(parents=True, exist_ok=True)
     best, t0 = float("inf"), time.time()
+
+    def validate() -> float:
+        errs = []
+        for mesh, feats, _, line in val:
+            try:
+                pts, _ = detect(model, mesh, device, feats)
+                errs.append(float(cKDTree(line).query(pts)[0].mean()))
+            except ValueError:
+                errs.append(5.0)
+        return float(np.mean(errs))
+
+    if init:  # 接着训练：先量一下起点，之后只有比它好才覆盖 out（out 可以就是 init）
+        model.load_state_dict(torch.load(init, map_location=device)["state"])
+        best = validate()
+        print(json.dumps({"epoch": 0, "val_line_mm": round(best, 4), "note": "起点"}), flush=True)
     for epoch in range(1, epochs + 1):
         model.train()
-        jobs = rng.permutation(np.repeat(np.arange(len(tr)), repeats))
+        jobs =rng.permutation(np.repeat(np.arange(len(tr)), repeats))
         total, nb = 0.0, 0
         for s in range(0, len(jobs) - batch_size + 1, batch_size):
             xs, ys = [], []
@@ -189,16 +204,9 @@ def train(data_dir: Path, out: Path, epochs: int, batch_size: int, lr: float, re
             sched.step()
             total, nb = total + loss.item(), nb + 1
         if epoch % 10 == 0 or epoch == epochs:
-            errs = []
-            for mesh, feats, _, line in val:
-                try:
-                    pts, _ = detect(model, mesh, device, feats)
-                    errs.append(float(cKDTree(line).query(pts)[0].mean()))
-                except ValueError:
-                    errs.append(5.0)
-            v = float(np.mean(errs))
+            v = validate()
             print(json.dumps({"epoch": epoch, "loss": round(total / nb, 4), "val_line_mm": round(v, 4), "minutes": round((time.time() - t0) / 60, 1)}), flush=True)
-            if v <= best:
+            if v < best:
                 best = v
                 torch.save({"state": model.state_dict(), "epoch": epoch, "val_line_mm": v}, out)
     info = {"best_val_line_mm": best, "epochs": epochs}
@@ -257,13 +265,14 @@ def main() -> None:
     t.add_argument("--batch-size", type=int, default=4)
     t.add_argument("--lr", type=float, default=1e-3)
     t.add_argument("--repeats", type=int, default=4, help="每轮每个预备体取几次随机子集")
+    t.add_argument("--init", type=Path, help="从已有权重接着训练（可以和 --out 是同一个文件：只有验证集上更好才覆盖）；建议同时把 --lr 调小，如 3e-4")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--data-dir", type=Path, required=True)
     e.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
     if args.cmd == "train":
-        train(args.data_dir, args.out, args.epochs, args.batch_size, args.lr, args.repeats)
+        train(args.data_dir, args.out, args.epochs, args.batch_size, args.lr, args.repeats, init=args.init)
     else:
         run_eval(args.model, args.data_dir, args.out)
 

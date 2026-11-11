@@ -134,7 +134,7 @@ def build_cache(scans, out_dir: Path, workers: int = 4) -> int:
 
 
 def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_size: int = 8, lr: float = 1e-3,
-          val_fraction: float = 0.05, device: str | None = None, max_scans: int | None = None) -> dict:
+          val_fraction: float = 0.05, device: str | None = None, max_scans: int | None = None, init: Path | None = None) -> dict:
     torch = _torch()
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     files = sorted(cache.glob("*.npz"))[:max_scans]
@@ -171,6 +171,22 @@ def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_
     loss_fn = torch.nn.CrossEntropyLoss(weight=weights.to(device))
     history, best = [], -1.0
     t0 = time.time()
+
+    def validate() -> float:
+        model.eval()
+        with torch.no_grad():
+            correct = n = 0
+            for i in range(0, len(val_files), batch_size):
+                xb, yb = batch(val_files[i:i + batch_size], augment=False)
+                pred = model(xb).argmax(dim=1)
+                correct += int((pred == yb).sum())
+                n += yb.numel()
+        return correct / max(n, 1)
+
+    if init:  # 接着训练：先量一下起点，之后只有比它好才覆盖 out（out 可以就是 init）
+        model.load_state_dict(torch.load(init, map_location=device, weights_only=False)["state_dict"])
+        best = validate()
+        print(json.dumps({"epoch": 0, "val_point_acc": round(best, 4), "note": "起点"}), flush=True)
     for epoch in range(epochs):
         model.train()
         perm = rng.permutation(len(train_files))
@@ -183,15 +199,7 @@ def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_
             opt.step()
             sched.step()
             total += float(loss)
-        model.eval()
-        with torch.no_grad():
-            correct = n = 0
-            for i in range(0, len(val_files), batch_size):
-                xb, yb = batch(val_files[i:i + batch_size], augment=False)
-                pred = model(xb).argmax(dim=1)
-                correct += int((pred == yb).sum())
-                n += yb.numel()
-        acc = correct / max(n, 1)
+        acc = validate()
         history.append({"epoch": epoch + 1, "loss": round(total / steps, 4), "val_point_acc": round(acc, 4), "minutes": round((time.time() - t0) / 60, 1)})
         print(json.dumps(history[-1]), flush=True)
         if acc > best:
@@ -274,6 +282,7 @@ def main() -> None:
     t.add_argument("--lr", type=float, default=1e-3)
     t.add_argument("--device")
     t.add_argument("--max-scans", type=int)
+    t.add_argument("--init", type=Path, help="从已有权重接着训练（可以和 --out 是同一个文件：只有验证集上更好才覆盖）；建议同时把 --lr 调小，如 3e-4")
     t.add_argument("--out", type=Path, required=True)
     q = sub.add_parser("predict")
     q.add_argument("--model", type=Path, required=True)
@@ -291,7 +300,7 @@ def main() -> None:
         print(f"预处理 {len(scans)} 个扫描", flush=True)
         print(f"完成 {build_cache(scans, args.out, args.workers)} 个", flush=True)
     elif args.cmd == "train":
-        info = train(args.cache, args.out, args.epochs, args.n_points, args.batch_size, args.lr, device=args.device, max_scans=args.max_scans)
+        info = train(args.cache, args.out, args.epochs, args.n_points, args.batch_size, args.lr, device=args.device, max_scans=args.max_scans, init=args.init)
         print(json.dumps(info, ensure_ascii=False))
     else:
         seg = DeepSegmenter(args.model, device=args.device)

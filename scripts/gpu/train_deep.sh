@@ -8,8 +8,12 @@ S=$Z/Teeth3DS+/Teeth3DS_train_test_split
 mkdir -p ../runs/deep
 python -m dental_ai.segmentation.deep cache --zips $Z --split $S/training_lower.txt $S/training_upper.txt \
   --extra-dir ../data/poseidon3d/train --workers "$(nproc)" --out ../data/deep_cache
-python -m dental_ai.segmentation.deep train --cache ../data/deep_cache --epochs "${EPOCHS:-60}" --n-points "${N_POINTS:-8000}" \
-  --batch-size "${BATCH:-8}" --out ../models/segmentation/deep.pt | tee ../runs/deep/train.log
+M=../models/segmentation/deep.pt
+RESUME=()
+# 已有模型（仓库自带）时接着训练（学习率调小；只有验证集上更好才覆盖原文件）。FRESH=1 从头训练
+if [ "${FRESH:-0}" != 1 ] && [ -f "$M" ]; then RESUME=(--init "$M" --lr "${LR:-3e-4}"); echo "从 $M 接着训练"; fi
+python -u -m dental_ai.segmentation.deep train --cache ../data/deep_cache --epochs "${EPOCHS:-60}" --n-points "${N_POINTS:-8000}" \
+  --batch-size "${BATCH:-8}" --out "$M" "${RESUME[@]}" | tee -a ../runs/deep/train.log
 for d in fair_test teeth3ds_test100 poseidon3d/test-complex; do
   name=$(basename $d)
   python -m dental_ai.segmentation.deep predict --model ../models/segmentation/deep.pt --data-dir ../data/$d --out ../runs/deep/pred_$name

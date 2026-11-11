@@ -39,6 +39,8 @@ CrossTooth 没说用哪套划分训练，它的分数要打折看。
 和 Zenodo（`zenodo.org/records/15608906`）下载，按 `data/drive/raw/Teeth3DS/{data_part_*.zip, Teeth3DS+/<划分目录>}`、`data/drive/raw/Poseidon3D/poseidon3d.zip` 摆放，
 然后跑 `get_data.sh` 里下载之后的导出步骤。Zenodo 单连接很慢，分段并行下载（`curl -r`）快得多。
 
+**接着训练**：`train_deep.sh`、`train_toothgen.sh`、`train_margin.sh` 发现 `models/` 下已有对应的模型（仓库自带）时，从它接着训练（`--init`，学习率默认调小到 3e-4，用 `LR` 改），只有验证集上比原来好才覆盖原文件；`FRESH=1` 从头训练。
+
 ### 已有结果（RTX 3090，2026-11-11）
 
 | 模型 | 数据 | 结果 |
