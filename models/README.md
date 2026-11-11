@@ -24,7 +24,8 @@ cd ml && python -m dental_ai.templates build --data-dir <obj 目录> --gt-dir <�
 | `models/generation/toothgen_open.pt` | `scripts/gpu/train_toothgen.sh` | `pipeline --gen-model` 或后端环境变量 `GEN_MODEL` |
 | `models/margin/margin.pt` | `scripts/gpu/train_margin.sh` | 还没接入流程，`python -m dental_ai.margin.learned eval` |
 
-都用 Teeth3DS（CC BY-NC-ND 4.0）等数据训练，只能用于研究，.gitignore 已排除。
+这三个文件随仓库提交（.gitignore 里单独放行），`docker compose up --build` 后后端直接使用前两个。
+分割和生成模型用 Teeth3DS（CC BY-NC-ND 4.0）训练，**只能用于非商业研究**，商用需要用自有授权数据重新训练；颈缘线模型的训练数据是 MIT 许可。
 
 ## TGNet
 

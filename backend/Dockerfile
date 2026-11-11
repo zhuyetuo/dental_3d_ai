@@ -6,6 +6,8 @@ WORKDIR /app
 
 COPY ml /src/ml
 COPY backend/requirements.txt /tmp/requirements.txt
+# CPU 版 PyTorch：深度分割模型（DEEP_MODEL）和学习式生成模型（GEN_MODEL）在 worker 里推理用
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install /src/ml -r /tmp/requirements.txt
 
 COPY backend/app /app/app

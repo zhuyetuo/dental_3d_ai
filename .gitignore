@@ -15,6 +15,11 @@ models/templates/index.json
 models/**/*.npz
 models/**/*.pt
 models/**/*.joblib
+# 例外：自己训练的三个模型随仓库提交，docker compose 启动后直接可用（仓库所有者的决定，2026-11-11）。
+# 分割和生成模型用 Teeth3DS（CC BY-NC-ND 4.0）训练，只能用于非商业研究，见 models/README.md
+!models/segmentation/deep.pt
+!models/generation/toothgen_open.pt
+!models/margin/margin.pt
 # 本地示例病例（Poseidon3D 等不能公开分发的数据），scripts/make_demos.py --local 生成
 demo/local/
 # GPU 服务器上的运行结果和第三方代码

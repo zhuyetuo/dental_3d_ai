@@ -1,4 +1,4 @@
-# 启动前端 + 后端（无 GPU 时，用 CPU 分割基线 models/segmentation/baseline.joblib，或上传标签文件跳过分割）：
+# 启动前端 + 后端（没有 TGNet 服务时用仓库自带的深度分割模型 models/segmentation/deep.pt，在 CPU 上跑；也可以上传标签文件跳过分割）：
 #   docker compose up --build
 # 同时启动 TGNet 分割服务（需要 NVIDIA GPU 和 nvidia-container-toolkit，权重放在 models/tgnet/）：
 #   SEGMENTER_URL=http://tgnet:8001 docker compose --profile gpu up --build
@@ -25,12 +25,15 @@ x-backend-common: &backend-common
     BASELINE_MODEL: /models/segmentation/baseline.joblib
     # 自己训练的深度分割模型（python -m dental_ai.segmentation.deep train），存在时优先于 CPU 基线
     DEEP_MODEL: /models/segmentation/deep.pt
+    # 学习式缺失牙生成模型（python -m dental_ai.generation.learned train），存在时优先于对侧镜像 / 模板；不想用就去掉这一行
+    GEN_MODEL: /models/generation/toothgen_open.pt
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:
     - case-data:/data
     - ./models/templates:/models/templates:ro
     - ./models/segmentation:/models/segmentation:ro
+    - ./models/generation:/models/generation:ro
     - ./demo:/demo:ro
 
 services:
