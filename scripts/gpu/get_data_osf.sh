@@ -12,9 +12,12 @@ mkdir -p $T/Teeth3DS+/Teeth3DS_train_test_split $T/Teeth3DS+/3DTeethSeg22_challe
 get() {  # get <url> <dest> <size>：断点续传，大小对上才算完成
   local url=$1 dest=$2 size=$3
   if [ -f "$dest" ] && [ "$(stat -c %s "$dest")" = "$size" ]; then echo "已存在 $dest"; return; fi
+  # 已有的文件不是本脚本下到一半的（没有 .part 标记）而大小又不对：来源不同，重新下
+  if [ -f "$dest" ] && [ ! -f "$dest.part" ]; then echo "大小不符，重新下载 $dest"; rm -f "$dest"; fi
+  touch "$dest.part"
   for i in 1 2 3 4 5 6 7 8; do
     curl -sS -L -C - --retry 5 --retry-delay 5 -o "$dest" "$url" || true
-    [ -f "$dest" ] && [ "$(stat -c %s "$dest")" = "$size" ] && { echo "完成 $dest"; return; }
+    [ -f "$dest" ] && [ "$(stat -c %s "$dest")" = "$size" ] && { rm -f "$dest.part"; echo "完成 $dest"; return; }
     [ -f "$dest" ] && [ "$(stat -c %s "$dest")" -gt "$size" ] && rm -f "$dest"
     echo "重试 $dest ($i)"; sleep 5
   done
@@ -62,4 +65,5 @@ get_segmented https://zenodo.org/api/records/15608906/files/poseidon3d.zip/conte
 for p in "${pids[@]}"; do wait $p; done
 for z in $T/data_part_*.zip $P/poseidon3d.zip; do python -c "import zipfile, sys; zipfile.ZipFile(sys.argv[1]).namelist()" "$z"; done
 echo "下载完成："; du -sh data/drive/raw
-bash scripts/gpu/get_data.sh
+# 导出各个测试集（get_data.sh 发现数据已在就跳过 Drive）。SKIP_EXPORT=1 只下载不导出
+[ "${SKIP_EXPORT:-0}" = 1 ] || bash scripts/gpu/get_data.sh

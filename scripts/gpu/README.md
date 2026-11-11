@@ -49,8 +49,18 @@ bash scripts/gpu/setup.sh
 ```
 
 - **启动服务**（不需要数据集）：`bash scripts/serve.sh`，后端在 8000 端口，装了 Node 时前端在 5173 端口；有 Docker 的机器用 `docker compose up --build`；
-- **接着训练**：先下载数据（访问不了 Google 时 `bash scripts/gpu/get_data_osf.sh`，不需要密钥，约 10 GB，10–30 分钟；否则 `get_data.sh`），再跑 `train_deep.sh` / `train_toothgen.sh` / `train_margin.sh`，它们会从仓库自带的模型接着训练；
+- **接着训练**：先下载数据（见下面“获取数据的两种方式”，约 10 GB，10–30 分钟），再跑 `train_deep.sh` / `train_toothgen.sh` / `train_margin.sh`，它们会从仓库自带的模型接着训练；
 - 训练出更好的模型后，`git add models/... && git commit && git push` 提交回仓库，下一台服务器就能接着用。预处理缓存（`data/deep_cache`、`data/gen_cache`）不进仓库，每台服务器重新生成（共约 30 分钟）。
+
+**获取数据的两种方式**（都不需要 API 密钥，结果一样，放在 `data/drive/raw/`）：
+
+| 方式 | 命令 | 适用 |
+|---|---|---|
+| Google Drive 共享文件夹 | `bash scripts/gpu/get_data_drive.sh <Teeth3DS 文件夹链接> <Poseidon3D 文件夹链接>` | 能访问 Google 的机房（境外 / 香港）。链接也可以写在 `.env` 的 `TEETH3DS_FOLDER`、`POSEIDON3D_FOLDER` 里 |
+| OSF + Zenodo 官方源 | `bash scripts/gpu/get_data_osf.sh` | 任何机房，国内实测可用 |
+
+`get_data_drive.sh` 会自动衔接两种方式：Drive 连不上、或有文件没下全（Drive 对大文件有下载次数限制）时，缺的部分从官方源补齐，所以不确定机房网络时直接用它。原来的 `get_data.sh`（Drive API + `GOOGLE_API_KEY`）仍然可用。
+Drive 这条路（gdown）**还没有在能访问 Google 的服务器上实测过**。
 
 5090 上只有外部模型的评估脚本（TGNet / TeethSplineSeg / CrossTooth）跑不了，自己的模型不受影响。**5090 上没有实测过**，装的是 CUDA 12.8 版 PyTorch。
 
