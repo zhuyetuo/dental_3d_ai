@@ -8,6 +8,7 @@ import os
 import traceback
 from datetime import datetime, timezone
 
+from dental_ai.generation.learned import make_generator
 from dental_ai.generation.mirror_template import MirrorTemplateGenerator
 from dental_ai.io import load_mesh
 from dental_ai.orientation import OrientedSegmenter
@@ -74,7 +75,8 @@ def process_case(case_id: str) -> None:
             build_segmenter(case),
             storage.case_path(case_id, "result"),
             # 自定义模板库（python -m dental_ai.templates build 生成）；不设置时用内置参数化模板
-            generator=MirrorTemplateGenerator(template_dir=os.environ.get("TEMPLATE_DIR"), preferences=prefs),
+            # 设置了 GEN_MODEL（学习式生成模型）时用它，几何方法兜底
+            generator=make_generator(template_dir=os.environ.get("TEMPLATE_DIR"), preferences=prefs),
             antagonist=load_mesh(storage.case_path(case_id, antagonist)) if antagonist else None,
             preferences=prefs,
             fix_numbering=os.environ.get("NUMBERING_FIX", "1") != "0",

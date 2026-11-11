@@ -16,6 +16,16 @@ cd ml && python -m dental_ai.templates build --data-dir <obj 目录> --gt-dir <�
 
 许可：用 Teeth3DS（CC BY-NC-ND 4.0）构建的模板只能用于研究；商用请用自有授权数据构建。
 
+## 自己训练的模型
+
+| 文件 | 训练脚本 | 用法 |
+|---|---|---|
+| `models/segmentation/deep.pt` | `scripts/gpu/train_deep.sh` | 后端环境变量 `DEEP_MODEL` |
+| `models/generation/toothgen_open.pt` | `scripts/gpu/train_toothgen.sh` | `pipeline --gen-model` 或后端环境变量 `GEN_MODEL` |
+| `models/margin/margin.pt` | `scripts/gpu/train_margin.sh` | 还没接入流程，`python -m dental_ai.margin.learned eval` |
+
+都用 Teeth3DS（CC BY-NC-ND 4.0）等数据训练，只能用于研究，.gitignore 已排除。
+
 ## TGNet
 
 1. 从 TGNet 作者的 Google Drive 下载 `ckpts(new).zip`：

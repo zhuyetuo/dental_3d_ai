@@ -125,6 +125,10 @@ def evaluate_scan(args) -> list[dict]:
 
                 bl = os.environ.get("EVAL_TEMPLATE_BL") == "1"  # 实验开关：模板颊舌向同比例缩放
                 generator = MirrorTemplateGenerator(template_dir=templates, scale_template_buccolingual=bl) if (templates or bl) else None
+                if os.environ.get("EVAL_GEN_MODEL"):  # 实验开关：学习式生成模型（GEN_DEVICE=cpu 时每个进程单线程）
+                    from .generation.learned import LearnedGenerator
+
+                    generator = LearnedGenerator(os.environ["EVAL_GEN_MODEL"], fallback=generator or MirrorTemplateGenerator())
                 report = run(mesh, jaw, _Fixed(labels), out, generator=generator)
                 done = {g["fdi"]: g for g in report["generated"]}
                 for fdi in teeth:

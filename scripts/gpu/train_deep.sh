@@ -1,6 +1,7 @@
 #!/bin/bash
 # 训练深度分割模型并评估。可用环境变量调整：EPOCHS（默认 60）、N_POINTS（默认 8000）、BATCH（默认 8）。
 set -euo pipefail
+ulimit -n "$(ulimit -Hn)"  # 训练时一次打开全部缓存文件（1350 个），超过默认上限 1024
 cd "$(dirname "$0")/../../ml"
 Z=../data/drive/raw/Teeth3DS
 S=$Z/Teeth3DS+/Teeth3DS_train_test_split

@@ -17,6 +17,7 @@ from .detection.missing import detect_missing
 from .fdi import Jaw, arch_order
 from .generation.base import GenerationContext, ToothGenerator
 from .generation.contacts import adjust_contacts
+from .generation.learned import make_generator
 from .generation.mirror_template import MirrorTemplateGenerator
 from .generation.prep_crown import generate_prep_crown
 from .geometry import estimate_arch_frame, gum_mesh, tooth_mesh
@@ -172,6 +173,7 @@ def main() -> None:
     p.add_argument("--no-fix-numbering", action="store_true", help="不做编号纠错")
     p.add_argument("--prepared", type=int, nargs="*", default=[], help="预备体牙号，为它们检测颈缘线，如 --prepared 46 36")
     p.add_argument("--antagonist", help="对颌网格，用于咬合约束")
+    p.add_argument("--gen-model", help="学习式生成模型（generation/learned.py 训练的 toothgen_open.pt）；不填用对侧镜像 / 模板，也可用环境变量 GEN_MODEL")
     p.add_argument("--templates", help="标准牙模板库目录（<jaw>_<position>.stl，见 models/README.md）")
     p.add_argument("--preferences", help="设计参数 JSON 文件，字段见 dental_ai.preferences")
     p.add_argument("--out", default="out")
@@ -191,7 +193,7 @@ def main() -> None:
         args.jaw,
         segmenter,
         args.out,
-        generator=MirrorTemplateGenerator(template_dir=args.templates, preferences=prefs),
+        generator=make_generator(args.gen_model, template_dir=args.templates, preferences=prefs),
         antagonist=load_mesh(args.antagonist) if args.antagonist else None,
         preferences=prefs,
         fix_numbering=not args.no_fix_numbering,
