@@ -1,8 +1,8 @@
 #!/bin/bash
 # 从 Google Drive 共享文件夹下载数据集并导出，不需要 API 密钥（文件夹要设成“知道链接的任何人可查看”）。
-# 用法（链接或文件夹 ID 都可以）：
-#   bash scripts/gpu/get_data_drive.sh <Teeth3DS 文件夹链接> <Poseidon3D 文件夹链接>
-# 也可以写在仓库根目录的 .env 里（TEETH3DS_FOLDER、POSEIDON3D_FOLDER），之后直接 bash scripts/gpu/get_data_drive.sh。
+# 用法：bash scripts/gpu/get_data_drive.sh            （用下面默认的两个文件夹）
+#   或：bash scripts/gpu/get_data_drive.sh <Teeth3DS 文件夹链接或 ID> <Poseidon3D 文件夹链接或 ID>
+# 也可以在仓库根目录的 .env 里用 TEETH3DS_FOLDER、POSEIDON3D_FOLDER 覆盖默认值。
 #
 # 两种获取方式自动衔接：先走 Drive（gdown）；Drive 连不上、没给链接、或有文件没下全时，
 # 剩下的由 get_data_osf.sh 从 OSF / Zenodo 官方源补齐（已下好的文件按大小核对后跳过），最后导出。
@@ -10,8 +10,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 set -a; [ -f .env ] && . ./.env; set +a
-TEETH="${1:-${TEETH3DS_FOLDER:-}}"
-POSEIDON="${2:-${POSEIDON3D_FOLDER:-}}"
+# 默认是项目自己的两个共享文件夹（仓库所有者 2026-11-12 同意写进仓库）；参数或 .env 可以覆盖
+TEETH="${1:-${TEETH3DS_FOLDER:-https://drive.google.com/drive/folders/1L0MdG2BtjFbomaBOg46pKPiy8yfR6D8F}}"
+POSEIDON="${2:-${POSEIDON3D_FOLDER:-https://drive.google.com/drive/folders/184zH5SKODs6CHxYTacAh7s4S9QZeUVR6}}"
 T=data/drive/raw/Teeth3DS
 P=data/drive/raw/Poseidon3D
 mkdir -p $T $P

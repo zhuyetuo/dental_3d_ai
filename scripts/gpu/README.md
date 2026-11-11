@@ -56,7 +56,7 @@ bash scripts/gpu/setup.sh
 
 | 方式 | 命令 | 适用 |
 |---|---|---|
-| Google Drive 共享文件夹 | `bash scripts/gpu/get_data_drive.sh <Teeth3DS 文件夹链接> <Poseidon3D 文件夹链接>` | 能访问 Google 的机房（境外 / 香港）。链接也可以写在 `.env` 的 `TEETH3DS_FOLDER`、`POSEIDON3D_FOLDER` 里 |
+| Google Drive 共享文件夹 | `bash scripts/gpu/get_data_drive.sh` | 能访问 Google 的机房（境外 / 香港）。默认用项目自己的两个共享文件夹（写在脚本里）；换别的文件夹时把链接作为两个参数，或写在 `.env` 的 `TEETH3DS_FOLDER`、`POSEIDON3D_FOLDER` 里 |
 | OSF + Zenodo 官方源 | `bash scripts/gpu/get_data_osf.sh` | 任何机房，国内实测可用 |
 
 `get_data_drive.sh` 会自动衔接两种方式：Drive 连不上、或有文件没下全（Drive 对大文件有下载次数限制）时，缺的部分从官方源补齐，所以不确定机房网络时直接用它。原来的 `get_data.sh`（Drive API + `GOOGLE_API_KEY`）仍然可用。
