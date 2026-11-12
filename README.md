@@ -1,10 +1,27 @@
 # dental_3d_ai
 **口腔 3D 扫描模型（上下颌 STL）输入 → 牙齿实例分割 → 识别缺牙位置 → 自动生成缺失牙齿 3D 模型**
 
+## 效果一览
+
+仓库自带三个训练好的模型，详细的图文说明见 **[docs/results.md](docs/results.md)**。
+
+| 模型 | 结论（都在模型没见过的测试数据上） |
+|---|---|
+| 牙齿分割 | 常规口扫综合分 96.6%；缺牙的口扫上不再把缺牙区认成牙，缺牙检出 86–90% |
+| 缺失牙生成 | 与真牙的距离 0.32–0.47 mm，比原来的几何方法（0.47–0.88 mm）小 1/3 到 1/2；表面细节偏平滑 |
+| 预备体颈缘线 | 平均误差 0.085 mm；只在单独的切牙代型上验证过，还没接入流程 |
+
+![指标总览](docs/images/metrics.png)
+
+缺牙 → 生成的牙（蓝色）→ 真牙。每行一个病例，前三行是误差中位数的病例，第四行是较差的病例：
+
+![生成效果](docs/images/generation.png)
+
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
+| [docs/results.md](docs/results.md) | **模型效果一览**：分割、缺失牙生成、颈缘线的效果图、指标和已知问题 |
 | [docs/system-architecture.md](docs/system-architecture.md) | 系统架构：前端、后端、算法服务、3D 渲染与交互、部署 |
 | [docs/algorithm-architecture.md](docs/algorithm-architecture.md) | 算法架构：模型分工、数据收集标注训练全链路 |
 | [docs/architecture.md](docs/architecture.md) | 各任务的技术调研、论文和开源方案对比 |
