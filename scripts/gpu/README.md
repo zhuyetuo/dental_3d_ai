@@ -59,6 +59,8 @@ bash scripts/gpu/setup.sh
 | Google Drive 共享文件夹 | `bash scripts/gpu/get_data_drive.sh` | 能访问 Google 的机房（境外 / 香港）。默认用项目自己的两个共享文件夹（写在脚本里）；换别的文件夹时把链接作为两个参数，或写在 `.env` 的 `TEETH3DS_FOLDER`、`POSEIDON3D_FOLDER` 里 |
 | OSF + Zenodo 官方源 | `bash scripts/gpu/get_data_osf.sh` | 任何机房，国内实测可用 |
 
+**FDI 16 数据集（可选，现有三个模型都不用它）**：`bash scripts/gpu/get_data_fdi16.sh` 从 Drive 下载 3Shape / DTU 的 FDI 16 数据集到 `data/fdi16/{train,val,test}`（6.7 GB，链接写在脚本里，可用参数或 `.env` 的 `FDI16_FILE` 覆盖）。内容是 7762 颗上颌右侧第一磨牙（16）的单颗牙冠网格（4844 / 1465 / 1453，单位 mm，已对齐，带点云、曲率和到边界的距离），CC BY-NC-SA 仅限非商业。只有单颗牙、没有邻牙和牙龈，所以不能训练分割模型或现在的生成模型；用途是给 16 / 26 做牙冠形状先验或细节模板库（生成的牙表面偏平滑的问题）。这个数据集只有 Drive 一个来源（官方 DTU 源在国内机房 403）：访问不了 Google 的机器上脚本会提示先在别的电脑下载再传过来。2026-11-12 测试情况：国内机房上的提示分支和解压步骤（用同结构的小样本包）跑通；Drive 直接下载的分支没有在服务器上跑过（同一条直链在本地电脑上用 curl 下载成功）。
+
 `get_data_drive.sh` 会自动衔接两种方式：Drive 连不上、或有文件没下全（Drive 对大文件有下载次数限制）时，缺的部分从官方源补齐，所以不确定机房网络时直接用它。原来的 `get_data.sh`（Drive API + `GOOGLE_API_KEY`）仍然可用。
 Drive 这条路（gdown）**还没有在能访问 Google 的服务器上实测过**。
 
