@@ -52,6 +52,28 @@ def test_model_forward_shapes():
     assert model.laplacian(pred).shape[1] == int(model.interior.sum())
 
 
+def test_pick_missing_keeps_enough_teeth_and_skips_third_molars():
+    from dental_ai.eval_missing_seg import pick_missing
+
+    labels = np.repeat([0, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47], 10)
+    for seed in range(50):
+        teeth = pick_missing(labels, np.random.default_rng(seed))
+        assert 1 <= len(teeth) <= 3 and len(set(teeth)) == len(teeth)
+        assert all(t % 10 != 8 and t in labels for t in teeth)
+    assert len(pick_missing(labels, np.random.default_rng(0), n=2)) == 2
+    assert pick_missing(np.repeat([0, 31, 32, 33, 41, 42, 43], 10), np.random.default_rng(0)) == ()  # 牙太少就不再去掉
+
+
+def test_attention_segmentation_model_forward():
+    torch = pytest.importorskip("torch")
+    from dental_ai.segmentation.deep import build_model
+
+    model = build_model(arch="dgcnn_attn").eval()
+    with torch.no_grad():
+        out = model(torch.randn(1, 15, 700))
+    assert out.shape == (1, 17, 700)
+
+
 def test_zero_contour_on_sphere_is_the_equator():
     mesh = trimesh.creation.icosphere(subdivisions=3, radius=5.0)
     loop = zero_contour(mesh, mesh.vertices[:, 2] - 1.0, smooth_iters=0)

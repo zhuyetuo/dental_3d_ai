@@ -190,6 +190,7 @@ cd ml && python -m dental_ai.segmentation.baseline train --zips ../data/drive/ra
 - 真实口扫：已在 Teeth3DS 的 1 个示例病例上跑通完整流程，修复了 11 个只在真实数据上出现的问题（孤立顶点、扫描小洞、牙颈线夹点、封底非流形、两颗牙连成一块等），见 docs/real-data-test.md。完整数据集在 OSF，本开发环境访问不了，待在能访问的机器上下载后重跑；
 - 带标签的数据请用 OBJ/PLY。STL 没有共享顶点，读入时会合并顶点，顶点顺序与标签文件对不上；
 - 生成：外形供体优先用对侧同名牙镜像，对侧也缺（或是预备体）时用标准牙模板库；支持两侧都有邻牙的缺隙、牙弓末端（游离端，如最后一颗磨牙）和连续多颗缺牙。放置位置：沿牙弓方向按缺隙和各牙标准宽度分配，颊舌方向用对侧镜像位置或局部牙弓曲线；游离端优先用对侧同名牙的镜像位置，对侧也没有时沿牙弓局部外推。真实口扫上（模拟缺牙后与真牙比较）：对侧镜像的表面偏差 0.3–0.65 mm，内置模板约 1 mm；
+- 深度分割模型（`segmentation/deep.py`，仓库自带 `models/segmentation/deep.pt`，没有 TGNet 服务时后端默认用它）：DGCNN + 全局自注意力，训练数据里加了模拟缺牙，所以缺牙的口扫上不会再把缺牙区认成牙；公平测试集综合分 96.6%，缺牙检出 86–90%（对比见 scripts/gpu/README.md）。已知问题：缺牙后邻牙编号偶尔错位；
 - 学习式生成（`generation/learned.py`，可选）：从完整牙弓里挖掉一颗牙，网络看其余牙齿的点云和牙位，把开口的穹顶模板变形成这颗牙冠（边界环对齐牙颈线）。`python -m dental_ai.pipeline ... --gen-model models/generation/toothgen_open.pt` 或后端环境变量 `GEN_MODEL` 启用，不设置时仍是对侧镜像 / 模板；第三磨牙、现存牙太少时自动退回几何方法。公平测试集上四种缺牙场景的 Chamfer 中位数都低于几何方法（见 scripts/gpu/README.md）。限制：没用对颌信息（有对颌时只做整体下沉）；用 Teeth3DS 训练，权重只能用于研究；
 - 学习式颈缘线（`margin/learned.py`，**没有接入流程**）：点云网络预测每个顶点到颈缘线的有符号距离，取零等值线，不需要初始线。只在单独的切牙代型上训练和测试过（没有牙龈和邻牙），整颌口扫上没有验证；
 - 标准牙模板库：默认用内置的参数化模板（按教科书平均尺寸程序生成的**简化形态**，只是占位）。有标注数据后用 `python -m dental_ai.templates build --data-dir <obj> --gt-dir <标注> --out models/templates` 构建真实模板，后端通过 `TEMPLATE_DIR` 读取（docker-compose 已挂载 `models/templates`）。注意 Teeth3DS 是 CC BY-NC-ND 4.0，用它构建的模板不能直接商用；

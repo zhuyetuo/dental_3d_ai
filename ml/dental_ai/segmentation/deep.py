@@ -38,7 +38,11 @@ def _torch():
     return torch
 
 
-def build_model(in_dim: int = len(FEATURES), k: int = 16, n_classes: int = N_CLASSES):
+def build_model(in_dim: int = len(FEATURES), k: int = 16, n_classes: int = N_CLASSES, arch: str = "dgcnn"):
+    if arch == "dgcnn_attn":  # DGCNN + 全局自注意力，见 deep_attn.py
+        from .deep_attn import build
+
+        return build(in_dim, n_classes)
     torch = _torch()
     nn = torch.nn
 
@@ -93,8 +97,8 @@ def build_model(in_dim: int = len(FEATURES), k: int = 16, n_classes: int = N_CLA
 
 
 def _cache_one(args):
-    scan, out_dir, seed = args
-    dest = Path(out_dir) / f"{scan.name}.npz"
+    scan, out_dir, seed, variant = args  # variant > 0：模拟缺牙的第几个变体，文件名 <扫描>__m<variant>.npz
+    dest = Path(out_dir) / (f"{scan.name}__m{variant}.npz" if variant else f"{scan.name}.npz")
     if dest.exists():
         return scan.name
     try:
@@ -104,6 +108,15 @@ def _cache_one(args):
             from ..io import load_labels, load_mesh
 
             mesh, labels = load_mesh(scan.mesh_path), load_labels(scan.gt_path)[0]
+        if variant:
+            # 分割模型没见过缺牙的口扫时，会把缺牙区也认成牙；这里随机去掉 1–3 颗牙（压平到牙龈高度）
+            from ..eval_missing_seg import pick_missing
+            from ..synthetic import simulate_missing
+
+            teeth = pick_missing(labels, np.random.default_rng(seed))
+            if not teeth:
+                return None
+            mesh, labels = simulate_missing(mesh, labels, scan.jaw, teeth)
         x = features(mesh, scan.jaw)
         y = fdi_to_class(labels, scan.jaw)
         rng = np.random.default_rng(seed)
@@ -116,13 +129,17 @@ def _cache_one(args):
         return None
 
 
-def build_cache(scans, out_dir: Path, workers: int = 4) -> int:
+def build_cache(scans, out_dir: Path, workers: int = 4, simulate_missing: int = 0) -> int:
+    """simulate_missing：每个扫描另外生成几个模拟缺牙的变体。"""
     from concurrent.futures import ProcessPoolExecutor
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    jobs = [(s, out_dir, i) for i, s in enumerate(scans)]
+    jobs = [(s, out_dir, i, 0) for i, s in enumerate(scans)]
+    jobs += [(s, out_dir, 1000003 * v + i, v) for v in range(1, simulate_missing + 1) for i, s in enumerate(scans)]
     with ProcessPoolExecutor(max_workers=workers) as pool:
         done = [n for n in pool.map(_cache_one, jobs, chunksize=2) if n]
+    if (out_dir / "stats.json").exists():  # 追加数据时沿用原来的标准化参数
+        return len(done)
     # 特征标准化参数（训练和推理共用）
     sample = np.concatenate([np.load(p)["x"][:2000].astype(np.float32) for p in sorted(out_dir.glob("*.npz"))[:300]])
     stats = {"mean": sample.mean(axis=0).tolist(), "std": (sample.std(axis=0) + 1e-6).tolist(), "features": FEATURES}
@@ -134,16 +151,23 @@ def build_cache(scans, out_dir: Path, workers: int = 4) -> int:
 
 
 def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_size: int = 8, lr: float = 1e-3,
-          val_fraction: float = 0.05, device: str | None = None, max_scans: int | None = None, init: Path | None = None) -> dict:
+          val_fraction: float = 0.05, device: str | None = None, max_scans: int | None = None, init: Path | None = None,
+          arch: str | None = None) -> dict:
     torch = _torch()
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     files = sorted(cache.glob("*.npz"))[:max_scans]
     stats = json.loads((cache / "stats.json").read_text())
+    ckpt = torch.load(init, map_location="cpu", weights_only=False) if init else None
+    if ckpt:  # 接着训练：标准化参数和网络结构跟着原模型
+        stats, arch = ckpt["stats"], arch or ckpt.get("arch", "dgcnn")
+    arch = arch or "dgcnn"
     mean, std = np.array(stats["mean"], np.float32), np.array(stats["std"], np.float32)
     rng = np.random.default_rng(0)
-    order = rng.permutation(len(files))
-    n_val = max(1, int(len(files) * val_fraction))
-    val_files, train_files = [files[i] for i in order[:n_val]], [files[i] for i in order[n_val:]]
+    # 按扫描划分验证集：同一个扫描的模拟缺牙变体（<扫描>__m1 …）和原扫描在同一边
+    groups = sorted({f.stem.split("__m")[0] for f in files})
+    val_groups = {groups[i] for i in rng.permutation(len(groups))[: max(1, int(len(groups) * val_fraction))]}
+    val_files = [f for f in files if f.stem.split("__m")[0] in val_groups]
+    train_files = [f for f in files if f.stem.split("__m")[0] not in val_groups]
     data = {f: np.load(f) for f in files}  # 缓存整体约 1 GB（1350 个扫描），直接放内存
     data = {f: (d["x"].astype(np.float32), d["y"].astype(np.int64)) for f, d in data.items()}
 
@@ -164,7 +188,7 @@ def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_
             ys.append(y[idx])
         return torch.tensor(np.stack(xs), device=device), torch.tensor(np.stack(ys), device=device)
 
-    model = build_model().to(device)
+    model = build_model(arch=arch).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     steps = max(1, len(train_files) // batch_size)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * steps)
@@ -184,7 +208,7 @@ def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_
         return correct / max(n, 1)
 
     if init:  # 接着训练：先量一下起点，之后只有比它好才覆盖 out（out 可以就是 init）
-        model.load_state_dict(torch.load(init, map_location=device, weights_only=False)["state_dict"])
+        model.load_state_dict(ckpt["state_dict"])
         best = validate()
         print(json.dumps({"epoch": 0, "val_point_acc": round(best, 4), "note": "起点"}), flush=True)
     for epoch in range(epochs):
@@ -205,8 +229,8 @@ def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_
         if acc > best:
             best = acc
             out.parent.mkdir(parents=True, exist_ok=True)
-            torch.save({"state_dict": model.state_dict(), "stats": stats, "n_points": n_points, "history": history}, out)
-    return {"best_val_point_acc": best, "epochs": epochs, "train_scans": len(train_files), "device": device}
+            torch.save({"state_dict": model.state_dict(), "stats": stats, "n_points": n_points, "history": history, "arch": arch}, out)
+    return {"best_val_point_acc": best, "epochs": epochs, "train_scans": len(train_files), "val_scans": len(val_files), "arch": arch, "device": device}
 
 
 # ---------------------------------------------------------------- 推理
@@ -221,7 +245,7 @@ class DeepSegmenter(Segmenter):
         self.torch = torch
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
-        self.model = build_model().to(self.device)
+        self.model = build_model(arch=ckpt.get("arch", "dgcnn")).to(self.device)
         self.model.load_state_dict(ckpt["state_dict"])
         self.model.eval()
         self.mean = np.array(ckpt["stats"]["mean"], np.float32)
@@ -273,6 +297,7 @@ def main() -> None:
     c.add_argument("--extra-dir", type=Path, nargs="*", default=[])
     c.add_argument("--limit", type=int)
     c.add_argument("--workers", type=int, default=4)
+    c.add_argument("--simulate-missing", type=int, default=0, help="每个扫描另外生成几个模拟缺牙的变体（随机去掉 1–3 颗牙）")
     c.add_argument("--out", type=Path, required=True)
     t = sub.add_parser("train")
     t.add_argument("--cache", type=Path, required=True)
@@ -282,6 +307,7 @@ def main() -> None:
     t.add_argument("--lr", type=float, default=1e-3)
     t.add_argument("--device")
     t.add_argument("--max-scans", type=int)
+    t.add_argument("--arch", choices=["dgcnn", "dgcnn_attn"], help="网络结构（默认 dgcnn；接着训练时跟着原模型）")
     t.add_argument("--init", type=Path, help="从已有权重接着训练（可以和 --out 是同一个文件：只有验证集上更好才覆盖）；建议同时把 --lr 调小，如 3e-4")
     t.add_argument("--out", type=Path, required=True)
     q = sub.add_parser("predict")
@@ -298,9 +324,9 @@ def main() -> None:
             scans += find_scans(d, d)
         scans = scans[: args.limit]
         print(f"预处理 {len(scans)} 个扫描", flush=True)
-        print(f"完成 {build_cache(scans, args.out, args.workers)} 个", flush=True)
+        print(f"完成 {build_cache(scans, args.out, args.workers, args.simulate_missing)} 个", flush=True)
     elif args.cmd == "train":
-        info = train(args.cache, args.out, args.epochs, args.n_points, args.batch_size, args.lr, device=args.device, max_scans=args.max_scans, init=args.init)
+        info = train(args.cache, args.out, args.epochs, args.n_points, args.batch_size, args.lr, device=args.device, max_scans=args.max_scans, init=args.init, arch=args.arch)
         print(json.dumps(info, ensure_ascii=False))
     else:
         seg = DeepSegmenter(args.model, device=args.device)
