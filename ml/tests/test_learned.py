@@ -119,6 +119,22 @@ def test_detail_library_fits_a_real_crown_onto_the_prediction(tmp_path):
     assert DetailLibrary(tmp_path, max_fit_mm=1e-6).refine(pred, 5) is None  # 贴不上就保留原来的牙冠
 
 
+def test_real_missing_report_parser():
+    from dental_ai.eval_real_missing import parse_report
+
+    miss, present, _ = parse_report("There is maxillary constriction in the absence of crossbite. The molar class cannot be assessed due to the absence of tooth 46.")
+    assert miss == {46} and not present  # “absence of crossbite” 不是缺牙
+    miss, _, _ = parse_report("Sagittally it cannot be assessed due to the absence from the arch of teeth 16-15-26-36-37.")
+    assert miss == {16, 15, 26, 36, 37}
+    miss, _, _ = parse_report("Teeth 15, 26, 36 and 37 are absent from the arch; tooth 13 is in crossbite.")
+    assert miss == {15, 26, 36, 37}
+    miss, present, _ = parse_report("Tooth 45 is not present in the arch, with the corresponding deciduous 85 still present in the arch.")
+    assert miss == {45} and present == {85}
+    miss, present, _ = parse_report("The patient presents agenesis of teeth 35-45, with the deciduous teeth 75-85 still present in the arch.")
+    assert miss == {35, 45} and present == {75, 85}
+    assert parse_report("Overjet is increased and tooth 23 is in crossbite.")[0] == set()
+
+
 def test_zero_contour_on_sphere_is_the_equator():
     mesh = trimesh.creation.icosphere(subdivisions=3, radius=5.0)
     loop = zero_contour(mesh, mesh.vertices[:, 2] - 1.0, smooth_iters=0)
