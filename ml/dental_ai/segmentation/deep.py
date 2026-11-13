@@ -97,8 +97,8 @@ def build_model(in_dim: int = len(FEATURES), k: int = 16, n_classes: int = N_CLA
 
 
 def _cache_one(args):
-    scan, out_dir, seed, variant = args  # variant > 0：模拟缺牙的第几个变体，文件名 <扫描>__m<variant>.npz
-    dest = Path(out_dir) / (f"{scan.name}__m{variant}.npz" if variant else f"{scan.name}.npz")
+    scan, out_dir, seed, variant = args  # variant > 0：模拟缺牙的第几个变体，文件名 <扫描>__m<variant>.npz；< 0：缺牙且间隙闭合，__c<-variant>.npz
+    dest = Path(out_dir) / (f"{scan.name}__m{variant}.npz" if variant > 0 else f"{scan.name}__c{-variant}.npz" if variant < 0 else f"{scan.name}.npz")
     if dest.exists():
         return scan.name
     try:
@@ -108,7 +108,7 @@ def _cache_one(args):
             from ..io import load_labels, load_mesh
 
             mesh, labels = load_mesh(scan.mesh_path), load_labels(scan.gt_path)[0]
-        if variant:
+        if variant > 0:
             # 分割模型没见过缺牙的口扫时，会把缺牙区也认成牙；这里随机去掉 1–3 颗牙（压平到牙龈高度）
             from ..eval_missing_seg import pick_missing
             from ..synthetic import simulate_missing
@@ -117,6 +117,15 @@ def _cache_one(args):
             if not teeth:
                 return None
             mesh, labels = simulate_missing(mesh, labels, scan.jaw, teeth)
+        elif variant < 0:
+            # 真实缺牙常常已经没有空隙了（正畸拔牙后关闭间隙、邻牙移过来）：去掉牙以后把远中的牙前移合拢，牙号不变
+            from ..synthetic import pick_closed_gap, simulate_closed_gap
+
+            rng = np.random.default_rng(seed)
+            teeth = pick_closed_gap(labels, rng)
+            if not teeth:
+                return None
+            mesh, labels = simulate_closed_gap(mesh, labels, scan.jaw, teeth, closure=float(rng.uniform(0.8, 1.0)))
         x = features(mesh, scan.jaw)
         y = fdi_to_class(labels, scan.jaw)
         rng = np.random.default_rng(seed)
@@ -129,13 +138,14 @@ def _cache_one(args):
         return None
 
 
-def build_cache(scans, out_dir: Path, workers: int = 4, simulate_missing: int = 0) -> int:
-    """simulate_missing：每个扫描另外生成几个模拟缺牙的变体。"""
+def build_cache(scans, out_dir: Path, workers: int = 4, simulate_missing: int = 0, simulate_closed: int = 0) -> int:
+    """simulate_missing：每个扫描另外生成几个模拟缺牙的变体；simulate_closed：几个“缺牙且间隙闭合”的变体。"""
     from concurrent.futures import ProcessPoolExecutor
 
     out_dir.mkdir(parents=True, exist_ok=True)
     jobs = [(s, out_dir, i, 0) for i, s in enumerate(scans)]
     jobs += [(s, out_dir, 1000003 * v + i, v) for v in range(1, simulate_missing + 1) for i, s in enumerate(scans)]
+    jobs += [(s, out_dir, 7000019 * v + i, -v) for v in range(1, simulate_closed + 1) for i, s in enumerate(scans)]
     with ProcessPoolExecutor(max_workers=workers) as pool:
         done = [n for n in pool.map(_cache_one, jobs, chunksize=2) if n]
     if (out_dir / "stats.json").exists():  # 追加数据时沿用原来的标准化参数
@@ -164,10 +174,10 @@ def train(cache: Path, out: Path, epochs: int = 60, n_points: int = 8000, batch_
     mean, std = np.array(stats["mean"], np.float32), np.array(stats["std"], np.float32)
     rng = np.random.default_rng(0)
     # 按扫描划分验证集：同一个扫描的模拟缺牙变体（<扫描>__m1 …）和原扫描在同一边
-    groups = sorted({f.stem.split("__m")[0] for f in files})
+    groups = sorted({f.stem.split("__")[0] for f in files})
     val_groups = {groups[i] for i in rng.permutation(len(groups))[: max(1, int(len(groups) * val_fraction))]}
-    val_files = [f for f in files if f.stem.split("__m")[0] in val_groups]
-    train_files = [f for f in files if f.stem.split("__m")[0] not in val_groups]
+    val_files = [f for f in files if f.stem.split("__")[0] in val_groups]
+    train_files = [f for f in files if f.stem.split("__")[0] not in val_groups]
     data = {f: np.load(f) for f in files}  # 缓存整体约 1 GB（1350 个扫描），直接放内存
     data = {f: (d["x"].astype(np.float32), d["y"].astype(np.int64)) for f, d in data.items()}
 
@@ -298,6 +308,7 @@ def main() -> None:
     c.add_argument("--limit", type=int)
     c.add_argument("--workers", type=int, default=4)
     c.add_argument("--simulate-missing", type=int, default=0, help="每个扫描另外生成几个模拟缺牙的变体（随机去掉 1–3 颗牙）")
+    c.add_argument("--simulate-closed", type=int, default=0, help="每个扫描另外生成几个“缺牙且间隙闭合”的变体（去掉牙后把远中的牙前移合拢）")
     c.add_argument("--out", type=Path, required=True)
     t = sub.add_parser("train")
     t.add_argument("--cache", type=Path, required=True)
@@ -324,7 +335,7 @@ def main() -> None:
             scans += find_scans(d, d)
         scans = scans[: args.limit]
         print(f"预处理 {len(scans)} 个扫描", flush=True)
-        print(f"完成 {build_cache(scans, args.out, args.workers, args.simulate_missing)} 个", flush=True)
+        print(f"完成 {build_cache(scans, args.out, args.workers, args.simulate_missing, args.simulate_closed)} 个", flush=True)
     elif args.cmd == "train":
         info = train(args.cache, args.out, args.epochs, args.n_points, args.batch_size, args.lr, device=args.device, max_scans=args.max_scans, init=args.init, arch=args.arch)
         print(json.dumps(info, ensure_ascii=False))

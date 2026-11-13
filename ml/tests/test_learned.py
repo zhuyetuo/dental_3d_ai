@@ -140,3 +140,38 @@ def test_zero_contour_on_sphere_is_the_equator():
     loop = zero_contour(mesh, mesh.vertices[:, 2] - 1.0, smooth_iters=0)
     assert np.abs(loop[:, 2] - 1.0).max() < 0.05  # 线性插值的零点在 z = 1 上
     assert np.abs(np.linalg.norm(loop[:, :2], axis=1) - np.sqrt(24)).max() < 0.1
+
+
+def test_simulate_closed_gap():
+    """去掉 35 后 36 前移合拢，34 不动，牙号不变，不留 35。"""
+    import numpy as np
+    import trimesh
+    from dental_ai.synthetic import pick_closed_gap, simulate_closed_gap
+
+    xs, ys = np.arange(0, 40.01, 0.5), np.arange(0, 6.01, 0.5)
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    v = np.column_stack([gx.ravel(), gy.ravel(), np.zeros(gx.size)])
+    n, m = len(xs), len(ys)
+    idx = np.arange(n * m).reshape(n, m)
+    a, b, c, d = idx[:-1, :-1].ravel(), idx[1:, :-1].ravel(), idx[1:, 1:].ravel(), idx[:-1, 1:].ravel()
+    faces = np.vstack([np.column_stack([a, b, c]), np.column_stack([a, c, d])])
+    labels = np.zeros(len(v), int)
+    for fdi, lo in ((34, 5), (35, 13), (36, 21)):
+        sel = (v[:, 0] >= lo) & (v[:, 0] < lo + 7) & (abs(v[:, 1] - 3) < 2)
+        labels[sel] = fdi
+        v[sel, 2] = 3.0
+    mesh = trimesh.Trimesh(v, faces, process=False)
+    m2, l2 = simulate_closed_gap(mesh, labels, "lower", (35,))
+    assert set(l2.tolist()) == {0, 34, 36}
+    assert (l2 == 36).sum() == (labels == 36).sum() and (l2 == 34).sum() == (labels == 34).sum()
+    v2 = np.asarray(m2.vertices)
+    assert abs(v2[l2 == 34, 0].mean() - v[labels == 34, 0].mean()) < 1e-6
+    shift = v[labels == 36, 0].mean() - v2[l2 == 36, 0].mean()
+    assert 5 < shift < 8
+    assert len(m2.faces) < len(faces)
+
+    full = np.array([q * 10 + p for q in (3, 4) for p in range(1, 8)])
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        teeth = pick_closed_gap(full, rng)
+        assert all(t in full and t % 10 < 7 for t in teeth) and len(teeth) <= 2

@@ -8,7 +8,7 @@ Z=../data/drive/raw/Teeth3DS
 S=$Z/Teeth3DS+/Teeth3DS_train_test_split
 mkdir -p ../runs/deep
 python -m dental_ai.segmentation.deep cache --zips $Z --split $S/training_lower.txt $S/training_upper.txt \
-  --extra-dir ../data/poseidon3d/train --workers "$(( $(nproc) > 96 ? 96 : $(nproc) ))" --simulate-missing "${SIM_MISSING:-2}" --out ../data/deep_cache
+  --extra-dir ../data/poseidon3d/train --workers "$(( $(nproc) > 96 ? 96 : $(nproc) ))" --simulate-missing "${SIM_MISSING:-2}" --simulate-closed "${SIM_CLOSED:-2}" --out ../data/deep_cache
 M=../models/segmentation/deep.pt
 RESUME=(--arch "${ARCH:-dgcnn_attn}")
 # 已有模型（仓库自带）时接着训练（学习率调小；只有验证集上更好才覆盖原文件）。FRESH=1 从头训练

@@ -131,6 +131,73 @@ def simulate_missing(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, teeth)
     return mesh, labels
 
 
+def pick_closed_gap(labels: np.ndarray, rng: np.random.Generator) -> tuple[int, ...]:
+    """随机选“缺牙且间隙闭合”的牙，分布照着真实病例：正畸拔除左右对称的前磨牙最常见，其次是第一磨牙、
+    单颗前磨牙、侧切牙（先天缺失）、尖牙。只选远中还有牙的（要有牙可以前移）。"""
+    present = {int(f) for f in np.unique(labels) if f > 0}
+    quads = sorted({f // 10 for f in present})
+
+    def ok(f):
+        return f in present and any(g in present for g in range(f + 1, f // 10 * 10 + 8))
+
+    kind = rng.choice(["premolar_pair", "molar", "premolar", "lateral", "canine", "any"], p=[0.4, 0.2, 0.15, 0.1, 0.05, 0.1])
+    if kind == "premolar_pair":
+        p = int(rng.choice([4, 5]))
+        teeth = [q * 10 + p for q in quads if ok(q * 10 + p)]
+    elif kind == "lateral":
+        teeth = [q * 10 + 2 for q in quads if ok(q * 10 + 2)]
+        teeth = teeth if rng.random() < 0.5 else teeth[:1]
+    else:
+        pos = {"molar": [6], "premolar": [4, 5], "canine": [3], "any": [1, 2, 3, 4, 5, 6]}[kind]
+        cand = [q * 10 + p for q in quads for p in pos if ok(q * 10 + p)]
+        teeth = [int(rng.choice(cand))] if cand else []
+    if len(present) - len(teeth) < 6:
+        return ()
+    return tuple(int(t) for t in teeth)
+
+
+def simulate_closed_gap(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, teeth, closure: float = 1.0,
+                        reach: float = 8.0) -> tuple[trimesh.Trimesh, np.ndarray]:
+    """在真实口扫上模拟“缺牙且间隙已闭合”（正畸拔牙后关闭间隙、先天缺牙后邻牙移过来）。
+
+    去掉这颗牙，把同一象限里远中的牙连同附近的牙龈一起向近中平移一个牙宽（× closure），合拢缺隙；这颗牙下面的牙龈被压缩成一条缝
+    （压扁的三角形删掉，不留破洞——真实口扫上缺牙处没有洞，留了洞模型会学成“有洞就是缺牙”）。
+    其余牙的牙号不变——46 移到 45 的位置上仍然是 46，模型要靠牙的形态而不是数数来编号。
+    离牙 reach mm 以外的牙龈（腭部）不动，中间平滑过渡。返回新网格（去掉了没用到的顶点）和对应的标签。
+    远中没有牙的不处理（那是游离端缺失，用 simulate_missing）。"""
+    v = np.asarray(mesh.vertices, float).copy()
+    faces = np.asarray(mesh.faces)
+    labels = np.asarray(labels).copy()
+    gone = np.zeros(len(v), bool)
+    area0 = trimesh.triangles.area(v[faces])
+    for fdi in sorted(teeth, key=lambda f: -(f % 10)):  # 从远中往近中做
+        q = fdi // 10
+        tooth = (labels == fdi) & ~gone
+        distal = sorted(int(f) for f in np.unique(labels[~gone]) if f // 10 == q and f % 10 > fdi % 10)
+        if not tooth.any() or not distal:
+            continue
+        alive = np.flatnonzero((labels > 0) & ~gone)
+        dist, idx = cKDTree(v[alive]).query(v)
+        owner = labels[alive][idx]  # 每个顶点归最近的那颗牙
+        u = v[tooth].mean(axis=0) - v[labels == distal[0]].mean(axis=0)
+        u /= np.linalg.norm(u)  # 远中 → 近中
+        s = (v - v[tooth].mean(axis=0)) @ u
+        lo, hi = np.percentile(s[tooth], [2, 98])  # 这颗牙沿牙弓方向的范围
+        side = np.where(np.isin(owner, distal), 1.0, 0.0)
+        mine = owner == fdi
+        side[mine] = np.clip((hi - s[mine]) / (hi - lo), 0, 1)  # 这颗牙的范围内：远中一侧跟着移，近中一侧不动
+        weight = side * np.clip(1 - dist / reach, 0, 1)
+        weight[(labels > 0) & np.isin(labels, distal)] = 1.0
+        v += np.outer(weight * (hi - lo) * closure, u)
+        gone |= tooth
+    keep_face = ~gone[faces].any(axis=1) & (trimesh.triangles.area(v[faces]) > 0.05 * area0)  # 去掉这颗牙和被压扁的牙龈三角形
+    faces = faces[keep_face]
+    used = np.unique(faces)
+    remap = np.full(len(v), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    return trimesh.Trimesh(v[used], remap[faces], process=False), labels[used]
+
+
 def simulate_preparation(
     mesh: trimesh.Trimesh,
     labels: np.ndarray,
