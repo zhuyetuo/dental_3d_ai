@@ -106,7 +106,7 @@ def _run_one(args):
     zip_path, pid, jaw, model, orient = args
     import trimesh
 
-    from .pipeline import check_arch_order, correct_numbering, detect_missing, remove_small_islands
+    from .pipeline import check_arch_order, correct_numbering, detect_missing, merge_split_teeth, remove_small_islands
 
     row = {"patient": pid, "jaw": jaw}
     try:
@@ -120,6 +120,8 @@ def _run_one(args):
         orientation = getattr(seg, "last", None)
         numbering = correct_numbering(mesh, labels, jaw, canonical_vertices=orientation.apply(mesh).vertices if orientation else None)
         labels = remove_small_islands(mesh, numbering.labels)
+        labels, merged = merge_split_teeth(mesh, labels, jaw, points=orientation.apply(mesh).vertices if orientation else np.asarray(mesh.vertices))
+        row["merged"] = merged
         row.update(vertices=len(mesh.vertices), teeth=sorted(int(v) for v in np.unique(labels) if v),
                    reported=[int(m.fdi) for m in detect_missing(mesh, labels, jaw)],
                    warnings=len(check_arch_order(mesh, labels, jaw)))

@@ -8,7 +8,7 @@ import trimesh
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-from ..fdi import Jaw, arch_order
+from ..fdi import Jaw, arch_order, expected_width
 from ..geometry import estimate_arch_frame, tooth_centroids
 
 
@@ -102,3 +102,84 @@ def check_arch_order(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw) -> lis
         if (right and side > 0) or (not right and side < 0):
             issues.append(f"{f} 位于中线的另一侧，可能左右标反")
     return issues
+
+
+def _tooth_widths(labels: np.ndarray, points: np.ndarray):
+    """每个牙号沿牙弓切线的宽度 / 该牙位的标准宽度（按整副牙列的比例归一），以及量宽度的函数和比例。"""
+    fs = [int(f) for f in np.unique(labels) if f]
+    cen = np.array([points[labels == f].mean(axis=0) for f in fs])
+    coef = np.polyfit(cen[:, 0], cen[:, 1], 2)
+
+    def width(mask):
+        x = points[mask, 0].mean()
+        t = np.array([1.0, 2 * coef[0] * x + coef[1]])
+        t /= np.linalg.norm(t)
+        p = points[mask][:, :2] @ t
+        return float(np.percentile(p, 99) - np.percentile(p, 1))
+
+    raw = {f: width(labels == f) for f in fs}
+    scale = float(np.median([raw[f] / expected_width(f) for f in fs]))
+    return {f: raw[f] / (expected_width(f) * scale) for f in fs}, width, scale
+
+
+def split_tooth_candidates(mesh: trimesh.Trimesh, labels: np.ndarray, points: np.ndarray) -> list[tuple[int, int, float, float]]:
+    """相邻的两个牙号是不是同一颗牙：[(小块牙号, 大块牙号, 接触占比, 合起来的宽度 / 一颗牙的标准宽度)]。
+
+    接触占比 = 小块的边界顶点里直接挨着大块的比例。真正相邻的两颗牙只在邻接点附近相接（Teeth3DS 标注上中位数 0.20、
+    99% 分位 0.34），一颗牙被切成两块时切口很长。宽度沿牙弓切线量，按整副牙列的比例归一。"""
+    if len(np.unique(labels)) < 4:
+        return []
+    _, width, scale = _tooth_widths(labels, points)
+    e = mesh.edges_unique
+    la, lb = labels[e[:, 0]], labels[e[:, 1]]
+    diff = la != lb
+    size = {int(f): int(n) for f, n in zip(*np.unique(labels, return_counts=True))}
+    both = diff & (la > 0) & (lb > 0)
+    out = []
+    for a, b in {tuple(sorted(p)) for p in zip(la[both].tolist(), lb[both].tolist())}:
+        s, o = (a, b) if size[a] <= size[b] else (b, a)
+        boundary = len(np.unique(np.concatenate([e[diff & (la == s), 0], e[diff & (lb == s), 1]])))
+        m = both & (((la == s) & (lb == o)) | ((la == o) & (lb == s)))
+        touch = len(np.unique(np.where(la[m] == s, e[m, 0], e[m, 1])))
+        ratio = width((labels == s) | (labels == o)) / (max(expected_width(s), expected_width(o)) * scale)
+        out.append((s, o, touch / max(boundary, 1), ratio))
+    return out
+
+
+def merge_split_teeth(
+    mesh: trimesh.Trimesh,
+    labels: np.ndarray,
+    jaw: Jaw,
+    points: np.ndarray | None = None,
+    min_contact: float = 0.4,
+    max_width_ratio: float = 1.2,
+    fused_ratio: float | None = 1.45,
+) -> tuple[np.ndarray, list[tuple[int, int]]]:
+    """把“一颗牙被分成两个牙号”的两块合并成一颗，返回 (新标签, [(被并掉的牙号, 并入的牙号)])。
+
+    缺牙且间隙已闭合的牙列上，分割模型倾向于凑满 14 颗牙：把缺牙旁边的一颗牙切成两个牙号，于是没有牙号空出来，
+    缺牙检测不到。判据是两块之间的切口很长（接触占比 ≥ min_contact）而且合起来只有一颗牙宽（≤ max_width_ratio）。
+    阈值在 Teeth3DS 测试集的模型输出上定的：满足判据的合并里没有把两颗真牙并成一颗的（真牙合起来的宽度都在 1.34 倍以上）。
+    并入大块的牙号；到底缺的是哪一个牙号，几何上分不出来。
+
+    fused_ratio：同一象限里另有一个牙号的宽度达到标准宽度的这么多倍时不合并。那通常是两颗牙被标成了一个号，
+    模型在这里切开一颗牙是在“补”那个号，牙其实一颗不缺，合并了反而会误报缺牙。None 表示不做这个保护。
+    points：标准坐标系下的顶点（见 orientation.py）；不提供时内部做一次朝向归一化。"""
+    if points is None:
+        from ..orientation import normalize_orientation
+
+        points = normalize_orientation(mesh, jaw).apply(mesh).vertices
+    points = np.asarray(points)
+    labels = np.asarray(labels).copy()
+    merged: list[tuple[int, int]] = []
+    for _ in range(4):
+        cand = [c for c in split_tooth_candidates(mesh, labels, points) if c[2] >= min_contact and c[3] <= max_width_ratio]
+        if cand and fused_ratio is not None:
+            ratios = _tooth_widths(labels, points)[0]
+            cand = [c for c in cand if not any(f // 10 == c[1] // 10 and f not in c[:2] and r >= fused_ratio for f, r in ratios.items())]
+        if not cand:
+            break
+        s, o, _, _ = max(cand, key=lambda c: c[2])
+        labels[labels == s] = o
+        merged.append((s, o))
+    return labels, merged

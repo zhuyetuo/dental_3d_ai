@@ -175,3 +175,35 @@ def test_simulate_closed_gap():
     for _ in range(50):
         teeth = pick_closed_gap(full, rng)
         assert all(t in full and t % 10 < 7 for t in teeth) and len(teeth) <= 2
+
+
+def test_merge_split_teeth():
+    """一颗牙被分成两个牙号（一大一小、切口很长）要合并；真正相邻的两颗牙不合并。"""
+    import numpy as np
+    import trimesh
+    from dental_ai.segmentation.postprocess import merge_split_teeth
+
+    xs, ys = np.arange(0, 45.01, 0.5), np.arange(0, 6.01, 0.5)
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    v = np.column_stack([gx.ravel(), gy.ravel(), np.zeros(gx.size)])
+    idx = np.arange(len(xs) * len(ys)).reshape(len(xs), len(ys))
+    a, b, c, d = idx[:-1, :-1].ravel(), idx[1:, :-1].ravel(), idx[1:, 1:].ravel(), idx[:-1, 1:].ravel()
+    mesh = trimesh.Trimesh(v, np.vstack([np.column_stack([a, b, c]), np.column_stack([a, c, d])]), process=False)
+    block = lambda lo, hi: (v[:, 0] >= lo) & (v[:, 0] < hi) & (abs(v[:, 1] - 3) < 2)
+    labels = np.zeros(len(v), int)
+    labels[block(3, 10)] = 33
+    labels[block(11, 18)] = 34
+    labels[block(19, 30)] = 36
+    labels[block(31, 41)] = 37
+    out, merged = merge_split_teeth(mesh, labels, "lower", points=v)
+    assert merged == [] and (out == labels).all()
+
+    split = labels.copy()
+    split[block(11, 18) & (v[:, 1] >= 4.0)] = 35  # 34 的舌侧一条被标成了 35
+    out, merged = merge_split_teeth(mesh, split, "lower", points=v)
+    assert merged == [(35, 34)] and (out == labels).all()
+
+    touching = labels.copy()
+    touching[block(10, 11)] = 33  # 33 和 34 直接挨着，但合起来有两颗牙宽
+    out, merged = merge_split_teeth(mesh, touching, "lower", points=v)
+    assert merged == []

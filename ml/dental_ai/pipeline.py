@@ -29,7 +29,7 @@ from .orientation import OrientedSegmenter
 from .preferences import DesignPreferences
 from .segmentation.base import LabelFileSegmenter, Segmenter
 from .segmentation.numbering import correct_numbering
-from .segmentation.postprocess import check_arch_order, remove_small_islands
+from .segmentation.postprocess import check_arch_order, merge_split_teeth, remove_small_islands
 from .segmentation.remote import RemoteSegmenter
 
 
@@ -55,6 +55,7 @@ def run(
     labels = segmenter.predict(mesh, jaw)
     orientation = getattr(segmenter, "last", None)
     numbering = None
+    merged: list[tuple[int, int]] = []
     if segmenter.postprocess:
         # 编号纠错要在去碎片之前：去碎片会把“同一牙号的第二块”并到邻居里，吞掉被标重号的那颗牙
         if fix_numbering:
@@ -62,6 +63,8 @@ def run(
             numbering = correct_numbering(mesh, labels, jaw, canonical_vertices=canonical)
             labels = numbering.labels
         labels = remove_small_islands(mesh, labels)
+        # 一颗牙被分成两个牙号（缺牙间隙闭合的牙列上常见）：合并，空出来的牙号由缺牙检测报出
+        labels, merged = merge_split_teeth(mesh, labels, jaw, points=orientation.apply(mesh).vertices if orientation else None)
     save_labels(out / "labels.json", labels, jaw)
     export_colored_ply(out / "segmentation.ply", mesh, labels)
 
@@ -72,7 +75,8 @@ def run(
         "orientation": {"symmetry_error_mm": round(orientation.symmetry_error, 3)} if orientation else None,
         "numbering": numbering.to_dict() if numbering else None,
         "teeth": sorted(int(v) for v in np.unique(labels) if v != 0),
-        "warnings": check_arch_order(mesh, labels, jaw) + (numbering.warnings if numbering else []),
+        "warnings": check_arch_order(mesh, labels, jaw) + (numbering.warnings if numbering else [])
+        + [f"{s} 和 {o} 是同一颗牙被分成了两个牙号，已合并为 {o}；缺的可能是 {s} 也可能是 {o}，请确认牙号" for s, o in merged],
         "missing": [],
         "generated": [],
     }

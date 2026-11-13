@@ -49,7 +49,7 @@ def _one(args) -> list[dict]:
     from .evaluation import segmentation_metrics
     from .io import load_labels, load_mesh
     from .segmentation.numbering import correct_numbering
-    from .segmentation.postprocess import remove_small_islands
+    from .segmentation.postprocess import merge_split_teeth, remove_small_islands
     from .synthetic import simulate_missing
 
     mesh_path, gt_path, name, seed = args
@@ -64,6 +64,7 @@ def _one(args) -> list[dict]:
             mesh, gt = simulate_missing(mesh0, gt0, jaw, teeth)
             pred = _SEG.predict(mesh, jaw)
             pred = remove_small_islands(mesh, correct_numbering(mesh, pred, jaw).labels)
+            pred = merge_split_teeth(mesh, pred, jaw)[0]
             metrics, _ = segmentation_metrics(gt, pred, mesh.vertices)
             frac = [float((pred[gt0 == f] != 0).mean()) for f in teeth]
             want = {m.fdi for m in detect_missing(mesh, gt, jaw)}
