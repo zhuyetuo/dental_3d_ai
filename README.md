@@ -24,6 +24,7 @@
 | 文档 | 内容 |
 |---|---|
 | [docs/results.md](docs/results.md) | **模型效果一览**：分割、缺失牙生成、颈缘线的效果图、指标和已知问题 |
+| [docs/resources.md](docs/resources.md) | **外部资料清单**：牙冠生成、点云补全、咬合等方向的论文、代码、数据集，以及每一项能不能用上 |
 | [docs/system-architecture.md](docs/system-architecture.md) | 系统架构：前端、后端、算法服务、3D 渲染与交互、部署 |
 | [docs/algorithm-architecture.md](docs/algorithm-architecture.md) | 算法架构：模型分工、数据收集标注训练全链路 |
 | [docs/architecture.md](docs/architecture.md) | 各任务的技术调研、论文和开源方案对比 |

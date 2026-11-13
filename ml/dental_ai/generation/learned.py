@@ -464,13 +464,18 @@ class LearnedGenerator:
 
     name = "learned"
 
-    def __init__(self, model_path, fallback=None, device: str | None = None):
+    def __init__(self, model_path, fallback=None, device: str | None = None, detail_dir=None):
         import os
 
         self.model_path = Path(model_path)
         self.fallback = fallback
         self.device = device or os.environ.get("GEN_DEVICE")
         self._model = None
+        # 真牙细节库（generation/detail.py）：有就给生成的牙冠换上真牙的牙尖窝沟，没有就输出网络的平滑牙冠
+        self.detail_dir = detail_dir or os.environ.get("GEN_LIBRARY")
+        src = os.environ.get("GEN_LIBRARY_SOURCES")  # 实验开关：只用部分来源，如 "0"（Teeth3DS）
+        self.detail_sources = [int(s) for s in src.split(",")] if src else None
+        self._detail = None
 
     @property
     def library(self):  # 预备体牙冠的外形供体仍用模板库
@@ -485,6 +490,13 @@ class LearnedGenerator:
             if ckpt.get("template", "sphere") != "dome":
                 raise ValueError("接入流程需要开口模板（--template dome）训练的模型")
         return self._model
+
+    def _detail_library(self):
+        if self._detail is None and self.detail_dir and Path(self.detail_dir).is_dir():
+            from .detail import DetailLibrary
+
+            self._detail = DetailLibrary(self.detail_dir)
+        return self._detail
 
     def _fall(self, ctx, target, reason: str):
         if self.fallback is None:
@@ -527,14 +539,21 @@ class LearnedGenerator:
                 torch.tensor(c_idx.astype(np.int64))[None].to(self.device),
                 torch.tensor([target_class(target.fdi)]).to(self.device),
             )[0].cpu().numpy().astype(float)
-        verts = (pred * sign + origin) @ rot
         faces = model.faces.cpu().numpy()
+        detail_info = {}
+        detail = self._detail_library()
+        if detail is not None and target.fdi % 10 != 7:  # 第二磨牙不换：库里的第二磨牙常常扫描不全，换上去误差明显变大
+            refined = detail.refine(pred, target_class(target.fdi), self.detail_sources)
+            if refined is not None:
+                pred, faces, detail_info = refined
+        verts = (pred * sign + origin) @ rot
         if flip:  # 镜像后三角形绕序要翻转，否则法向朝里
             faces = faces[:, ::-1]
         crown = trimesh.Trimesh(verts, faces, process=False)
         if ((crown.triangles_center - verts.mean(axis=0)) * crown.face_normals).sum() < 0:
             crown.invert()
-        info = {"source": f"learned:{self.model_path.name}", "placement": "learned", "gap_mm": target.gap_mm, "occlusal_drop_mm": 0.0}
+        source = f"learned:{self.model_path.name}" + (f"+detail:{detail_info['detail_source']}" if detail_info else "")
+        info = {"source": source, "placement": "learned", "gap_mm": target.gap_mm, "occlusal_drop_mm": 0.0, **detail_info}
         if ctx.antagonist is not None and hasattr(self.fallback, "_occlusal_drop"):
             drop = self.fallback._occlusal_drop(crown, ctx.antagonist, arch.occlusal)
             crown.vertices = crown.vertices - arch.occlusal * drop

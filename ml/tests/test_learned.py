@@ -88,6 +88,37 @@ def test_prep_side_from_margin_point_cloud():
     assert side[z > 3.4].all() and not side[z < 2.6].any()
 
 
+def _open_cap(radius=5.0, bumps=0.0):
+    import trimesh
+
+    m = trimesh.creation.icosphere(subdivisions=4, radius=radius)
+    v = m.vertices * (1 + bumps * np.sin(6 * np.arctan2(m.vertices[:, 1], m.vertices[:, 0]))[:, None])
+    keep = m.vertices[:, 2] > -1.0
+    f = m.faces[keep[m.faces].all(axis=1)]
+    remap = np.cumsum(keep) - 1
+    return v[keep].astype(np.float32), remap[f].astype(np.int32)
+
+
+def test_detail_library_fits_a_real_crown_onto_the_prediction(tmp_path):
+    from dental_ai.generation.detail import DetailLibrary, _save_class, n_boundaries
+
+    bumpy, plain_far = _open_cap(5.0, bumps=0.03), _open_cap(8.0)
+    assert n_boundaries(bumpy[1]) == 1
+    holed = bumpy[1][5:]  # 去掉几个三角形：多出一条开放边界
+    assert n_boundaries(holed) > 1
+    crowns = [(v - v.mean(axis=0), f) for v, f in (bumpy, plain_far)]
+    _save_class(tmp_path, 5, crowns, [1, 0])
+    pred, _ = _open_cap(5.2)
+    pred = pred + [10.0, -3.0, 2.0]
+    lib = DetailLibrary(tmp_path)
+    verts, faces, info = lib.refine(pred, 5)
+    assert info["detail_source"] == "fdi16" and len(faces) == len(bumpy[1])  # 选了大小接近的那颗
+    assert info["detail_fit_mm"] < 0.25
+    assert np.linalg.norm(verts.mean(axis=0) - pred.mean(axis=0)) < 0.3  # 落在预测的位置上
+    assert lib.refine(pred, 6) is None  # 这一类没有库
+    assert DetailLibrary(tmp_path, max_fit_mm=1e-6).refine(pred, 5) is None  # 贴不上就保留原来的牙冠
+
+
 def test_zero_contour_on_sphere_is_the_equator():
     mesh = trimesh.creation.icosphere(subdivisions=3, radius=5.0)
     loop = zero_contour(mesh, mesh.vertices[:, 2] - 1.0, smooth_iters=0)
