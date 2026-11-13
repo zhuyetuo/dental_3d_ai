@@ -135,6 +135,37 @@ def test_real_missing_report_parser():
     assert parse_report("Overjet is increased and tooth 23 is in crossbite.")[0] == set()
 
 
+def _open_cap(radius=5.0, bumps=0.0):
+    import trimesh
+
+    m = trimesh.creation.icosphere(subdivisions=4, radius=radius)
+    v = m.vertices * (1 + bumps * np.sin(6 * np.arctan2(m.vertices[:, 1], m.vertices[:, 0]))[:, None])
+    keep = m.vertices[:, 2] > -1.0
+    f = m.faces[keep[m.faces].all(axis=1)]
+    remap = np.cumsum(keep) - 1
+    return v[keep].astype(np.float32), remap[f].astype(np.int32)
+
+
+def test_detail_library_fits_a_real_crown_onto_the_prediction(tmp_path):
+    from dental_ai.generation.detail import DetailLibrary, _save_class, n_boundaries
+
+    bumpy, plain_far = _open_cap(5.0, bumps=0.03), _open_cap(8.0)
+    assert n_boundaries(bumpy[1]) == 1
+    holed = bumpy[1][5:]  # 去掉几个三角形：多出一条开放边界
+    assert n_boundaries(holed) > 1
+    crowns = [(v - v.mean(axis=0), f) for v, f in (bumpy, plain_far)]
+    _save_class(tmp_path, 5, crowns, [1, 0])
+    pred, _ = _open_cap(5.2)
+    pred = pred + [10.0, -3.0, 2.0]
+    lib = DetailLibrary(tmp_path)
+    verts, faces, info = lib.refine(pred, 5)
+    assert info["detail_source"] == "fdi16" and len(faces) == len(bumpy[1])  # 选了大小接近的那颗
+    assert info["detail_fit_mm"] < 0.25
+    assert np.linalg.norm(verts.mean(axis=0) - pred.mean(axis=0)) < 0.3  # 落在预测的位置上
+    assert lib.refine(pred, 6) is None  # 这一类没有库
+    assert DetailLibrary(tmp_path, max_fit_mm=1e-6).refine(pred, 5) is None  # 贴不上就保留原来的牙冠
+
+
 def test_zero_contour_on_sphere_is_the_equator():
     mesh = trimesh.creation.icosphere(subdivisions=3, radius=5.0)
     loop = zero_contour(mesh, mesh.vertices[:, 2] - 1.0, smooth_iters=0)
@@ -207,3 +238,45 @@ def test_merge_split_teeth():
     touching[block(10, 11)] = 33  # 33 和 34 直接挨着，但合起来有两颗牙宽
     out, merged = merge_split_teeth(mesh, touching, "lower", points=v)
     assert merged == []
+
+
+def test_crown_quality():
+    """评分卡：已知间隙的两个盒子、已知穿入深度的对颌平面、有沟的咬合面。"""
+    import numpy as np
+    import trimesh
+    from dental_ai.crown_quality import occlusal_table, score_crown
+
+    up = np.array([0.0, 0.0, 1.0])
+    box = lambda cx, cz=0.0: trimesh.creation.box(extents=(8, 8, 6), transform=trimesh.transformations.translation_matrix((cx, 0, cz)))
+    crown = box(0).subdivide().subdivide().subdivide()
+    mesial, distal = box(-8.3), box(8.0 - 0.2)  # 一侧 0.3 mm 的缝，一侧挤进 0.2 mm
+    plane = trimesh.creation.box(extents=(30, 30, 2), transform=trimesh.transformations.translation_matrix((0, 0, 3 + 1 - 0.4)))  # 对颌压进牙冠 0.4 mm
+    row = score_crown(crown, up, mesial, distal, antagonist=plane.subdivide().subdivide().subdivide())
+    assert abs(row["mesial_gap"] - 0.3) < 0.05 and abs(row["distal_gap"] + 0.2) < 0.05
+    assert row["mesial_contact_area"] == 0 and row["distal_contact_area"] > 0
+    assert abs(row["occl_clearance"] + 0.4) < 0.05 and row["occl_penetration_area"] > 30
+    assert abs(row["height_vs_neighbors"]) < 0.05 and row["arch_offset"] < 0.05 and row["watertight"]
+
+    lifted = score_crown(box(0, 1.0).subdivide().subdivide().subdivide(), up, mesial, distal)
+    assert abs(lifted["height_vs_neighbors"] - 1.0) < 0.05
+
+    rng = np.random.default_rng(0)
+    xy = rng.uniform(-5, 5, (40000, 2))
+    flat = np.column_stack([xy, np.zeros(len(xy))])
+    groove = flat.copy()
+    groove[:, 2] = -1.0 * np.exp(-(xy[:, 0] ** 2) / (2 * 0.4**2))  # 一条 1 mm 深的沟
+    a, b = occlusal_table(flat, up), occlusal_table(groove, up)
+    assert a["relief"] < 0.01 and a["detail"] < 0.01
+    assert b["relief"] > 0.3 and b["detail"] > 0.1
+
+
+def test_export_colored_ply_with_face_attributes(tmp_path):
+    """STL 口扫自带逐面属性，面数变了以后导出不能报错。"""
+    import numpy as np
+    import trimesh
+    from dental_ai.io import export_colored_ply
+
+    mesh = trimesh.creation.icosphere(subdivisions=2)
+    mesh.face_attributes["attr"] = np.zeros(len(mesh.faces) + 3, dtype=np.uint16)
+    export_colored_ply(tmp_path / "a.ply", mesh, np.zeros(len(mesh.vertices), int))
+    assert (tmp_path / "a.ply").stat().st_size > 0
