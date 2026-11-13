@@ -249,3 +249,35 @@ def test_export_colored_ply_with_face_attributes(tmp_path):
     mesh.face_attributes["attr"] = np.zeros(len(mesh.faces) + 3, dtype=np.uint16)
     export_colored_ply(tmp_path / "a.ply", mesh, np.zeros(len(mesh.vertices), int))
     assert (tmp_path / "a.ply").stat().st_size > 0
+
+
+def test_adjust_occlusion_lifts_or_reduces_to_target():
+    """够不着对颌就抬上去，穿过去就磨掉，最后离对颌的最小距离等于目标；牙颈一圈不动。"""
+    import numpy as np
+    import trimesh
+    from dental_ai.generation.occlusion import adjust_occlusion
+
+    up = np.array([0.0, 0.0, 1.0])
+
+    def cap():
+        m = trimesh.creation.icosphere(subdivisions=4, radius=5.0)
+        keep = (m.vertices[:, 2] > -1.0)[m.faces].all(axis=1)
+        return m.submesh([np.flatnonzero(keep)], append=True)
+
+    def plane(z):  # 对颌：下表面在高度 z 的一块板
+        return trimesh.creation.box(extents=(30, 30, 2), transform=trimesh.transformations.translation_matrix((0, 0, z + 1))).subdivide().subdivide().subdivide().subdivide()
+
+    for z, lifted in ((5.5, True), (4.6, False)):
+        crown = cap()
+        bottom = crown.vertices[:, 2] < -0.9
+        before = crown.vertices.copy()
+        info, warnings = adjust_occlusion(crown, plane(z), up, target=0.1)
+        assert not warnings and abs(info["occlusal_clearance_mm"] - 0.1) < 0.03
+        assert abs(z - crown.vertices[:, 2].max() - 0.1) < 0.03
+        assert (info["occlusal_lift_mm"] > 0) == lifted and info["occlusal_reduction_mm"] > 0.1
+        assert np.allclose(crown.vertices[bottom], before[bottom])
+        assert ((z - 0.1 - crown.vertices[:, 2]) < 0.05).sum() > 20  # 不是一个点接触，是一小片
+
+    far = cap()
+    info, warnings = adjust_occlusion(far, plane(8.0), up, target=0.1)  # 差 3 mm：不抬
+    assert info["occlusal_lift_mm"] == 0 and warnings

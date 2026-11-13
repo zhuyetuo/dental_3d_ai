@@ -266,10 +266,8 @@ class MirrorTemplateGenerator(ToothGenerator):
         else:
             height_info = self._fit_height(ctx, crown, target, place, up)
 
+        # 咬合不在这里处理：以前把整颗牙下移到不碰对颌为止，牙冠会比邻牙低 0.7 mm；现在由 occlusion.adjust_occlusion 只改该改的地方
         drop = 0.0
-        if ctx.antagonist is not None:
-            drop = self._occlusal_drop(crown, ctx.antagonist, up)
-            crown.vertices = crown.vertices - up * drop
 
         return GeneratedTooth(
             fdi=target.fdi,

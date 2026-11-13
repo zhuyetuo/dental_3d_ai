@@ -31,6 +31,7 @@ from scipy.spatial import cKDTree
 
 from .generation.contacts import signed_distance_to_surface
 from .margin.cervical import boundary_loops
+from .meshdist import closest_point
 
 CONTACT_MM = 0.1  # 邻接：这么近算接触
 OCCL_CONTACT_MM = 0.2  # 咬合：这么近算接触（口扫的咬合配准本身有 0.1 mm 量级的误差）
@@ -67,7 +68,7 @@ def proximal(points: np.ndarray, area: float, neighbor: trimesh.Trimesh, up: np.
     dist = cKDTree(other).query(points)[0]
     close = np.flatnonzero(dist <= 1.0)  # 靠近邻牙的点换成到三角面的精确距离（到采样点的距离有 0.1 mm 量级的下限）
     if len(close):
-        dist[close] = trimesh.proximity.closest_point(neighbor, points[close])[1]
+        dist[close] = closest_point(neighbor, points[close])[1]
     axis = other.mean(axis=0) - points.mean(axis=0)
     axis -= (axis @ up) * up
     axis /= np.linalg.norm(axis)

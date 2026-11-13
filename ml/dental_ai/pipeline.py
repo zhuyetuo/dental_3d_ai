@@ -17,6 +17,7 @@ from .detection.missing import detect_missing
 from .fdi import Jaw, arch_order
 from .generation.base import GenerationContext, ToothGenerator
 from .generation.contacts import adjust_contacts
+from .generation.occlusion import adjust_occlusion
 from .generation.learned import make_generator
 from .generation.mirror_template import MirrorTemplateGenerator
 from .generation.prep_crown import generate_prep_crown
@@ -150,7 +151,15 @@ def run(
                 for f in (target.mesial, target.distal)
                 if f is not None and abs(order.index(f) - order.index(target.fdi)) == 1
             }
+            if antagonist is not None:  # 先咬合后邻接：抬高、磨低都沿咬合方向，不影响近远中的距离
+                occlusion, occlusion_warnings = adjust_occlusion(tooth.crown, antagonist, up, prefs.occlusion_distance)
+                tooth.info.update(occlusion)
+                report["warnings"] += [f"{target.fdi} {w}" for w in occlusion_warnings]
             contacts, contact_warnings = adjust_contacts(tooth.crown, neighbors, prefs.contacts_distance, movable)
+            if antagonist is not None:  # 邻接调整会把牙面往邻牙方向推，可能又离对颌太近：再磨一遍（只磨不抬）
+                again, _ = adjust_occlusion(tooth.crown, antagonist, up, prefs.occlusion_distance, lift=False)
+                tooth.info["occlusal_clearance_mm"] = again["occlusal_clearance_mm"]
+                tooth.info["occlusal_reduction_mm"] = round(tooth.info.get("occlusal_reduction_mm", 0.0) + again["occlusal_reduction_mm"], 3)
             tooth.info["contacts_mm"] = {str(k): v for k, v in contacts.items()}
             report["warnings"] += contact_warnings
             solid = close_with_gum_base(tooth.crown, gum, up, relief=prefs.gum_relief, taper=prefs.emergence_taper)

@@ -554,10 +554,7 @@ class LearnedGenerator:
             crown.invert()
         source = f"learned:{self.model_path.name}" + (f"+detail:{detail_info['detail_source']}" if detail_info else "")
         info = {"source": source, "placement": "learned", "gap_mm": target.gap_mm, "occlusal_drop_mm": 0.0, **detail_info}
-        if ctx.antagonist is not None and hasattr(self.fallback, "_occlusal_drop"):
-            drop = self.fallback._occlusal_drop(crown, ctx.antagonist, arch.occlusal)
-            crown.vertices = crown.vertices - arch.occlusal * drop
-            info["occlusal_drop_mm"] = drop
+        # 咬合由 occlusion.adjust_occlusion 在流程里处理（不再整体下移）
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
 

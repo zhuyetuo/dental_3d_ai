@@ -16,6 +16,7 @@ import numpy as np
 import trimesh
 
 from .cervical import boundary_loops
+from ..meshdist import closest_point
 
 
 def _project_to_surface(points: np.ndarray, surface: trimesh.Trimesh, up: np.ndarray, reach: float = 30.0) -> np.ndarray:
@@ -23,7 +24,7 @@ def _project_to_surface(points: np.ndarray, surface: trimesh.Trimesh, up: np.nda
     直接用最近点的话，几个点会落到同一个边缘顶点上，导出 STL 时重合点被焊接，网格就不再是流形。"""
     origins = points + up * reach
     directions = np.tile(-up, (len(points), 1))
-    nearest = surface.nearest.on_surface(points)[0]
+    nearest = closest_point(surface, points)[0]
     out = points + ((nearest - points) @ up)[:, None] * up
     locations, ray_idx, _ = surface.ray.intersects_location(origins, directions, multiple_hits=False)
     out[ray_idx] = locations

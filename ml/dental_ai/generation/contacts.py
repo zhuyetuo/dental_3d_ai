@@ -16,6 +16,26 @@ import trimesh
 from scipy.spatial import cKDTree
 
 from ..margin.cervical import boundary_loops
+from ..meshdist import closest_point
+
+
+def _surface_trees(surface: trimesh.Trimesh):
+    """曲面顶点的 KD 树、开放边缘（折线加密后）的 KD 树。挂在 trimesh 的缓存上：咬合、邻接调整对同一个曲面要查几十次，
+    每次都重建要占一小半时间。"""
+    cache = surface._cache
+    key = "dental_signed_distance_trees"
+    if key in cache:
+        return cache[key]
+    edge_tree = None
+    loops = boundary_loops(surface)
+    if loops:
+        # 边界折线加密，近似“到边界线段”的距离
+        a = np.concatenate([surface.vertices[loop] for loop in loops])
+        b = np.concatenate([surface.vertices[np.roll(loop, -1)] for loop in loops])
+        edge_tree = cKDTree(np.concatenate([a + (b - a) * t for t in np.linspace(0, 1, 8, endpoint=False)]))
+    trees = (cKDTree(surface.vertices), edge_tree)
+    cache[key] = trees
+    return trees
 
 
 def signed_distance_to_surface(
@@ -30,12 +50,13 @@ def signed_distance_to_surface(
 
     离邻牙顶点超过 cutoff 的点不算精确距离，直接用到最近顶点的距离（正数，法向记为 0）：
     真实口扫的牙冠有上万个顶点，全部求最近三角形要十几秒，而邻接只关心靠近邻牙的那一小片。"""
-    d = cKDTree(surface.vertices).query(points)[0]
+    vertex_tree, edge_tree = _surface_trees(surface)
+    d = vertex_tree.query(points)[0]
     normals = np.zeros_like(points, dtype=float)
     near = np.nonzero(d <= cutoff)[0]
     if len(near):
-        cp, _, tri = trimesh.proximity.closest_point(surface, points[near])
-        normals[near] = surface.face_normals[tri]
+        # 法向取“并列最近的几个三角形的法向之和”：最近点落在棱上时，只取一个三角形的法向，正负会随选中哪一个而变
+        cp, _, tri, normals[near] = closest_point(surface, points[near], return_normal=True)
         # 大小用到最近点的真实距离，法向只决定正负。最近点落在棱或边上时，点到最近点的连线并不沿法向，
         # 只取法向分量会把“隔着 0.9 mm、在侧面”的点算成“只差 0.03 mm”
         offset = points[near] - cp
@@ -47,13 +68,8 @@ def signed_distance_to_surface(
         # 邻接调整沿这个方向移动顶点：最近点在棱上时沿法向移动并不会靠近邻牙
         ok = length > 1e-9
         normals[near[ok]] = offset[ok] / length[ok, None] * sign[ok, None]
-        loops = boundary_loops(surface)
-        if loops and edge_margin > 0:
-            # 边界折线加密，近似“到边界线段”的距离
-            a = np.concatenate([surface.vertices[loop] for loop in loops])
-            b = np.concatenate([surface.vertices[np.roll(loop, -1)] for loop in loops])
-            dense = np.concatenate([a + (b - a) * t for t in np.linspace(0, 1, 8, endpoint=False)])
-            on_edge = cKDTree(dense).query(cp)[0] < edge_margin
+        if edge_tree is not None and edge_margin > 0:
+            on_edge = edge_tree.query(cp)[0] < edge_margin
             d[near[on_edge]] = np.inf
     return d, normals
 

@@ -8,7 +8,8 @@
 
 每个颌随机选几颗两侧都有邻牙的前磨牙 / 第一磨牙，每颗牙出三行：
 - natural：原来的真牙，量出来的分布就是及格线；
-- generated：把这颗牙去掉（synthetic.simulate_missing），走完整流程生成，对颌传给生成器；
+- generated：把这颗牙去掉（synthetic.simulate_missing），走完整流程生成，给对颌，咬合距离用默认设计参数（0.30 mm）；
+- generated_contact：同上，咬合距离设成 0（要求刚好接触）；
 - generated_no_antagonist：同上，但不给对颌（现在后端没有对颌时的情况）。
 
 汇总里每个指标给出中位数和 5%–95% 分位；生成的牙冠另外给出“落在天然牙 5%–95% 范围内”的比例。
@@ -19,6 +20,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import os
 import json
 import tempfile
 import zipfile
@@ -33,6 +35,7 @@ METRICS = [
     "relief", "detail", "height_vs_neighbors", "arch_offset",
     "ref_chamfer_l1", "ref_surf_p95", "ref_fscore_0.3", "ref_position", "ref_top",
 ]
+KINDS = ("natural", "generated", "generated_contact", "generated_no_antagonist")
 _STATE: dict = {}
 
 
@@ -66,6 +69,7 @@ def _one(args) -> list[dict]:
     from .generation.mirror_template import MirrorTemplateGenerator
     from .geometry import estimate_arch_frame, tooth_mesh
     from .pipeline import run
+    from .preferences import DesignPreferences
     from .synthetic import simulate_missing
 
     zip_path, pid, seg_model, gen_model, out, per_jaw, seed = args
@@ -92,10 +96,11 @@ def _one(args) -> list[dict]:
                 ant = _crop(meshes[other], np.asarray(real.vertices), 12.0)
                 rows.append({**base, "kind": "natural", **score_crown(real, up, mesial, distal, ant)})
                 mesh2, lab2 = simulate_missing(mesh, lab, jaw, (fdi,))
-                for kind, antagonist in (("generated", ant), ("generated_no_antagonist", None)):
+                contact = DesignPreferences(occlusion_distance=0.0)
+                for kind, antagonist, prefs in (("generated", ant, None), ("generated_contact", ant, contact), ("generated_no_antagonist", None, None)):
                     with tempfile.TemporaryDirectory() as tmp:
                         gen = LearnedGenerator(gen_model, fallback=MirrorTemplateGenerator())
-                        report = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=antagonist)
+                        report = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=antagonist, preferences=prefs)
                         done = {g["fdi"]: g for g in report["generated"]}
                         if fdi not in done:
                             rows.append({**base, "kind": kind, "error": "未生成：" + "; ".join(w for w in report["warnings"] if str(fdi) in w)[:160]})
@@ -112,13 +117,13 @@ def summarize(rows: list[dict]) -> dict:
         v = np.array([r[key] for r in rows if r.get("kind") == kind and r.get(key) is not None], float)
         return v[np.isfinite(v)]
 
-    summary: dict = {"teeth": {k: sum(r.get("kind") == k and "error" not in r for r in rows) for k in ("natural", "generated", "generated_no_antagonist")},
+    summary: dict = {"teeth": {k: sum(r.get("kind") == k and "error" not in r for r in rows) for k in KINDS},
                      "errors": sum("error" in r for r in rows), "metrics": {}}
     for key in METRICS:
         nat = values("natural", key)
         block = {}
         lo, hi = (np.percentile(nat, [5, 95]) if len(nat) else (None, None))
-        for kind in ("natural", "generated", "generated_no_antagonist"):
+        for kind in KINDS:
             v = values(kind, key)
             if not len(v):
                 continue
@@ -140,7 +145,7 @@ def summarize(rows: list[dict]) -> dict:
         "至少一侧挤进邻牙（< -0.15 mm）": lambda r: any(r.get(k) is not None and r[k] < -0.15 for k in ("mesial_gap", "distal_gap")),
         "不封闭": lambda r: not r.get("watertight"),
     }
-    summary["checks"] = {name: {k: rate(k, fn) for k in ("natural", "generated", "generated_no_antagonist")} for name, fn in checks.items()}
+    summary["checks"] = {name: {k: rate(k, fn) for k in KINDS} for name, fn in checks.items()}
     return summary
 
 
@@ -169,6 +174,8 @@ def main() -> None:
     jobs = [(str(args.zip), q, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i) for i, q in enumerate(pids)]
     print(f"{len(pids)} 位患者", flush=True)
     rows: list[dict] = []
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):  # 子进程继承：每个进程 2 个线程
+        os.environ.setdefault(name, "2")
     with mp.get_context("spawn").Pool(args.workers) as pool:
         for i, part in enumerate(pool.imap_unordered(_one, jobs), 1):
             rows += part

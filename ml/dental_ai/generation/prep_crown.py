@@ -25,10 +25,12 @@ from ..detection.missing import detect_missing
 from ..fdi import Jaw
 from ..margin.cervical import boundary_loops
 from ..margin.cut import margin_field, split_along_zero
+from ..meshdist import closest_point
 from ..preferences import DesignPreferences
 from ..geometry import clean_crown, tooth_mesh
 from .base import GenerationContext
 from .contacts import adjust_contacts
+from .occlusion import adjust_occlusion
 from .mirror_template import MirrorTemplateGenerator
 
 
@@ -245,7 +247,7 @@ def _signed_thickness(points: np.ndarray, inner: trimesh.Trimesh, edge_margin: f
 
     最近点落在组织面开放边缘（颈缘）edge_margin 以内的点记为 +inf：那里用边缘三角形的法向判断内外不可靠，
     会被误判成“太薄”，最小厚度的迭代就把这些点一次次往外推（真实口扫上推出了 10 mm 以上）。"""
-    cp, _, tri = trimesh.proximity.closest_point(inner, points)
+    cp, _, tri = closest_point(inner, points)
     t = np.einsum("ij,ij->i", points - cp, inner.face_normals[tri])
     loops = boundary_loops(inner)
     if loops:
@@ -272,7 +274,7 @@ def generate_prep_crown(
     prefs = preferences or DesignPreferences()
     # 颈缘线的点先吸附回网格表面：检测结果经过平滑，在凸棱处会稍微缩进牙体，
     # 人工编辑的点也可能略微离开表面；底边沿着离开表面的线走，牙冠就会切进肩台
-    margin = trimesh.proximity.closest_point(mesh, np.asarray(margin, dtype=float))[0]
+    margin = closest_point(mesh, np.asarray(margin, dtype=float))[0]
     frame = _frame(margin, np.asarray(up, dtype=float))
     warnings: list[str] = []
 
@@ -324,6 +326,10 @@ def generate_prep_crown(
             outer.vertices[far] = outer.vertices[far] + normals * deficit[:, None]
 
     enforce_thickness()
+    occlusion: dict = {}
+    if antagonist is not None:
+        occlusion, occlusion_warnings = adjust_occlusion(outer, antagonist, np.asarray(up, dtype=float), prefs.occlusion_distance, far)
+        warnings += [f"{fdi} {w}" for w in occlusion_warnings]
     contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
     enforce_thickness()  # 退开邻牙时可能变薄，再补一次厚度
     after = _signed_thickness(outer.vertices[far], inner) if far.any() else np.array([np.inf])
@@ -359,5 +365,6 @@ def generate_prep_crown(
         "volume_mm3": round(float(crown.volume), 2),
         "margin_points": int(len(crown_margin)),
         "contacts_mm": {str(k): v for k, v in contacts.items()},
+        **occlusion,
     }
     return PrepCrown(fdi=fdi, mesh=crown, info=info, warnings=warnings)
