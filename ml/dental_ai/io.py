@@ -89,5 +89,7 @@ def export_colored_ply(path: str | Path, mesh: trimesh.Trimesh, labels: np.ndarr
     from .geometry import fill_small_holes
 
     colored = fill_small_holes(mesh)
+    # 只带顶点和三角形重建：STL 口扫自带逐面属性，补洞、去面之后数量和面数对不上，导出 PLY 会报错
+    colored = trimesh.Trimesh(colored.vertices, colored.faces, process=False)
     colored.visual = trimesh.visual.ColorVisuals(colored, vertex_colors=label_colors(labels))
     colored.export(path)

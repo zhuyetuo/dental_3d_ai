@@ -36,7 +36,17 @@ def signed_distance_to_surface(
     if len(near):
         cp, _, tri = trimesh.proximity.closest_point(surface, points[near])
         normals[near] = surface.face_normals[tri]
-        d[near] = np.einsum("ij,ij->i", points[near] - cp, normals[near])
+        # 大小用到最近点的真实距离，法向只决定正负。最近点落在棱或边上时，点到最近点的连线并不沿法向，
+        # 只取法向分量会把“隔着 0.9 mm、在侧面”的点算成“只差 0.03 mm”
+        offset = points[near] - cp
+        along = np.einsum("ij,ij->i", offset, normals[near])
+        sign = np.where(along < 0, -1.0, 1.0)
+        length = np.linalg.norm(offset, axis=1)
+        d[near] = sign * length
+        # 返回的方向也改成“最近点 → 点”的方向（穿入时取反），和距离一致；点正对着三角形时它就是法向。
+        # 邻接调整沿这个方向移动顶点：最近点在棱上时沿法向移动并不会靠近邻牙
+        ok = length > 1e-9
+        normals[near[ok]] = offset[ok] / length[ok, None] * sign[ok, None]
         loops = boundary_loops(surface)
         if loops and edge_margin > 0:
             # 边界折线加密，近似“到边界线段”的距离
@@ -46,6 +56,40 @@ def signed_distance_to_surface(
             on_edge = cKDTree(dense).query(cp)[0] < edge_margin
             d[near[on_edge]] = np.inf
     return d, normals
+
+
+class _Overlap:
+    """核对“穿入邻牙”是不是真的：沿牙冠 → 邻牙的方向逐条线看，顶点有没有越过邻牙朝向牙冠一侧的表面。
+
+    真实口扫上邻牙是按标签切出来的开放曲面，边界就在邻接点旁边。牙冠上靠近这条边界的顶点，最近的三角形常常是
+    邻牙侧壁的背面，按法向算出来是“穿入零点几毫米”，其实还隔着一条缝（Bite2Text 上量到过：报告 −0.03 mm 已到位，
+    实际还差 0.9 mm）。越过了才算穿入；没越过的按“在外面”处理，距离取绝对值。"""
+
+    def __init__(self, crown_points: np.ndarray, surface: trimesh.Trimesh, cell: float = 0.3):
+        other = np.asarray(trimesh.sample.sample_surface(surface, 15000, seed=0)[0])
+        axis = other.mean(axis=0) - crown_points.mean(axis=0)
+        self.axis = axis / np.linalg.norm(axis)
+        a = np.cross(self.axis, [0.0, 0.0, 1.0])
+        if np.linalg.norm(a) < 0.3:
+            a = np.cross(self.axis, [0.0, 1.0, 0.0])
+        self.a = a / np.linalg.norm(a)
+        self.b = np.cross(self.axis, self.a)
+        self.cell = cell
+        s = other @ self.axis
+        beyond = s > float(np.median(crown_points @ self.axis))  # 只要邻牙在牙冠中心外侧的那些点
+        self.near: dict[tuple[int, int], float] = {}
+        for key, value in zip(self._cells(other[beyond]), s[beyond]):
+            if value < self.near.get(key, np.inf):
+                self.near[key] = float(value)
+
+    def _cells(self, points: np.ndarray) -> list[tuple[int, int]]:
+        ia = np.floor(points @ self.a / self.cell).astype(int)
+        ib = np.floor(points @ self.b / self.cell).astype(int)
+        return list(zip(ia.tolist(), ib.tolist()))
+
+    def crossed(self, points: np.ndarray, tolerance: float = 0.02) -> np.ndarray:
+        s = points @ self.axis
+        return np.array([s_i > self.near.get(key, np.inf) - tolerance for key, s_i in zip(self._cells(points), s)], dtype=bool)
 
 
 def adjust_contacts(
@@ -66,8 +110,14 @@ def adjust_contacts(
     sigma2 = (radius / 2) ** 2
     for fdi, surface in neighbors.items():
         d_min = np.inf
+        check = _Overlap(crown.vertices[idx], surface)
         for _ in range(iterations):
             d, normals = signed_distance_to_surface(crown.vertices[idx], surface)
+            fake = np.flatnonzero(np.isfinite(d) & (d < 0))
+            if len(fake):
+                fake = fake[~check.crossed(crown.vertices[idx[fake]])]
+                d[fake] = -d[fake]  # 在邻牙侧壁的背面、但并没有越过它：其实在外面
+                normals[fake] = -normals[fake]
             k = int(np.argmin(d))
             d_min = float(d[k])
             if not np.isfinite(d_min):
