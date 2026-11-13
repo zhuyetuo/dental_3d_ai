@@ -1,7 +1,10 @@
 """学习式颈缘线检测（第一版）：点云网络给每个顶点预测“到颈缘线的有符号距离”，零等值线就是颈缘线。
 
 和几何方法（detect.py）的区别：不需要分割给出的初始线，直接从预备体网格出发。
-数据：teethPreparationData（52 个切牙代型，MIT，见 eval_margin.py），每个三角形标注颈缘线以上 / 以下。
+数据（两种格式，可以混在一起训练）：
+- teethPreparationData（52 个切牙代型，MIT，见 eval_margin.py）：*.vtp，每个三角形标注颈缘线以上 / 以下；
+- intellident-ai/public-datasets 的 Marginline detection（78 个代型，前牙到磨牙都有，仅限研究和教育用途）：
+  <编号>__die.ply（代型网格）+ <编号>__marginline.ply（颈缘线的密集点云）。
 
     python -m dental_ai.margin.learned train --data-dir "../data/prep_margin/training Data" --out ../models/margin/margin.pt
     python -m dental_ai.margin.learned eval --model ../models/margin/margin.pt --data-dir "../data/prep_margin/test Data" --out ../runs/margin/eval_test
@@ -27,8 +30,99 @@ CLIP = 2.0  # mm
 SCALE = 10.0
 
 
+BAND = 0.25  # mm：去掉离颈缘线这么近的顶点，网格就分成预备体和基座两块
+
+
+def case_files(dirs) -> list[Path]:
+    """目录（一个或多个）里的全部病例：*.vtp 和 *__die.ply。"""
+    out: list[Path] = []
+    for d in [dirs] if isinstance(dirs, (str, Path)) else dirs:
+        out += sorted(Path(d).glob("*.vtp")) + sorted(Path(d).glob("*__die.ply"))
+    return out
+
+
+def case_name(path: Path) -> str:
+    return path.stem.replace("_labeledPrepFinal", "").replace("__die", "")
+
+
+def prep_side(mesh: trimesh.Trimesh, line: np.ndarray) -> np.ndarray:
+    """只有颈缘线点云时，判断每个顶点在线的哪一侧：预备体 True，基座 False。
+
+    去掉线附近 BAND 以内的顶点后取最大的两个连通块，质心离线近的那块是预备体（基座包括下面的桩，离得远）；
+    线附近的顶点沿网格边从两侧同时向内扩散得到归属。
+    """
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import connected_components
+
+    v = np.asarray(mesh.vertices)
+    n = len(v)
+    keep = cKDTree(line).query(v)[0] > BAND
+    edges = mesh.edges_unique
+    e = edges[keep[edges[:, 0]] & keep[edges[:, 1]]]
+    _, lab = connected_components(sp.coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
+    sizes = np.bincount(lab[keep])
+    a, b = np.argsort(sizes)[::-1][:2]
+    if sizes[b] < 100:
+        raise ValueError("颈缘线没有把网格分成两块")
+    c = line.mean(axis=0)
+    if np.linalg.norm(v[lab == a].mean(axis=0) - c) > np.linalg.norm(v[lab == b].mean(axis=0) - c):
+        a, b = b, a  # a = 预备体
+    side = np.zeros(n, np.int8)
+    side[keep & (lab == a)], side[keep & (lab == b)] = 1, -1
+    for _ in range(200):
+        s0, s1 = side[edges[:, 0]], side[edges[:, 1]]
+        m0, m1 = (s0 == 0) & (s1 != 0), (s1 == 0) & (s0 != 0)
+        if not (m0.any() or m1.any()):
+            break
+        new = side.copy()
+        new[edges[m0, 0]], new[edges[m1, 1]] = s1[m0], s0[m1]
+        side = new
+    if (side == 0).any():  # 和两块都不连通的碎片：跟最近的已知顶点
+        known = np.flatnonzero(side != 0)
+        side[side == 0] = side[known[cKDTree(v[known]).query(v[side == 0])[1]]]
+    return side > 0
+
+
+def _die_arrays(path: Path):
+    from .detect import edge_sharpness
+
+    mesh = trimesh.load(path, process=False)
+    lp = path.with_name(path.name.replace("__die", "__marginline"))
+    if not lp.exists():
+        lp = path.parent.parent / "GT-marginlines" / lp.name
+    line = np.asarray(trimesh.load(lp, process=False).vertices, float)
+    v = np.asarray(mesh.vertices)
+    d = cKDTree(line).query(v)[0]
+    target = np.where(prep_side(mesh, line), 1.0, -1.0) * np.minimum(d, CLIP) / CLIP
+    feats = np.concatenate([v, mesh.vertex_normals, edge_sharpness(mesh)[:, None]], axis=1).astype(np.float32)
+    return mesh, feats, target.astype(np.float32), line
+
+
+def split_public(src: Path, out: Path, keep_in_train: set[str] = frozenset()) -> dict:
+    """public-datasets 的 78 个代型按患者划分训练 / 测试（约 1/5 的患者进测试），在 out/{train,test} 下建符号链接。
+
+    keep_in_train：已经在别的训练集里出现过的病例编号，它们所属的患者不进测试集。
+    """
+    dies = sorted((src / "registered-dies").glob("*__die.ply"))
+    patients = sorted({case_name(d).split("-")[0] for d in dies})
+    blocked = {k.split("-")[0] for k in keep_in_train}
+    test = {p for i, p in enumerate(patients) if i % 5 == 2 and p not in blocked}
+    count = {"train": 0, "test": 0}
+    for d in dies:
+        part = "test" if case_name(d).split("-")[0] in test else "train"
+        (out / part).mkdir(parents=True, exist_ok=True)
+        for f in (d, src / "GT-marginlines" / d.name.replace("__die", "__marginline")):
+            link = out / part / f.name
+            if not link.exists():
+                link.symlink_to(f.resolve())
+        count[part] += 1
+    return count
+
+
 def case_arrays(path: Path):
     """→ 网格、特征 (V, 7)（坐标未居中）、目标 (V,)、真值线。"""
+    if path.name.endswith("__die.ply"):
+        return _die_arrays(path)
     from ..eval_margin import PREP, load_vtp, truth_line
     from .detect import edge_sharpness
 
@@ -149,11 +243,11 @@ def detect(model, mesh: trimesh.Trimesh, device: str, feats: np.ndarray | None =
 # ---------------------------------------------------------------- 训练 / 评估
 
 
-def train(data_dir: Path, out: Path, epochs: int, batch_size: int, lr: float, repeats: int, init: Path | None = None) -> dict:
+def train(data_dir, out: Path, epochs: int, batch_size: int, lr: float, repeats: int, init: Path | None = None) -> dict:
     import torch
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    files = sorted(data_dir.glob("*.vtp"))
+    files = case_files(data_dir)
     cases = [case_arrays(f) for f in files]
     order = np.random.default_rng(0).permutation(len(cases))
     n_val = max(2, len(cases) // 8)
@@ -225,10 +319,10 @@ def run_eval(model_path: Path, data_dir: Path, out: Path) -> dict:
     model = _model().to(device)
     model.load_state_dict(ckpt["state"])
     rows = []
-    for f in sorted(data_dir.glob("*.vtp")):
+    for f in case_files(data_dir):
         mesh, feats, target, line = case_arrays(f)
         tree = cKDTree(line)
-        row = {"case": f.stem.replace("_labeledPrepFinal", "")}
+        row = {"case": case_name(f)}
         try:
             pts, field = detect(model, mesh, device, feats)
             row.update({f"learned_{k}": v for k, v in line_errors(pts, tree).items()})
@@ -259,7 +353,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="学习式颈缘线检测")
     sub = p.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("train")
-    t.add_argument("--data-dir", type=Path, required=True)
+    t.add_argument("--data-dir", type=Path, nargs="+", required=True, help="一个或多个目录，*.vtp 和 *__die.ply 都会用上")
     t.add_argument("--out", type=Path, required=True)
     t.add_argument("--epochs", type=int, default=300)
     t.add_argument("--batch-size", type=int, default=4)
@@ -270,9 +364,15 @@ def main() -> None:
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--data-dir", type=Path, required=True)
     e.add_argument("--out", type=Path, required=True)
+    s = sub.add_parser("split-public", help="public-datasets 的代型按患者划分训练 / 测试")
+    s.add_argument("--src", type=Path, required=True, help="解压后的 public-datasets 目录（含 registered-dies、GT-marginlines）")
+    s.add_argument("--out", type=Path, required=True)
+    s.add_argument("--keep-in-train", type=Path, nargs="*", default=[], help="这些目录里出现过的病例所属的患者不进测试集")
     args = p.parse_args()
     if args.cmd == "train":
         train(args.data_dir, args.out, args.epochs, args.batch_size, args.lr, args.repeats, init=args.init)
+    elif args.cmd == "split-public":
+        print(json.dumps(split_public(args.src, args.out, {case_name(f) for f in case_files(args.keep_in_train)})))
     else:
         run_eval(args.model, args.data_dir, args.out)
 

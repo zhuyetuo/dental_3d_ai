@@ -23,10 +23,10 @@ cd ml && python -m dental_ai.templates build --data-dir <obj 目录> --gt-dir <�
 | `models/segmentation/deep.pt` | `scripts/gpu/train_deep.sh` | 后端环境变量 `DEEP_MODEL`。DGCNN + 全局自注意力（`dgcnn_attn`），训练数据里加了模拟缺牙 |
 | `models/segmentation/deep_dgcnn.pt` | `python -m dental_ai.segmentation.deep train --arch dgcnn` | 原来的 DGCNN 结构、同样的数据，文件小（1.6 MB）、推理快，各项指标略低；`DEEP_MODEL` 指向它即可换用 |
 | `models/generation/toothgen_open.pt` | `scripts/gpu/train_toothgen.sh` | `pipeline --gen-model` 或后端环境变量 `GEN_MODEL` |
-| `models/margin/margin.pt` | `scripts/gpu/train_margin.sh` | 还没接入流程，`python -m dental_ai.margin.learned eval` |
+| `models/margin/margin.pt` | `scripts/gpu/train_margin.sh` | 还没接入流程，`python -m dental_ai.margin.learned eval`。2026-11-13 起的训练数据是 52 个切牙代型 + 78 个各牙位代型 |
 
 这三个文件随仓库提交（.gitignore 里单独放行），`docker compose up --build` 后后端直接使用前两个。
-分割和生成模型用 Teeth3DS（CC BY-NC-ND 4.0）训练，**只能用于非商业研究**，商用需要用自有授权数据重新训练；颈缘线模型的训练数据是 MIT 许可。
+分割和生成模型用 Teeth3DS（CC BY-NC-ND 4.0）训练，**只能用于非商业研究**，商用需要用自有授权数据重新训练；颈缘线模型的训练数据一部分是 MIT 许可，另一部分（intellident-ai/public-datasets）仅限研究和教育用途，所以它也不能商用。
 
 ## TGNet
 

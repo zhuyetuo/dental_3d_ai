@@ -74,6 +74,20 @@ def test_attention_segmentation_model_forward():
     assert out.shape == (1, 17, 700)
 
 
+def test_prep_side_from_margin_point_cloud():
+    import trimesh
+
+    from dental_ai.margin.learned import prep_side
+
+    mesh = trimesh.creation.icosphere(subdivisions=5, radius=5.0)
+    a = np.linspace(0, 2 * np.pi, 2000, endpoint=False)
+    r = np.sqrt(25 - 3.0 ** 2)
+    line = np.c_[r * np.cos(a), r * np.sin(a), np.full_like(a, 3.0)]  # z = 3 的一圈：上面的小帽是预备体
+    side = prep_side(mesh, line)
+    z = mesh.vertices[:, 2]
+    assert side[z > 3.4].all() and not side[z < 2.6].any()
+
+
 def test_zero_contour_on_sphere_is_the_equator():
     mesh = trimesh.creation.icosphere(subdivisions=3, radius=5.0)
     loop = zero_contour(mesh, mesh.vertices[:, 2] - 1.0, smooth_iters=0)
