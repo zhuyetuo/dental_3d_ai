@@ -34,7 +34,7 @@
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
-    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-14</div>
+    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-15</div>
     <h1>来时路：每一轮试了什么、结果怎样</h1>
     <p class="lead">成功的、失败的都记。卡住的时候回头看：哪类改法有效、哪类总是白费，往往比再想一个新点子更有用。
     <span class="state ok">● 采用</span> <span class="state bad">● 没采用</span> <span class="state mid">● 部分 / 默认关闭</span></p>
@@ -49,6 +49,8 @@
       <div class="lesson"><b>4. 直接往损失里加约束容易牺牲形状</b><span>“外形 + 间隙损失”试验 加外形尺寸 / 邻牙间隙损失，挤进邻牙 25% → 52%。约束放在生成后的调整（或扩散采样时逐像素限制）更稳。</span></div>
       <div class="lesson"><b>5. 模拟数据和真实数据差得远</b><span>模拟缺牙检出 9 成，真实缺牙只有 4 成；模拟的闭合缺隙只是平移，真实的牙会倾斜、旋转。要尽早拿真实数据测。</span></div>
       <div class="lesson"><b>6. 训练和推理的输入要一致</b><span>试验 2 训练时对颌是裁过的、推理时给整颌，结果整体偏高 0.64 mm；改成同样的裁法（形状模型）就好了。</span></div>
+      <div class="lesson"><b>7. 公开测试集上最好 ≠ 在我们的问题上最好</b><span>TeethSplineSeg 在牙齐全的测试集上强 4 个点，但在真实缺牙上弱 7 个点。选模型要用我们自己的真实场景测，不能只看论文数字。</span></div>
+      <div class="lesson"><b>8. 形状要“锁”住，不是“给看”</b><span>把形状模型的输出当条件喂给扩散模型，形状照样会偏；在生成的每一步把低频换回形状模型的，形状才稳。</span></div>
     </div>
   </section>
 
@@ -59,6 +61,23 @@
       <button data-k="margin">颈缘线</button><button data-k="eval">评估</button><button data-k="web">网页 / 工程</button>
     </div>
     <div class="tl" id="tl">
+
+      <div class="ev no" data-k="seg eval"><div class="d">2026-11-15</div>
+        <h3>TeethSplineSeg 在真实缺牙上反而更差<span class="tag">分割</span></h3>
+        <p>公开最好的分割模型之一（PTv3 + 牙弓 B 样条）。同一批扫描、同一套后处理，只换分割模型：标准测试集上它强，真实缺牙上它弱。
+        原因推测：它只用牙齐全的口扫训练，牙弓先验默认牙是连续的；我们训练时加了模拟缺牙。<b>结论：用它的结构 + 我们的缺牙数据自己训练</b>。</p>
+        <p class="num">公平测试集 T-mIoU <s>87.4%</s><b>91.8%</b>（它更好）· 真实缺牙检出 我们 <b>54.9%</b> / 它 47.6% · 前磨牙 我们 <b>47%</b> / 它 30%</p></div>
+
+      <div class="ev ok" data-k="web"><div class="d">2026-11-15</div>
+        <h3>数据准备搬到 GPU<span class="tag">工程</span></h3>
+        <p>径向深度图投影快 5–15 倍；口扫解析一次存成网格缓存；分 GPU 进程并行。TeethSplineSeg 的预处理原来单进程逐个做最远点采样（每个扫描 9 秒），找到原因后改成 16 个进程共用 GPU。
+        教训：GPU 预处理和训练同时跑，会把训练拖慢好几倍，要错开。</p></div>
+
+      <div class="ev no" data-k="gen"><div class="d">2026-11-15</div>
+        <h3>看着形状模型补细节的扩散（专门训练）<span class="tag">牙冠生成</span></h3>
+        <p>把形状模型的输出当条件、真牙当目标，从扩散模型接着训 25 轮。从纯噪声生成或从形状模型加噪 0.6 再去噪，形状都不如现在的默认做法。
+        <b>规律：给模型“看”形状不够，要在生成的每一步强制保留形状模型的低频（现在默认的做法）</b>。</p>
+        <p class="num">形状误差 默认 <b>0.272</b> / 纯噪声 0.329 / 加噪 0.6 0.292 mm · 中央窝偏差 默认 <b>0.86</b> / 1.50 / 1.18 mm</p></div>
 
       <div class="ev ok" data-k="gen"><div class="d">2026-11-14</div>
         <h3>形状模型出形状、扩散模型补细节<span class="tag">牙冠生成</span></h3>
