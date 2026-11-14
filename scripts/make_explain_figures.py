@@ -17,9 +17,13 @@ def uid(p):
     return f"{p}{_uid[0]}"
 
 
+FLAT = {IVORY: "#f1e4c1", CYAN: "#38c4d1", GRAY: "#b9c5dc", GUM: "#ee9f95"}  # 扁平风格：每种东西一个纯色
+
+
 def grad(gid, c, vertical=True):
-    x2, y2 = ("0", "1") if vertical else ("1", "0")
-    return f'<linearGradient id="{gid}" x1="0" y1="0" x2="{x2}" y2="{y2}"><stop offset="0" stop-color="{c[0]}"/><stop offset="1" stop-color="{c[1]}"/></linearGradient>'
+    """扁平风格：纯色（保留 id 写法，调用处不用改）。"""
+    flat = FLAT.get(tuple(c), c[1] if len(c) > 1 else c[0])
+    return f'<linearGradient id="{gid}"><stop offset="0" stop-color="{flat}"/><stop offset="1" stop-color="{flat}"/></linearGradient>'
 
 
 def molar(x, y, w, h, colors, flip=False, extra="", dash=False):
@@ -36,8 +40,7 @@ def molar(x, y, w, h, colors, flip=False, extra="", dash=False):
     width = "4" if outline else "2.5"
     stroke = f'stroke="{colors[2] if not outline else colors[1]}" stroke-width="{width}"' + (' stroke-dasharray="9 6"' if dash else "")
     extra = re.sub(r'stroke-width="[^"]*"', "", extra)
-    hl = "" if outline else (f'<path d="M{L + .2 * w:.1f},{T + .35 * h:.1f} Q{L + .22 * w:.1f},{T + .2 * h:.1f} {L + .32 * w:.1f},{T + .18 * h:.1f}" '
-                             f'fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/>')
+    hl = ""  # 扁平风格：不画高光
     fill = "none" if outline else f"url(#{g})"
     return f'<defs>{grad(g, colors)}</defs><g{tr}><path d="{d}" fill="{fill}" {stroke} {extra}/>{hl}</g>'
 
@@ -66,6 +69,22 @@ def svg(w, h, body, aria):
 def fig(title, caption, s, wide=False):
     style = ' style="grid-column:1/-1"' if wide else ""
     return f'      <div class="fig"{style}>\n        {s}\n        <b>{title}</b><span>{caption}</span>\n      </div>\n'
+
+
+def views_fig(title, caption, img, src):
+    """真实数据的图：静态图 / 动图 / 3D 交互 三个按钮切换（views.js）。"""
+    return f"""      <div class="fig" style="grid-column:1/-1">
+        <div class="views" data-src="{src}" data-active="static">
+          <div class="vbar"><button type="button" class="vbtn on" data-view="static">静态图</button><button type="button" class="vbtn" data-view="anim">动图</button><button type="button" class="vbtn" data-view="3d">3D 交互</button></div>
+          <div class="vpane" data-view="static"><img src="{img}" alt="{title}" loading="lazy"></div>
+          <div class="vpane" data-view="anim" hidden><canvas></canvas></div>
+          <div class="vpane" data-view="3d" hidden><div class="v3d"></div>
+            <div class="vctl"><label>离对颌 <input type="range" min="-0.5" max="1" step="0.02" value="0.6"></label><output></output>
+            <button type="button" class="vopa">对颌：半透明 / 不透明</button><span class="vhint">拖动旋转 · 滚轮缩放 · 右键平移</span></div></div>
+        </div>
+        <b>{title}</b><span>{caption}</span>
+      </div>
+"""
 
 
 def qpt(p0, p1, p2, t):
@@ -106,7 +125,10 @@ def gen_figs():
     b = panel(0, "没咬上", False, bite(-14, False) + f'<line x1="95" y1="100" x2="95" y2="128" stroke="{WARN}" stroke-width="3" stroke-dasharray="4 3"/>' + label(104, 120, "空", WARN, 15))
     b += panel(196, "刚好接触", True, bite(0, False) + f'<circle cx="74" cy="128" r="6" fill="{GOOD}"/><circle cx="118" cy="128" r="6" fill="{GOOD}"/>')
     b += panel(392, "穿进对颌", False, bite(14, True))
-    out.append(fig("和对颌（上面的牙）", "灰：对颌；青：生成的牙。要刚好接触：空着咬不到东西，穿进去真做出来要磨或者咬不下去。", svg(582, 262, b, "咬合三种情况"), wide=True))
+    out.append(views_fig("和对颌（上面的牙）",
+                         "真实剖面（Bite2Text 一颗下颌磨牙和它的对颌）：要刚好接触，空着咬不到东西，穿进去真做出来要磨或者咬不下去。"
+                         "点“动图”看牙冠上下移动，点“3D 交互”可以拖动旋转、用滑块调高低（颜色：蓝 = 有间隙，绿 = 刚好接触，红 = 穿进去）。",
+                         "images/explain_bite.png", "assets/bite/F5075_36"))
 
     # 3. 和邻牙：三种情况
     def contact(shift, tag):
@@ -241,6 +263,19 @@ CSS = """.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1
 .fig{background:#0b1426;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
 .fig svg{width:100%;height:auto;display:block}
 .fig[style*="grid-column"] svg{max-width:860px;margin:0 auto}
+.views{display:flex;flex-direction:column;gap:10px}
+.vbar{display:flex;gap:6px;justify-content:flex-end}
+.vbtn{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:16px;padding:4px 14px;font:inherit;font-size:13px;cursor:pointer}
+.vbtn.on{background:var(--accent);border-color:var(--accent);color:#04222a;font-weight:700}
+.vpane img{width:100%;border-radius:10px;display:block;border:0;background:transparent}
+.vpane canvas{width:100%;display:block;border-radius:10px;cursor:pointer}
+.v3d{width:100%;min-height:320px;border-radius:10px;overflow:hidden;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.v3d canvas{display:block}
+.vctl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:14px;margin-top:8px}
+.vctl input{width:220px;vertical-align:middle}
+.vctl output{font-weight:700;min-width:150px}
+.vopa{background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:3px 12px;font:inherit;font-size:13px;cursor:pointer}
+.vhint{color:var(--muted);font-size:12px}
 .fig b{font-family:var(--display);font-size:17px}
 .fig span{font-size:14px;color:var(--muted);line-height:1.55}
 """
@@ -268,6 +303,10 @@ for page, make in (("generation.html", gen_figs), ("segmentation.html", seg_figs
     s = re.sub(r"\.fig\{[^}]*\}\n?", "", s)
     s = re.sub(r"\.fig svg\{[^}]*\}\.fig b\{[^}]*\}\.fig span\{[^}]*\}\n?", "", s)
     s = re.sub(r"\.fig (svg|b|span)\{[^}]*\}\n?", "", s)
+    s = re.sub(r"\.fig\[style\*=\"grid-column\"\] svg\{[^}]*\}\n?", "", s)
+    s = re.sub(r"\.(views|vbar|vbtn|vbtn\.on|vpane img|vpane canvas|v3d|v3d canvas|vctl|vctl input|vctl output|vopa|vhint)\{[^}]*\}\n?", "", s)
     s = s.replace("</style>\n</head>", CSS + "</style>\n</head>", 1)
+    if "views.js" not in s:
+        s = s.replace("</body>", '<script src="views.js" defer></script>\n</body>', 1)
     p.write_text(s)
     print("figs", page)
