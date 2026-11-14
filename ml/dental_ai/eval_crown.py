@@ -102,6 +102,12 @@ def _one(args) -> list[dict]:
                 for kind, antagonist, prefs in (("generated", ant, None), ("generated_contact", ant, contact), ("generated_raw", ant, raw), ("generated_no_antagonist", None, None)):
                     with tempfile.TemporaryDirectory() as tmp:
                         gen = LearnedGenerator(gen_model, fallback=MirrorTemplateGenerator())
+                        if os.environ.get("RADIAL_MODEL"):  # 对比用：径向深度图扩散模型，做不了的交给上面的学习模型
+                            from .generation.radial_diffusion import RadialDiffusionGenerator
+
+                            clearance = os.environ.get("RADIAL_CLEARANCE")
+                            gen = RadialDiffusionGenerator(os.environ["RADIAL_MODEL"], fallback=gen,
+                                                           clearance=float(clearance) if clearance else None)
                         report = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=antagonist, preferences=prefs)
                         done = {g["fdi"]: g for g in report["generated"]}
                         if fdi not in done:
