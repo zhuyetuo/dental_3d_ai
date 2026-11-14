@@ -23,12 +23,12 @@ export function useScene(host: RefObject<HTMLDivElement>): RefObject<SceneContex
 
   useEffect(() => {
     const el = host.current!;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1d2127);
+    scene.background = null; // 透明：背景由页面的渐变给出（style.css 里的 main）
     scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.2));
     const light = new THREE.DirectionalLight(0xffffff, 1.5);
     light.position.set(30, -40, 80);

@@ -1,62 +1,164 @@
+/* 深色 CAD 风格：海军蓝底、青色点缀；左侧是操作面板，右侧整块是三维视图 */
+:root {
+  --bg: #070d1a; --panel: #0d1628; --raised: #142138; --line: #22324f; --line-soft: #1a2740;
+  --fg: #e8eef8; --muted: #8b9bb8; --dim: #5f7090;
+  --accent: #22c7d6; --accent-ink: #04222a; --accent-soft: rgba(34, 199, 214, 0.14);
+  --ok: #3ddc97; --warn: #f5b74f; --err: #ff6b6b;
+  color-scheme: dark;
+}
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
-body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; color: #222; background: #f4f5f7; }
+body {
+  font-family: "Inter", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13.5px; line-height: 1.5; color: var(--fg); background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
 .layout { display: flex; height: 100%; }
-aside { width: 340px; flex-shrink: 0; overflow-y: auto; padding: 16px; background: #fff; border-right: 1px solid #ddd; }
-main { flex: 1; min-width: 0; }
+main { flex: 1; min-width: 0; background: radial-gradient(120% 90% at 50% 35%, #15233c 0%, #0a1222 55%, #060b16 100%); }
 .viewer { width: 100%; height: 100%; }
-h1 { font-size: 20px; margin: 0 0 16px; }
-h2 { font-size: 16px; margin: 20px 0 8px; }
-h3 { font-size: 14px; margin: 12px 0 4px; }
-form label { display: block; margin-bottom: 10px; }
-form input, form select { display: block; width: 100%; margin-top: 4px; }
-button { padding: 6px 14px; cursor: pointer; }
-fieldset { border: 1px solid #ddd; border-radius: 6px; margin: 0 0 12px; padding: 8px 10px; }
-form label.pref { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
-form label.pref input { width: 90px; margin: 0; }
-.cases { list-style: none; padding: 0; margin: 0; }
-.cases li { padding: 6px 8px; cursor: pointer; border-radius: 4px; }
-.cases li:hover { background: #eef2f7; }
-.cases li.active { background: #dbe7ff; }
-.error { color: #c62828; }
-.inline { display: flex; gap: 6px; align-items: center; margin-top: 12px; }
+
+/* ---------- 左侧面板 ---------- */
+aside {
+  width: 360px; flex-shrink: 0; overflow-y: auto; padding: 0 18px 28px;
+  background: var(--panel); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+aside > * { order: 10; }
+h1 {
+  order: 0; position: sticky; top: 0; z-index: 2; margin: 0 -18px 4px; padding: 18px 18px 14px;
+  font-size: 19px; font-weight: 600; letter-spacing: 0.01em;
+  background: linear-gradient(var(--panel) 80%, transparent);
+}
+h1 b { color: var(--accent); font-weight: 700; }
+h1 small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--muted); letter-spacing: 0.04em; }
+h2 {
+  margin: 22px 0 10px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 10px;
+}
+h2::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
+h3 { font-size: 13px; margin: 14px 0 6px; color: var(--fg); }
+p { margin: 6px 0; }
+a { color: var(--accent); }
+section ul { padding-left: 18px; margin: 4px 0; color: var(--muted); }
+
+/* 示例病例排在最前面：第一次打开点一个就能看到效果 */
+aside > h2:has(+ .demos) { order: 1; margin-top: 8px; }
+aside > .demos { order: 2; }
+aside > .note { order: 3; }
+aside > form { order: 4; }
+aside > .error { order: 5; }
+
+.demos { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.demos li {
+  position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--raised);
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+.demos li:hover { border-color: var(--accent); background: #17284a; transform: translateY(-1px); }
+.demos button {
+  display: block; width: 100%; padding: 11px 34px 2px 13px; border: 0; background: none; color: var(--fg);
+  font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.demos button::after { content: "›"; position: absolute; right: 14px; top: 50%; translate: 0 -55%; font-size: 20px; color: var(--accent); }
+.demos button::before { content: ""; position: absolute; inset: 0; border-radius: 10px; }  /* 整张卡片都能点 */
+.demos button:focus-visible::before { outline: 2px solid var(--accent); outline-offset: 2px; }
+.demos button:disabled { color: var(--dim); cursor: default; }
+.demos small { display: block; padding: 0 34px 11px 13px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.note { color: var(--dim); font-size: 11.5px; margin: 8px 0 0; }
+
+/* 上传表单 */
+form { margin-top: 22px; padding: 14px 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(20, 33, 56, 0.45); }
+form::before {
+  content: "上传自己的口扫"; display: block; margin-bottom: 12px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted);
+}
+form label { display: block; margin-bottom: 12px; color: var(--muted); font-size: 12.5px; }
+form input, form select {
+  display: block; width: 100%; margin-top: 5px; padding: 7px 9px;
+  color: var(--fg); background: #0a1322; border: 1px solid var(--line); border-radius: 7px; font: inherit;
+}
+form input:focus, form select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+form input::placeholder { color: var(--dim); }
+form input[type="file"] { padding: 5px; color: var(--muted); font-size: 12px; }
+form input[type="file"]::file-selector-button {
+  margin-right: 10px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--raised); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer;
+}
+fieldset { border: 0; border-top: 1px solid var(--line-soft); margin: 4px 0 14px; padding: 12px 0 0; }
+legend { padding: 0 8px 0 0; font-size: 11.5px; letter-spacing: 0.08em; color: var(--muted); }
+form label.pref { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+form label.pref input { width: 84px; margin: 0; padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+
+button { font: inherit; cursor: pointer; }
+form button[type="submit"], section button {
+  padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 700;
+  transition: filter 0.15s;
+}
+form button[type="submit"] { width: 100%; }
+form button[type="submit"]:hover, section button:hover { filter: brightness(1.1); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 病例列表、结果 */
+.cases { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.cases li {
+  padding: 9px 11px; cursor: pointer; border-radius: 8px; border: 1px solid transparent; color: var(--muted); font-size: 12.5px;
+}
+.cases li:hover { background: var(--raised); color: var(--fg); }
+.cases li.active { background: var(--accent-soft); border-color: rgba(34, 199, 214, 0.45); color: var(--fg); }
+section { color: var(--fg); }
+section p { color: var(--muted); }
+.error { color: var(--err); }
+ul.error { padding-left: 18px; }
+.inline { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); }
+.inline input, .inline select { background: #0a1322; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+
 @media (max-width: 720px) {
   .layout { flex-direction: column; }
-  aside { width: 100%; max-height: 50%; border-right: 0; border-bottom: 1px solid #ddd; }
+  aside { width: 100%; max-height: 52%; border-right: 0; border-bottom: 1px solid var(--line); }
 }
 
-/* 标注编辑器 */
+/* ---------- 三维视图上的工具条 ---------- */
 .editor { position: relative; width: 100%; height: 100%; }
 .toolbar {
-  position: absolute; top: 12px; left: 12px; right: 12px; max-width: 760px;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 10px 12px; border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  position: absolute; top: 14px; left: 14px; right: 14px; max-width: 780px;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(13, 22, 40, 0.82); border: 1px solid var(--line);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 .toolbar .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.toolbar button { padding: 4px 10px; border: 1px solid #c5cad3; border-radius: 4px; background: #fff; }
-.toolbar button.on { background: #2f6fde; border-color: #2f6fde; color: #fff; }
-.toolbar button.primary { background: #1b8a4b; border-color: #1b8a4b; color: #fff; }
-.toolbar button:disabled { opacity: 0.45; cursor: default; }
-.toolbar .sep { width: 1px; height: 20px; background: #d5d9e0; margin: 0 4px; }
-.toolbar input[type="range"] { width: 180px; }
-.toolbar .status { font-size: 13px; color: #444; }
+.toolbar button {
+  padding: 5px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--raised); color: var(--fg); font-size: 12.5px;
+}
+.toolbar button:hover:not(:disabled) { border-color: var(--accent); }
+.toolbar button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.toolbar button.primary { background: var(--ok); border-color: var(--ok); color: #05281a; font-weight: 700; }
+.toolbar button:disabled { opacity: 0.4; cursor: default; }
+.toolbar .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.toolbar input[type="range"] { width: 180px; accent-color: var(--accent); }
+.toolbar select, .toolbar input[type="number"], .toolbar input[type="text"] {
+  background: #0a1322; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit;
+}
+.toolbar .status { font-size: 12.5px; color: var(--muted); }
 .odontogram { display: flex; flex-direction: column; gap: 4px; }
 .chart-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
-.chart-row .side { font-size: 12px; color: #777; padding: 0 4px; }
-.chart-row .midline { width: 2px; height: 26px; background: #333; margin: 0 4px; }
+.chart-row .side { font-size: 12px; color: var(--dim); padding: 0 4px; }
+.chart-row .midline { width: 2px; height: 26px; background: var(--muted); margin: 0 4px; }
 .chip {
-  min-width: 34px; padding: 4px 0; border: 2px solid transparent; border-radius: 4px;
+  min-width: 34px; padding: 4px 0; border: 2px solid transparent; border-radius: 6px;
   color: #fff; font-size: 12px; font-weight: 600; text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
 }
-.chip.absent { opacity: 0.35; }
-.chip.active { border-color: #111; box-shadow: 0 0 0 2px #fff inset; }
+.chip.absent { opacity: 0.3; }
+.chip.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55) inset; }
 @media (max-width: 720px) {
   .toolbar { top: 8px; left: 8px; right: 8px; padding: 8px; }
   .chip { min-width: 28px; }
 }
-.demos { list-style: none; padding: 0; margin: 0 0 4px; }
-.demos li { margin-bottom: 8px; }
-.demos button { width: 100%; text-align: left; padding: 6px 8px; cursor: pointer; }
-.demos small { display: block; color: #666; margin-top: 2px; line-height: 1.35; }
-.note { color: #888; font-size: 12px; margin: 4px 0 12px; }
+
+/* 还没选病例时，三维视图中间给一句提示 */
+main { position: relative; }
+.layout:not(:has(.cases li.active)) main::after {
+  content: "从左侧点一个示例病例开始"; position: absolute; left: 50%; top: 46%; translate: -50% -50%;
+  padding: 12px 22px; border: 1px dashed var(--line); border-radius: 999px; color: var(--muted); font-size: 14px; letter-spacing: 0.06em;
+  pointer-events: none; white-space: nowrap;
+}

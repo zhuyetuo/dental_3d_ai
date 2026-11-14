@@ -139,7 +139,10 @@ export function App() {
   return (
     <div className="layout">
       <aside>
-        <h1>Dental 3D AI</h1>
+        <h1>
+          Dental <b>3D</b> AI
+          <small>口扫 → 分割 → 缺牙检测 → 牙冠设计</small>
+        </h1>
         <form onSubmit={upload}>
           <label>
             颌位
