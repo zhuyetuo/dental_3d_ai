@@ -88,6 +88,64 @@ td.w{white-space:normal;min-width:260px}
   </section>
 
   <section>
+    <h2 id="backbone-seg">基础模型的演进：牙齿分割（点云 / 网格分割网络）</h2>
+    <p class="note">上面的时间线是“牙科这个应用”的进展；这里是它底下用的通用网络结构。牙科论文基本是把通用 3D 网络的最新一代拿来，加上牙弓先验。</p>
+    <div class="scroll"><table>
+      <tr><th>年份</th><th>基础模型</th><th>核心思想</th><th>在牙科里的代表</th></tr>
+      <tr><td>2017</td><td>PointNet / PointNet++</td><td class="w">直接吃点云；逐点 MLP + 全局池化，++ 加了分层局部特征</td><td class="w">早期牙齿分割基线</td></tr>
+      <tr><td>2019</td><td>DGCNN（EdgeConv）</td><td class="w">每层按特征重新找 k 近邻、在边上做卷积，局部几何更强</td><td class="w">MeshSegNet 一类、DilatedToothSegNet；<b>我们现在用的就是这一代</b>（加了一层全局注意力）</td></tr>
+      <tr><td>2021</td><td>Point Transformer（v1）/ PCT</td><td class="w">局部邻域里做自注意力</td><td class="w">TGNet 的思路同期；CrossTooth（CVPR 2025）用 PTv1</td></tr>
+      <tr><td>2022</td><td>Point Transformer v2</td><td class="w">分组向量注意力、网格池化，更快更准</td><td class="w">—</td></tr>
+      <tr><td>2023–2025</td><td>SAM / SAM2 / SAM3（图像分割基础模型）</td><td class="w">海量图像预训练的通用分割；3D 上用“多视角渲染 → 2D 分割 → 投回网格”</td><td class="w">3DTeethSAM（SAM2）、TSegAgent（SAM3）</td></tr>
+      <tr><td>2024</td><td><b>Point Transformer v3（PTv3）</b></td><td class="w">点按空间曲线排序后做序列注意力，感受野大、速度快，能直接吃十几万点</td><td class="w">TeethSplineSeg（92.6%，目前公开最好之一）</td></tr>
+      <tr><td>2025</td><td>Sonata 等 3D 自监督预训练</td><td class="w">PTv3 在大量无标注点云上自监督预训练，再微调</td><td class="w">牙科里还没见到</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2 id="backbone-gen">基础模型的演进：牙冠 / 3D 形状生成</h2>
+    <div class="scroll"><table>
+      <tr><th>年份</th><th>生成方法</th><th>核心思想</th><th>在牙科里的代表</th></tr>
+      <tr><td>2018 以前</td><td>模板 / 统计形状模型</td><td class="w">牙库里挑标准牙，缩放、变形贴进缺隙（传统 CAD 的做法）</td><td class="w">3Shape、exocad 的牙库；我们的“几何方法”</td></tr>
+      <tr><td>2014–2020</td><td>GAN</td><td class="w">生成器和判别器对抗；生成快，但训练不稳、容易模式坍塌</td><td class="w">早期 AI 牙冠（2D 深度图 GAN），2026 仍有 GAN 牙冠论文</td></tr>
+      <tr><td>2018–2021</td><td>点云补全：PCN、FoldingNet → <b>PoinTr（Transformer，2021）</b></td><td class="w">把“缺一颗牙”当成点云补全；Transformer 编码上下文</td><td class="w">DMC（2023，PoinTr）、DCrownFormer（2024）、<b>我们的 D 是这一类的模板变形版本</b></td></tr>
+      <tr><td>2020–2022</td><td><b>扩散模型</b>：DDPM、DDIM；3D 上 PVD、LION</td><td class="w">从噪声一步步去噪；多样性和细节最好，代价是采样慢</td><td class="w">CrownGen（2025，点云扩散）、ToothCraft（2026，SDF 扩散）、<b>我们的径向深度图扩散（U-Net）</b></td></tr>
+      <tr><td>2023</td><td>DiT（Transformer 当扩散的去噪网络）、3DShape2VecSet（形状潜空间）</td><td class="w">去噪网络从 U-Net 换成 Transformer；先把形状压成一组潜向量再在潜空间扩散</td><td class="w">牙科里还很少</td></tr>
+      <tr><td>2023–2024</td><td><b>Flow Matching / Rectified Flow</b></td><td class="w">扩散的“直线版”：学从噪声到数据的速度场，采样步数少、训练更稳；SD3（2024）开始成为主流</td><td class="w">牙科里还没见到</td></tr>
+      <tr><td>2024–2025</td><td>大规模 3D 生成基础模型：CLAY、TRELLIS、Hunyuan3D 2.0</td><td class="w">形状潜空间 + Flow Matching + DiT，在百万级 3D 模型上训练</td><td class="w">可以借它们的结构；牙科数据量（几万颗牙）训这么大的模型不够，要么小号版，要么在它们的权重上微调</td></tr>
+    </table></div>
+    <div class="two">
+      <div class="lesson" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px">
+        <b>Transformer 和 Diffusion 不是二选一</b><br>
+        Transformer 是<b>网络结构</b>（怎么算），Diffusion / Flow Matching 是<b>生成方法</b>（怎么训练、怎么从噪声变成牙）。
+        现在最新的做法是两者合起来：<b>Flow Matching + Transformer（DiT）</b>，在形状潜空间里生成。
+      </div>
+      <div class="lesson" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px">
+        <b>扩散旧了吗？</b><br>
+        生成方法本身没过时：Flow Matching 是扩散的改进版，思路一脉相承。我们旧的是<b>具体组合</b>：
+        DDPM 式扩散 + U-Net + 2D 径向深度图，大约是 2021–2022 年的配置。升级路线：U-Net → DiT，扩散 → Flow Matching（步数少、快），
+        2D 径向图 → 3D 形状潜空间（窝沟分辨率更高）。已写进想法清单。
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 id="gap-seg">分割为什么差 5 个点、怎么补</h2>
+    <div class="scroll"><table>
+      <tr><th></th><th>我们</th><th>TeethSplineSeg（92.6%）/ TGNet</th></tr>
+      <tr><td>基础网络</td><td>DGCNN（2019）+ 一层全局注意力</td><td>PTv3（2024）/ 两阶段点网络</td></tr>
+      <tr><td>每个口扫用多少点</td><td><b>8000 点</b>，再插值回十几万个顶点</td><td>TGNet 24000 点 + 边界附近再采样；PTv3 可以直接吃全分辨率</td></tr>
+      <tr><td>牙和牙龈的边界</td><td>没有专门处理（插值后边界发糊）</td><td>TGNet 第二阶段专门细化边界</td></tr>
+      <tr><td>牙弓先验</td><td>只在编号纠错（后处理）里用</td><td>B 样条牙弓坐标直接进网络</td></tr>
+      <tr><td>多训练有没有用</td><td colspan="2" class="w">11-13 在 4090 上接着训了一晚，常规口扫的分数基本没动（96.6% → 96.6%，T-mIoU 86.8% → 87.4%）：<b>瓶颈是模型结构和点数，不是训练时间</b></td></tr>
+      <tr><td>测试集</td><td colspan="2" class="w">我们用两套划分的交集 174 个（公平测试集）；论文数字用各自的划分，有一部分差距是测试集不同造成的，要在同一批扫描上跑他们的权重才知道真实差距</td></tr>
+    </table></div>
+    <p class="note">结论：用现有数据，<b>换更好的模型比训更久更有用</b>。顺序：① 先在公平测试集上直接跑 TeethSplineSeg、CrossTooth 的公开权重（几个 GPU 小时，量出真实差距）；
+    ② 用 PTv3（Pointcept，MIT 许可）在我们的缓存上重训，点数加到全分辨率，保留模拟缺牙的增强（论文报告 4090 上约 2 小时）；③ 加牙弓坐标特征和边界细化。
+    TeethSplineSeg 等仓库没有许可证，只能研究参考，产品里要用自己训练的。</p>
+  </section>
+
+  <section>
     <h2>我们和他们比</h2>
     <div class="scroll"><table>
       <tr><th>方向</th><th>我们（2026-11-14）</th><th>别家公开的最好数字</th><th>能不能直接比</th></tr>
