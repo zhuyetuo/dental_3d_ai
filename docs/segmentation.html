@@ -6,11 +6,21 @@
 <title>牙齿分割 · dental_3d_ai</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
 <link rel="stylesheet" href="site.css">
+<style>
+.dir{font-size:12px;padding:1px 8px;border-radius:9px;background:var(--chip);white-space:nowrap}
+.dir.lo{color:var(--good)} .dir.hi{color:var(--accent)} .dir.mid{color:var(--warn)}
+td.w{white-space:normal;min-width:260px}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fig{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.fig svg{width:100%;height:auto}
+.fig b{font-family:var(--display)}
+.fig span{font-size:13px;color:var(--muted)}
+</style>
 </head>
 <body>
 <nav><div class="in"><span class="brand">Dental <b>3D</b> AI</span>
 <a href="index.html">总览</a><a class="on" href="segmentation.html">牙齿分割</a><a href="generation.html">牙齿生成</a><a href="margin.html">颈缘线</a>
-<a href="history.html">来时路</a><a href="landscape.html">业界进展</a><a href="ideas.html">想法清单</a><a href="metrics.html">指标说明</a>
+<a href="history.html">来时路</a><a href="landscape.html">业界进展</a><a href="ideas.html">想法清单</a>
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
@@ -18,6 +28,20 @@
     <h1>标出每颗牙，找到缺的牙</h1>
     <p class="lead">现状一句话：常规口扫分得准，模拟缺牙能找到九成多；<b>真实的缺牙只找到 55%</b>，主要败在缺隙已经闭合的牙列上。这一轮没有重新训练。</p>
   </header>
+
+  <section class="explain">
+    <h2>先看懂指标</h2>
+    <div class="scroll"><table>
+      <tr><th>指标</th><th>一句话</th><th>方向</th></tr>
+      <tr><td>T-mIoU（牙齿 mIoU）</td><td class="w">每颗牙：分出来的范围和标准答案重叠了多少（重叠面积 ÷ 两者合起来的面积），所有牙取平均。分割论文都用它比</td><td><span class="dir hi">越大越好</span></td></tr>
+      <tr><td>综合分</td><td class="w">3DTeethSeg'22 挑战赛的官方总分，下面三项的平均：牙找得准不准（位置）、牙和牙龈分得对不对、牙号标得对不对</td><td><span class="dir hi">越大越好</span></td></tr>
+      <tr><td>所有牙号全对的扫描</td><td class="w">一个口扫里每颗牙的牙号都对，才算这个扫描“全对”；最严格的一个</td><td><span class="dir hi">越大越好</span></td></tr>
+      <tr><td>幻影牙</td><td class="w">缺牙的地方被错标成一颗牙。有幻影牙，后面就发现不了缺牙</td><td><span class="dir lo">越小越好</span></td></tr>
+      <tr><td>缺牙检出</td><td class="w">缺了的牙被报出来的比例（牙号要对）；“放宽”= 报成相邻牙号也算</td><td><span class="dir hi">越大越好</span></td></tr>
+      <tr><td>误报</td><td class="w">牙明明都在，却报了缺牙</td><td><span class="dir lo">越小越好</span></td></tr>
+    </table></div>
+  </section>
+
 
   <section>
     <div class="tiles">
