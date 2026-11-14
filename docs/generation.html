@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>牙齿生成 · dental_3d_ai</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<nav><div class="in"><span class="brand">dental_3d_ai</span>
+<a href="index.html">总览</a><a href="segmentation.html">牙齿分割</a><a class="on" href="generation.html">牙齿生成</a><a href="margin.html">颈缘线</a>
+<a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">专项 · 牙齿生成 · 更新于 2026-11-14</div>
+    <h1>缺牙位置生成一颗牙冠</h1>
+    <p class="lead">现状一句话：和对颌、邻牙的距离关系已经接近天然牙，但<b>整体形状不像真牙，咬合面的凹凸也不够</b>。数字好看不等于牙冠好看，下一步先解决形状。</p>
+  </header>
+
+  <section>
+    <h2>放在牙弓里看</h2>
+    <figure>
+      <img src="images/generation.png" alt="缺牙、几何方法生成、学习模型生成、真牙">
+      <figcaption>四列：缺牙 → 几何方法（对侧牙镜像，蓝）→ 学习模型（蓝）→ 真牙。前三行是误差中位数的病例，第四行是较差的病例（第 90 百分位）。和右边的真牙比，轮廓偏圆、牙尖和窝沟不清楚。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>咬合面：离对颌多远</h2>
+    <div class="legend">
+      <span><span class="sw" style="background:#aa141e"></span>穿进对颌</span>
+      <span><span class="sw" style="background:#ffe15a"></span>刚好接触</span>
+      <span><span class="sw" style="background:#4678e6"></span>间隙 0.1 mm</span>
+      <span><span class="sw" style="background:#d7e1f0"></span>间隙 0.8 mm 以上</span>
+    </div>
+    <figure>
+      <img src="images/occlusion_fit.png" alt="四颗牙的咬合面，按到对颌的距离上色">
+      <figcaption>四列：以前（模型不看对颌）→ 新模型直接输出 → 新模型 + 咬合调整 → 真牙。左侧数字是四列各自到对颌的最小距离。磨牙、前磨牙各取“旧模型离对颌的距离”30% 和 70% 分位的两颗，没有挑。红色大片消失了，但和最右一列的真牙比，窝沟和牙尖的层次差得远。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>评分卡</h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">穿进对颌超过 0.1 mm</div><div class="v"><s>48%</s><b>5%</b></div><div class="n">模型直接输出；天然牙 13%</div></div>
+      <div class="tile"><div class="k">邻接有缝（&gt; 0.15 mm）</div><div class="v"><s>38%</s><b>3.9%</b></div><div class="n">完整流程；天然牙 6%</div></div>
+      <div class="tile"><div class="k">要求接触却没咬上</div><div class="v"><s>6.6%</s><b>1.3%</b></div><div class="n">完整流程</div></div>
+      <div class="tile"><div class="k">和真牙的距离（中位数）</div><div class="v"><s>0.30</s><b>0.26 mm</b></div><div class="n">模型直接输出</div></div>
+    </div>
+    <figure>
+      <img src="images/occlusion_metrics.png" alt="评分卡柱状图">
+      <figcaption>60 位没参加训练的患者、228 颗牙：把真牙挖掉重新生成。灰：天然牙（及格线）。红：11-13 的流程。蓝：现在。</figcaption>
+    </figure>
+    <div class="scroll">
+    <table>
+      <tr><th>还没达标的</th><th>天然牙</th><th>现在</th></tr>
+      <tr><td>咬合接触面积（要求接触时）</td><td>2.1 mm²</td><td>7.4 mm²（贴得太平）</td></tr>
+      <tr><td>邻接接触面积</td><td>0.7–0.9 mm²</td><td>0.2 mm²（点接触）</td></tr>
+      <tr><td>挤进邻牙超过 0.15 mm</td><td>20%</td><td>25%</td></tr>
+      <tr><td>整体形状、咬合面凹凸</td><td colspan="2">评分卡现有的“起伏”“细节”两项和天然牙数值接近，但肉眼明显不像：这两项指标不够敏感，要换</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>做法</h2>
+    <div class="flow">
+      <div class="step"><b>牙弓上下文</b>其余牙齿的点云 + 每个点的牙位</div>
+      <div class="step new"><b>对颌<span class="tag">11-14</span></b>缺隙上方、对颌最靠近本颌的 4 mm 一层</div>
+      <div class="step"><b>模板变形</b>开口的穹顶模板（2561 个顶点）变成粗牙冠</div>
+      <div class="step new"><b>逐顶点修正<span class="tag">11-14</span></b>每个顶点看最近的 8 个对颌点</div>
+      <div class="step"><b>咬合调整</b>够不着就抬，穿过去的磨掉</div>
+      <div class="step"><b>邻接调整 + 封底</b></div>
+      <div class="step new"><b>封底后再调邻接<span class="tag">11-14</span></b>补回被切掉的接触点</div>
+    </div>
+    <ul>
+      <li><b>训练数据自己造</b>：从完整牙弓里挖掉一颗牙，让模型补回来。带对颌的数据来自 934 位患者的咬合对齐口扫，牙的范围用自己的分割模型自动标。</li>
+      <li><b>损失函数</b>：和真牙的表面距离 + 底边对齐牙颈线 + 网格平滑 + 穿进对颌的深度 + 到对颌的最近距离对齐真牙。</li>
+      <li><b>为什么形状不像</b>：模型是“回归”，同一个缺隙有很多种合理的牙，它学到的是这些牙的平均，轮廓变圆、牙尖窝沟被抹平；模板只有两千多个顶点，也刻不出细节。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>这一轮训练的几个模型</h2>
+    <div class="scroll">
+    <table>
+      <tr><th>模型</th><th>和真牙的距离</th><th>穿入对颌 &gt; 0.1 mm</th><th>到对颌的最近距离和真牙差</th></tr>
+      <tr><td>原模型（不看对颌）</td><td><span class="bar r" style="width:89px"></span>0.446 mm</td><td><span class="bar r" style="width:94px"></span>47%</td><td>0.28 mm</td></tr>
+      <tr><td>A　只加对颌整体特征</td><td><span class="bar" style="width:77px"></span>0.386 mm</td><td><span class="bar" style="width:64px"></span>32%</td><td>0.21 mm</td></tr>
+      <tr><td>B　A + 逐顶点修正</td><td><span class="bar" style="width:73px"></span>0.363 mm</td><td><span class="bar" style="width:14px"></span>7%</td><td>0.17 mm</td></tr>
+      <tr><td>C　B + 最近距离对齐真牙</td><td><span class="bar" style="width:78px"></span>0.389 mm</td><td><span class="bar" style="width:34px"></span>17%</td><td>0.13 mm</td></tr>
+      <tr class="pick"><td>D　采用：对颌只取最近一层</td><td><span class="bar" style="width:76px"></span>0.382 mm</td><td><span class="bar" style="width:24px"></span>12%</td><td>0.14 mm</td></tr>
+    </table>
+    </div>
+    <p class="note">留出的 42 位患者、1375 颗牙，模型直接输出。“穿入”是用对颌的点近似量的，同样量法真牙是 23%，只用来比较模型。B 在表上最好，但放进完整流程后牙冠平均高出 0.64 mm（训练和实际使用时给的对颌范围不一样），D 把两边统一后没有这个问题。</p>
+  </section>
+
+  <section>
+    <h2>和别家比</h2>
+    <div class="scroll">
+    <table>
+      <tr><th>方法</th><th>任务和数据</th><th>和参考牙冠的距离</th><th>穿进对颌的面积</th><th>咬合面细节</th></tr>
+      <tr><td>DMC</td><td>预备体牙冠，16 号牙，技师设计</td><td>0.433 mm</td><td>1.11 mm²</td><td>平滑</td></tr>
+      <tr><td>VBCD</td><td>同上</td><td>0.353 mm</td><td>2.36 mm²</td><td>—</td></tr>
+      <tr><td>CrownFusion</td><td>同上</td><td>0.412 mm</td><td>0.61 mm²</td><td>有完整窝沟</td></tr>
+      <tr class="pick"><td>本项目</td><td>缺失牙，前磨牙和第一磨牙，真牙</td><td>0.26 mm</td><td>0（调整后）</td><td>平滑</td></tr>
+    </table>
+    </div>
+    <p class="note">前三行来自 <a href="https://crownfusion.github.io/">CrownFusion</a> 论文的对比表。任务、数据、距离的算法都不同，不能排名，只能看量级。能直接比的做法是把 VBCD（代码已公开）在同一批患者上跑一遍，还没做。已经能确定的差距：窝沟牙尖的细节 CrownFusion 明显更好。</p>
+  </section>
+
+  <section>
+    <h2>路线</h2>
+    <div class="road">
+      <div class="step new"><b>第一步　整体形状</b>和近中、远中邻牙、对颌、牙龈四面都合适。把评分卡的各项（邻接缝隙和接触面积、咬合接触、相对邻牙的高度、轮廓）做成可求导的损失，让模型自己就生成成这样，不靠事后修。同时换掉不敏感的形状指标。</div>
+      <div class="step"><b>第二步　咬合面凹凸</b>形状过关后，对着对颌打磨牙尖和窝沟：更细的网格、法向和曲率的损失，或者换成能生成细节的模型（扩散模型、几何图像表示）。</div>
+      <div class="step"><b>同时　同场对比</b>把 VBCD 在同一批患者上跑一遍，才知道和别家比到底怎样。</div>
+    </div>
+  </section>
+  <footer>完整数字和每一步的记录在仓库的 <a href="https://github.com/zhuyetuo/dental_3d_ai/blob/main/docs/results.md">docs/results.md</a>。训练数据只允许研究用途。</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,34 @@
+[
+  {
+    "scan": "KS0FGXGB_upper",
+    "fdi": 24,
+    "scenario": "single",
+    "learned_chamfer_mm": 0.302,
+    "mirror_chamfer_mm": 0.308,
+    "mirror_source": "mirror:14"
+  },
+  {
+    "scan": "LOVM549U_upper",
+    "fdi": 16,
+    "scenario": "single",
+    "learned_chamfer_mm": 0.294,
+    "mirror_chamfer_mm": 0.428,
+    "mirror_source": "mirror:26"
+  },
+  {
+    "scan": "8BA4388V_lower",
+    "fdi": 37,
+    "scenario": "free_end",
+    "learned_chamfer_mm": 0.47,
+    "mirror_chamfer_mm": 0.513,
+    "mirror_source": "mirror:47"
+  },
+  {
+    "scan": "276N3YRC_lower",
+    "fdi": 36,
+    "scenario": "single",
+    "learned_chamfer_mm": 0.55,
+    "mirror_chamfer_mm": 1.155,
+    "mirror_source": "mirror:46"
+  }
+]
