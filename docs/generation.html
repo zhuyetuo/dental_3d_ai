@@ -15,6 +15,14 @@ td.w{white-space:normal;min-width:260px}
 .fig svg{width:100%;height:auto}
 .fig b{font-family:var(--display)}
 .fig span{font-size:13px;color:var(--muted)}
+.explain-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 16px}
+.explain-box[open]{padding-bottom:16px}
+.explain-box>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:8px 0}
+.explain-box>summary::-webkit-details-marker{display:none}
+.explain-box>summary h2{margin:0}
+.explain-box>summary::after{content:"收起 ▲";margin-left:auto;font-size:13px;color:var(--muted)}
+.explain-box:not([open])>summary::after{content:"展开 ▼"}
+.explain-box .inner{display:flex;flex-direction:column;gap:12px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -30,7 +38,9 @@ td.w{white-space:normal;min-width:260px}
   </header>
 
   <section class="explain">
-    <h2>先看懂指标</h2>
+    <details class="explain-box" open>
+      <summary><h2>先看懂指标</h2></summary>
+      <div class="inner">
     <p class="note">评分卡 = 把一颗真牙挖掉，让模型重新生成，再量生成的牙。<b>同一套量法也量天然牙，天然牙的数就是及格线</b>。单位 mm / mm²。
     <span class="dir lo">越小越好</span> <span class="dir hi">越大越好</span> <span class="dir mid">越接近天然牙越好</span></p>
     <div class="figs">
@@ -87,6 +97,8 @@ td.w{white-space:normal;min-width:260px}
     </table></div>
     <p class="note">天然牙也有 13% “穿入对颌”、20% “挤进邻牙”：是口扫拼合和分割边界的误差（约 ±0.2 mm），所以要和天然牙那一列对着看。
     看一次结果：先看形状误差和牙尖 / 窝偏差有没有变差，再看和邻牙、对颌的几个比例，最后看咬合面深度和细节。</p>
+      </div>
+    </details>
   </section>
 
 
@@ -231,5 +243,15 @@ td.w{white-space:normal;min-width:260px}
   <footer>完整数字和每一步的记录在仓库的 <a href="https://github.com/zhuyetuo/dental_3d_ai/blob/main/docs/results.md">docs/results.md</a>。训练数据只允许研究用途。</footer>
 </div>
 <script src="toc.js" defer></script>
+<script>
+// 指标说明区块：收起 / 展开的状态记在这台电脑的浏览器里
+(function () {
+  const d = document.querySelector('details.explain-box');
+  if (!d) return;
+  const key = 'explain-open:' + location.pathname;
+  try { const v = localStorage.getItem(key); if (v !== null) d.open = v === '1'; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) {} });
+})();
+</script>
 </body>
 </html>

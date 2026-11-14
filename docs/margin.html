@@ -15,6 +15,14 @@ td.w{white-space:normal;min-width:260px}
 .fig svg{width:100%;height:auto}
 .fig b{font-family:var(--display)}
 .fig span{font-size:13px;color:var(--muted)}
+.explain-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 16px}
+.explain-box[open]{padding-bottom:16px}
+.explain-box>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:8px 0}
+.explain-box>summary::-webkit-details-marker{display:none}
+.explain-box>summary h2{margin:0}
+.explain-box>summary::after{content:"收起 ▲";margin-left:auto;font-size:13px;color:var(--muted)}
+.explain-box:not([open])>summary::after{content:"展开 ▼"}
+.explain-box .inner{display:flex;flex-direction:column;gap:12px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -30,7 +38,40 @@ td.w{white-space:normal;min-width:260px}
   </header>
 
   <section class="explain">
-    <h2>先看懂指标</h2>
+    <details class="explain-box" open>
+      <summary><h2>先看懂指标</h2></summary>
+      <div class="inner">
+    <div class="figs">
+      <div class="fig">
+        <svg viewBox="0 0 240 120" role="img" aria-label="颈缘线">
+          <path d="M60 20 Q120 5 180 20 L195 95 Q120 110 45 95 Z" fill="#e8d9a8"/>
+          <path d="M45 80 Q120 100 195 80" fill="none" stroke="#3ddc97" stroke-width="3"/>
+          <path d="M45 74 Q120 104 195 85" fill="none" stroke="#ff7d6e" stroke-width="2.5" stroke-dasharray="6 4"/>
+          <text x="70" y="45" fill="#3a2f12" font-size="11">磨好的牙（预备体）</text>
+          <text x="10" y="114" fill="#3ddc97" font-size="11">绿：技工画的线</text><text x="120" y="114" fill="#ff7d6e" font-size="11">红：模型预测</text>
+        </svg>
+        <b>颈缘线</b><span>牙冠边缘要贴合的那一圈线。预测线和技工画的线越重合越好。</span>
+      </div>
+      <div class="fig">
+        <svg viewBox="0 0 240 120" role="img" aria-label="平均误差">
+          <path d="M20 70 Q120 40 220 70" fill="none" stroke="#3ddc97" stroke-width="3"/>
+          <path d="M20 62 Q120 52 220 78" fill="none" stroke="#ff7d6e" stroke-width="2.5" stroke-dasharray="6 4"/>
+          <g stroke="#8b9bb8"><line x1="50" y1="62" x2="50" y2="58"/><line x1="90" y1="53" x2="90" y2="48"/><line x1="130" y1="54" x2="130" y2="47"/><line x1="170" y1="60" x2="170" y2="54"/></g>
+          <line x1="210" y1="76" x2="210" y2="67" stroke="#f5b74f" stroke-width="2"/>
+          <text x="20" y="104" fill="#8b9bb8" font-size="11">灰线平均 = 平均误差；</text><text x="20" y="117" fill="#f5b74f" font-size="11">黄（最长）= Hausdorff 最大误差</text>
+        </svg>
+        <b>平均误差 / 最大误差</b><span>预测线上每个点到真线的距离：取平均是平均误差，取最大是 Hausdorff。</span>
+      </div>
+      <div class="fig">
+        <svg viewBox="0 0 240 120" role="img" aria-label="0.2 毫米带">
+          <path d="M20 60 Q120 30 220 60" fill="none" stroke="#3ddc97" stroke-width="22" opacity=".25"/>
+          <path d="M20 60 Q120 30 220 60" fill="none" stroke="#3ddc97" stroke-width="2"/>
+          <path d="M20 57 Q70 40 120 50 Q160 58 220 72" fill="none" stroke="#ff7d6e" stroke-width="2.5" stroke-dasharray="6 4"/>
+          <text x="20" y="104" fill="#3ddc97" font-size="11">浅绿带 = 真线两边 0.2 mm</text>
+        </svg>
+        <b>0.2 mm 以内的点</b><span>红线落在浅绿带里的比例。0.2 mm 约等于两个技工之间画线的差别，进了带就算合格。</span>
+      </div>
+    </div>
     <div class="scroll"><table>
       <tr><th>指标</th><th>一句话</th><th>方向</th></tr>
       <tr><td>平均误差</td><td class="w">预测的颈缘线上每个点，到技工画的那条线有多远，取平均。表里给的是所有病例的中位数</td><td><span class="dir lo">越小越好</span></td></tr>
@@ -38,6 +79,8 @@ td.w{white-space:normal;min-width:260px}
       <tr><td>0.2 mm 以内的点</td><td class="w">预测线上离真线不超过 0.2 mm 的点占多少。0.2 mm 大约是技工之间画线的差异，到这个水平就算合格</td><td><span class="dir hi">越大越好</span></td></tr>
       <tr><td>Hausdorff（别家论文）</td><td class="w">整条线上差得最远的一处有多远，是“最大误差”，不能和平均误差直接比</td><td><span class="dir lo">越小越好</span></td></tr>
     </table></div>
+      </div>
+    </details>
   </section>
 
 
@@ -87,5 +130,15 @@ td.w{white-space:normal;min-width:260px}
   <footer>完整数字在仓库的 <a href="https://github.com/zhuyetuo/dental_3d_ai/blob/main/docs/results.md">docs/results.md</a>。</footer>
 </div>
 <script src="toc.js" defer></script>
+<script>
+// 指标说明区块：收起 / 展开的状态记在这台电脑的浏览器里
+(function () {
+  const d = document.querySelector('details.explain-box');
+  if (!d) return;
+  const key = 'explain-open:' + location.pathname;
+  try { const v = localStorage.getItem(key); if (v !== null) d.open = v === '1'; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) {} });
+})();
+</script>
 </body>
 </html>

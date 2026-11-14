@@ -1,6 +1,6 @@
 // 每页左侧的目录：从各节的 h2 自动生成，滚动时高亮当前一节。宽屏固定在左边，窄屏收成页面顶部的“目录”。
 (function () {
-  const heads = [...document.querySelectorAll('.wrap section > h2')];
+  const heads = [...document.querySelectorAll('.wrap section h2')];
   if (heads.length < 2) return;
   const toc = document.createElement('nav');
   toc.className = 'toc';
