@@ -33,8 +33,9 @@ import trimesh
 METRICS = [
     "mesial_gap", "distal_gap", "mesial_contact_area", "distal_contact_area",
     "occl_clearance", "occl_penetration_area", "occl_contact_area", "occl_contacts",
-    "relief", "detail", "height_vs_neighbors", "arch_offset",
-    "ref_chamfer_l1", "ref_surf_p95", "ref_fscore_0.3", "ref_position", "ref_top",
+    "occl_paper_area", "relief", "detail", "cusps", "fossa_depth", "height_vs_neighbors", "arch_offset",
+    "ref_chamfer_l1", "ref_rmse", "ref_hausdorff", "ref_surf_p95", "ref_fscore_0.3", "ref_position", "ref_top",
+    "ref_cusp_err", "ref_cusp_count_diff", "ref_fossa_err",
 ]
 KINDS = ("natural", "generated", "generated_contact", "generated_raw", "generated_no_antagonist")
 _STATE: dict = {}

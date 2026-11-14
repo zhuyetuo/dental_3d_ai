@@ -10,7 +10,7 @@
 咬合（给了对颌才有，前缀 occl_）：
 - clearance：牙冠表面到对颌表面的最小有符号距离。> 0 没咬上，< 0 穿进了对颌；
 - penetration_area：穿入对颌超过 0.05 mm 的牙冠表面积（mm²），生成的牙冠这一项应当接近 0；
-- contact_area：离对颌 0.2 mm 以内的表面积（mm²）；
+- contact_area：离对颌 0.2 mm 以内的表面积（mm²）；paper_area：0.1 mm 以内的（“虚拟咬合纸”的印记面积）；
 - contacts：接触区的个数（0.2 mm 以内的点按 0.6 mm 连成的簇）。
 
 形态（不需要参考牙）：
@@ -19,7 +19,12 @@
 - height_vs_neighbors：牙冠最高处 − 两侧邻牙最高处的平均值，沿咬合方向；
 - arch_offset：牙冠中心偏离两侧邻牙中心连线的水平距离（颊舌向错位）。
 
-有参考牙（被去掉的真牙）时另外给出 eval_generation.compare 的形状误差。
+- cusps：牙尖个数；fossa_depth：牙尖顶到中央窝的深度（从咬合面高度图上自动找标志点，见 occlusal_landmarks）；
+
+有参考牙（被去掉的真牙）时另外给出 eval_generation.compare 的形状误差，以及：
+- ref_rmse、ref_hausdorff：参考牙表面到牙冠表面的距离的均方根、最大值；
+- ref_cusp_err：真牙的每个牙尖到最近的生成牙尖的距离（平均）；ref_cusp_count_diff：牙尖数之差（生成 − 真牙）；
+- ref_fossa_err：中央窝位置的偏差。
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from .meshdist import closest_point
 CONTACT_MM = 0.1  # 邻接：这么近算接触
 OCCL_CONTACT_MM = 0.2  # 咬合：这么近算接触（口扫的咬合配准本身有 0.1 mm 量级的误差）
 PENETRATION_MM = 0.05
+PAPER_MM = 0.1  # “虚拟咬合纸”：离对颌 100 μm 以内算咬合印记（柴笑寒等 2026 的做法）
 
 
 def _sample(mesh: trimesh.Trimesh, n: int = 12000) -> np.ndarray:
@@ -117,6 +123,7 @@ def occlusion(points: np.ndarray, area: float, antagonist: trimesh.Trimesh) -> d
         "clearance": float(d[ok].min()),
         "penetration_area": float((ok & (d < -PENETRATION_MM)).mean() * area),
         "contact_area": float(touching.mean() * area),
+        "paper_area": float((ok & (d <= PAPER_MM)).mean() * area),
         "contacts": n_contacts,
     }
 
@@ -154,6 +161,47 @@ def occlusal_table(points: np.ndarray, up: np.ndarray, cell: float = 0.2, inset:
         "relief": float(np.percentile(heights, 95) - np.percentile(heights, 5)),
         "detail": float(np.sqrt(np.mean((grid[valid] - smooth[valid]) ** 2))),
     }
+
+
+def occlusal_landmarks(points: np.ndarray, up: np.ndarray, cell: float = 0.2, sigma: float = 0.4, depth: float = 4.0,
+                       window: float = 1.8, prominence: float = 0.25) -> dict:
+    """咬合面上的解剖标志点，从高度图上自动找（不需要标注）：
+    - cusps：牙尖顶，平滑后的高度图上的局部最高点（window 范围内最高、比咬合面内圈的中位高度高出 prominence 以上、离轮廓 0.6 mm 以上）；
+    - fossa：中央窝，离轮廓 2 mm 以上的内圈里最低的点；
+    - fossa_depth：牙尖顶的平均高度 − 中央窝的高度（牙尖到窝有多深）。
+    返回三维坐标。牙尖数和窝的深度不需要参考牙；有参考牙时比较两者标志点的位置（见 score_crown 的 ref_cusp_err、ref_fossa_err）。"""
+    up = up / np.linalg.norm(up)
+    a, b = _frame(up)
+    points = points[points @ up >= np.percentile(points @ up, 98) - depth]
+    x, y, h = points @ a, points @ b, points @ up
+    x0, y0 = x.min(), y.min()
+    ix = np.floor((x - x0) / cell).astype(int)
+    iy = np.floor((y - y0) / cell).astype(int)
+    grid = np.full((ix.max() + 1, iy.max() + 1), -np.inf)
+    np.maximum.at(grid, (ix, iy), h)
+    have = np.isfinite(grid)
+    edge = ndimage.distance_transform_edt(ndimage.binary_closing(have, iterations=2)) * cell
+    out = {"cusps": np.zeros((0, 3)), "fossa": None, "fossa_depth": None}
+    if (have & (edge >= 2.0)).sum() < 10:
+        return out
+    weight = ndimage.gaussian_filter(have.astype(float), sigma / cell)
+    smooth = ndimage.gaussian_filter(np.where(have, grid, 0.0), sigma / cell) / np.maximum(weight, 1e-6)
+    smooth[~have] = -np.inf
+
+    def position(i, j):
+        return a * (x0 + (i + 0.5) * cell) + b * (y0 + (j + 0.5) * cell) + up * smooth[i, j]
+
+    size = int(round(window / cell)) | 1
+    inner = have & (edge >= 2.0)
+    base = float(np.median(smooth[have & (edge >= 1.0)]))
+    peak = have & (edge >= 0.6) & (smooth == ndimage.maximum_filter(smooth, size=size)) & (smooth >= base + prominence)
+    out["cusps"] = np.array([position(i, j) for i, j in zip(*np.nonzero(peak))]).reshape(-1, 3)
+    low = np.where(inner, smooth, np.inf)
+    i, j = np.unravel_index(np.argmin(low), low.shape)
+    out["fossa"] = position(i, j)
+    if len(out["cusps"]):
+        out["fossa_depth"] = float((out["cusps"] @ up).mean() - smooth[i, j])
+    return out
 
 
 def _top(points: np.ndarray, up: np.ndarray) -> float:
@@ -202,10 +250,24 @@ def score_crown(
         row.update({f"occl_{k}": v for k, v in occlusion(points, area, antagonist).items()})
     # 高度图每格取最高点，点少了会抖（斜面上一格内高度就差 0.2 mm），封闭的生成牙冠还有一半的点落在底座上；
     # 这里单独密采样，保证天然牙和生成牙冠每格都有几十个点，细节量才可比
-    row.update(occlusal_table(_sample(crown, 200000), up))
+    dense = _sample(crown, 200000)
+    row.update(occlusal_table(dense, up))
+    marks = occlusal_landmarks(dense, up)
+    row.update({"cusps": len(marks["cusps"]), "fossa_depth": marks["fossa_depth"]})
     row.update(placement(points, neighbor_points, up))
     if reference is not None:
         from .eval_generation import compare
 
         row.update({f"ref_{k}": v for k, v in compare(crown, reference, up).items()})
+        # 参考牙表面每个点到牙冠表面的距离（只算这个方向：封闭的生成牙冠多一个底座，参考牙没有对应的部分）。
+        # RMSE、Hausdorff 是文献里常用的两项（柴笑寒等 2026、DentalGEN），口径和它们不完全一样，只用来看量级
+        d = closest_point(crown, _sample(reference, 8000))[1]
+        row.update({"ref_rmse": float(np.sqrt(np.mean(d**2))), "ref_hausdorff": float(d.max())})
+        # 标志点：真牙的每个牙尖到最近的生成牙尖有多远；牙尖数差多少；中央窝差多远
+        real = occlusal_landmarks(_sample(reference, 200000), up)
+        row["ref_cusp_count_diff"] = len(marks["cusps"]) - len(real["cusps"])
+        row["ref_cusp_err"] = (float(cKDTree(marks["cusps"]).query(real["cusps"])[0].mean())
+                               if len(marks["cusps"]) and len(real["cusps"]) else None)
+        row["ref_fossa_err"] = (float(np.linalg.norm(marks["fossa"] - real["fossa"]))
+                                if marks["fossa"] is not None and real["fossa"] is not None else None)
     return row

@@ -324,3 +324,17 @@ def test_adjust_occlusion_lifts_or_reduces_to_target():
     far = cap()
     info, warnings = adjust_occlusion(far, plane(8.0), up, target=0.1)  # 差 3 mm：不抬
     assert info["occlusal_lift_mm"] == 0 and warnings
+
+
+def test_occlusal_landmarks_finds_cusps_and_fossa():
+    from dental_ai.crown_quality import occlusal_landmarks
+
+    # 10 × 10 mm 的“咬合面”：两个 1.5 mm 高的牙尖（x = ±2.5），中间是窝
+    rng = np.random.default_rng(0)
+    xy = rng.uniform(-5, 5, (200000, 2))
+    z = 1.5 * (np.exp(-((xy[:, 0] - 2.5) ** 2 + xy[:, 1] ** 2) / 2) + np.exp(-((xy[:, 0] + 2.5) ** 2 + xy[:, 1] ** 2) / 2))
+    marks = occlusal_landmarks(np.column_stack([xy, z]), np.array([0.0, 0.0, 1.0]))
+    cusps = marks["cusps"][np.argsort(marks["cusps"][:, 0])]
+    assert len(cusps) == 2
+    assert np.allclose(cusps[:, :2], [[-2.5, 0], [2.5, 0]], atol=0.35)
+    assert abs(marks["fossa"][0]) < 0.6 and 0.5 < marks["fossa_depth"] < 1.5
