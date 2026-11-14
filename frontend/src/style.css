@@ -214,3 +214,24 @@ table.compare th:first-child, table.compare td:first-child { text-align: left; c
 .st { font-style: normal; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--raised); color: var(--muted); white-space: nowrap; }
 .st.done { color: var(--ok); } .st.failed { color: var(--err); } .st.running, .st.queued { color: var(--warn); }
 @media (max-width: 720px) { .flyout { left: 0; right: 0; width: auto; top: auto; max-height: 60%; border-right: 0; border-top: 1px solid var(--line); } }
+
+/* 可收起的栏：病例、上传表单 */
+aside > details.fold { order: 1; margin-top: 6px; }
+aside > details.fold.upload { order: 4; }
+details.fold > summary {
+  list-style: none; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 10px; padding: 10px 0;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted);
+}
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: "▸"; color: var(--accent); font-size: 13px; transition: rotate 0.15s; }
+details.fold[open] > summary::before { rotate: 90deg; }
+details.fold > summary::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
+details.fold > summary:hover { color: var(--fg); }
+details.fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+details.fold form { margin-top: 2px; }
+details.fold form::before { content: none; }
+/* 示例行只留标题；点开的那一行才显示说明 */
+.demos { gap: 6px; }
+.demos button { padding: 9px 34px 9px 13px; }
+.demos small { display: none; }
+.demos li.open small { display: block; margin-top: -4px; }

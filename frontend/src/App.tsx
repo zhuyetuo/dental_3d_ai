@@ -158,6 +158,8 @@ export function App() {
           Dental <b>3D</b> AI
           <small>口扫 → 分割 → 缺牙检测 → 牙冠设计</small>
         </h1>
+        <details className="fold upload">
+          <summary>上传自己的口扫</summary>
         <form onSubmit={upload}>
           <label>
             颌位
@@ -193,11 +195,13 @@ export function App() {
           </fieldset>
           <button type="submit">上传并处理</button>
         </form>
+        </details>
         {error && <p className="error">{error}</p>}
 
         {demos.length > 0 && (
           <>
-            <h2>病例</h2>
+            <details open className="fold">
+              <summary>病例</summary>
             <ul className="demos">
               {demos.map((d) => {
                 const runs = cases.filter((c) => c.demo?.id === d.id).length;
@@ -222,6 +226,7 @@ export function App() {
               )}
             </ul>
             <p className="note">示例数据：Teeth3DS（CC BY-NC-ND 4.0），仅用于非商业演示</p>
+            </details>
           </>
         )}
 
