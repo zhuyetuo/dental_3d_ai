@@ -74,7 +74,7 @@ def fig_fit(args, out: Path):
         col = np.where((lab2 > 0)[:, None], F.IVORY, F.GUM)
         base = F.sample(ctx_mesh, col, per_mm2=500)
         solids, note = [], {"patient": pid, "fdi": fdi}
-        for key, gen in (("D", d), ("D+diffusion", new)):
+        for key, gen in (("shape", d), ("shape+diffusion", new)):
             with tempfile.TemporaryDirectory() as tmp:
                 rep = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=ant, preferences=prefs)
                 g = next(x for x in rep["generated"] if x["fdi"] == fdi)
@@ -89,7 +89,7 @@ def fig_fit(args, out: Path):
         rows += [top, side]
         titles += [f"{name} {fdi}\nocclusal view", f"{name} {fdi}\nbuccal view"]
         notes.append(note)
-    F.grid(rows, ["D (current shape model)", "D + diffusion detail", "real tooth"], titles, out, panel=2.8)
+    F.grid(rows, ["shape model", "shape model + diffusion detail", "real tooth"], titles, out, panel=2.8)
     print(json.dumps(notes))
 
 
@@ -106,7 +106,7 @@ def fig_metrics(args, out: Path):
     ]
     fig, axes = plt.subplots(1, len(items), figsize=(16, 3.3))
     for ax, (title, get, with_nat) in zip(axes, items):
-        labels = (["natural"] if with_nat else []) + ["D", "D + diffusion"]
+        labels = (["natural"] if with_nat else []) + ["shape model", "shape + diffusion"]
         vals = ([get(S["new"], "natural")] if with_nat else []) + [get(S["D"], K), get(S["new"], K)]
         colors = (["#9aa5b1"] if with_nat else []) + ["#e07b6a", "#22c7d6"]
         bars = ax.bar(labels, vals, color=colors)

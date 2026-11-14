@@ -45,10 +45,10 @@
     <div class="two">
       <div class="lesson"><b>1. 先看失败病例，常比重新训练有效</b><span>真实缺牙检出 43% → 55% 靠的是“合并被切开的牙”这条后处理，模拟闭合缺隙重训只多了 2 个点；咬合“够不着就抬、穿过去的磨掉”也是改做法不是改模型。</span></div>
       <div class="lesson"><b>2. 距离指标好 ≠ 牙冠好看</b><span>真牙细节库、扩散 v1 外观更像真牙，但和真牙的距离反而变大。所以评分卡加了邻接、咬合、牙尖窝沟，按“先整体形状、再咬合面”的顺序判断。</span></div>
-      <div class="lesson"><b>3. 组合比替换好</b><span>扩散模型单独用形状偏，回归模型 D 单独用细节平；D 出形状、扩散补细节，两边的长处都拿到（11-14）。</span></div>
-      <div class="lesson"><b>4. 直接往损失里加约束容易牺牲形状</b><span>模型 E 加外形尺寸 / 邻牙间隙损失，挤进邻牙 25% → 52%。约束放在生成后的调整（或扩散采样时逐像素限制）更稳。</span></div>
+      <div class="lesson"><b>3. 组合比替换好</b><span>扩散模型单独用形状偏，形状模型 单独用细节平；形状模型 出形状、扩散补细节，两边的长处都拿到（11-14）。</span></div>
+      <div class="lesson"><b>4. 直接往损失里加约束容易牺牲形状</b><span>“外形 + 间隙损失”试验 加外形尺寸 / 邻牙间隙损失，挤进邻牙 25% → 52%。约束放在生成后的调整（或扩散采样时逐像素限制）更稳。</span></div>
       <div class="lesson"><b>5. 模拟数据和真实数据差得远</b><span>模拟缺牙检出 9 成，真实缺牙只有 4 成；模拟的闭合缺隙只是平移，真实的牙会倾斜、旋转。要尽早拿真实数据测。</span></div>
-      <div class="lesson"><b>6. 训练和推理的输入要一致</b><span>模型 B 训练时对颌是裁过的、推理时给整颌，结果整体偏高 0.64 mm；改成同样的裁法（D）就好了。</span></div>
+      <div class="lesson"><b>6. 训练和推理的输入要一致</b><span>试验 2 训练时对颌是裁过的、推理时给整颌，结果整体偏高 0.64 mm；改成同样的裁法（形状模型）就好了。</span></div>
     </div>
   </section>
 
@@ -61,10 +61,10 @@
     <div class="tl" id="tl">
 
       <div class="ev ok" data-k="gen"><div class="d">2026-11-14</div>
-        <h3>D 出形状、扩散模型补细节<span class="tag">牙冠生成</span></h3>
-        <p>D 的牙冠投到径向深度图，加噪到 600/1000 步再去噪，每步把低频换回 D 的。不需要重新训练。网页默认生成器换成它。</p>
+        <h3>形状模型 出形状、扩散模型补细节<span class="tag">牙冠生成</span></h3>
+        <p>形状模型 的牙冠投到径向深度图，加噪到 600/1000 步再去噪，每步把低频换回 形状模型 的。不需要重新训练。网页默认生成器换成它。</p>
         <p class="num">相对邻牙高度 <s>+0.13</s><b>0.00 mm</b> · 咬合接触面积 <s>7.4</s><b>4.5 mm²</b> · 挤进邻牙 <s>25%</s><b>21%</b> · 形状误差 <s>0.279</s><b>0.272 mm</b></p>
-        <img src="images/refine_metrics.png" alt="D+扩散评分卡" loading="lazy"></div>
+        <img src="images/refine_metrics.png" alt="形状模型+扩散评分卡" loading="lazy"></div>
 
       <div class="ev no" data-k="gen"><div class="d">2026-11-14</div>
         <h3>扩散模型第一版（径向深度图）<span class="tag">牙冠生成</span></h3>
@@ -77,12 +77,12 @@
         <p>牙尖 / 中央窝标志点误差、RMSE、Hausdorff、虚拟咬合纸面积（照 CrownGen、MADCrowner 等论文的量法）。已知问题：低矮的磨牙牙尖会漏检。</p></div>
 
       <div class="ev no" data-k="gen"><div class="d">2026-11-14</div>
-        <h3>模型 E：外形尺寸 + 邻牙间隙进损失<span class="tag">牙冠生成</span></h3>
+        <h3>“外形 + 间隙损失”试验：外形尺寸 + 邻牙间隙进损失<span class="tag">牙冠生成</span></h3>
         <p>想让评分卡直接当损失。结果牙冠被撑大。</p>
         <p class="num">挤进邻牙 <s>25%</s> → 52%</p></div>
 
       <div class="ev ok" data-k="gen"><div class="d">2026-11-14</div>
-        <h3>生成模型看对颌（模型 D）+ 封底后补做邻接<span class="tag">牙冠生成</span></h3>
+        <h3>生成模型看对颌（形状模型）+ 封底后补做邻接<span class="tag">牙冠生成</span></h3>
         <p>每个点看最近的 8 个对颌点；对颌按“牙冠上方 4 mm 厚的一片”裁剪，训练和推理一致。封底会切掉接触点，封底后在实体上再调一次邻接。</p>
         <p class="num">直接输出穿进对颌 <s>48%</s><b>5%</b> · 邻接有缝 <s>38%</s><b>3.9%</b> · 要求接触却没咬上 <s>6.6%</s><b>1.3%</b></p>
         <img src="images/occlusion_metrics.png" alt="对颌模型评分卡" loading="lazy"></div>

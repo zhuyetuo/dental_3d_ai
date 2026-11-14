@@ -28,16 +28,16 @@ td.w{white-space:normal;min-width:240px}
     <h2>牙冠生成</h2>
     <div class="scroll"><table>
       <tr><th>想法</th><th>状态</th><th>为什么 / 现在到哪</th><th>代价</th></tr>
-      <tr><td>扩散模型接着训（v2）</td><td><span class="state mid">暂停</span></td><td class="w">v1 只训了 30 轮，损失还在降。v2 从 v1 接着训，11-15 训到第 10 轮时暂停，GPU 让给“D 条件扩散”。
+      <tr><td>扩散模型接着训（v2）</td><td><span class="state mid">暂停</span></td><td class="w">v1 只训了 30 轮，损失还在降。v2 从 v1 接着训，11-15 训到第 10 轮时暂停，GPU 让给“看着形状模型补细节的扩散”。
       检查点在服务器 runs/radial_diffusion_v2/model_paused.pt，用 --init 接着训</td><td class="cost">剩 30 轮约 2.5 小时；可能要 100 小时以上才饱和</td></tr>
-      <tr><td>专门训一个“在 D 上补细节”的扩散模型</td><td><span class="state mid">进行中</span></td><td class="w">把 D 的输出当条件、真牙当目标专门训（radial_diffusion train --with-d）。11-15：3.4 万颗训练牙的 D 图已生成（radial_dmaps.py，约 20 分钟），
-      从 v2 第 10 轮的权重起步训 25 轮；训练时给 D 的图加扰动，防止学成“照抄 D”</td><td class="cost">25 轮约 2 小时；效果好的话值得训到 100 轮以上</td></tr>
-      <tr><td>D 图的数据准备搬到 GPU 上</td><td><span class="state">待做</span></td><td class="w">现在 44 个 CPU 核并行约 20 分钟（读口扫、估牙弓方向、表面采样、投影都是逐颗做的）。D 批量推理 + 采样、投影写成矩阵运算放 GPU，预计几分钟。D 换新版本要重新生成时再做</td><td class="cost">半天</td></tr>
+      <tr><td>专门训一个“看着形状模型补细节”的扩散模型</td><td><span class="state mid">进行中</span></td><td class="w">把 形状模型 的输出当条件、真牙当目标专门训（radial_diffusion train --with-d）。11-15：3.4 万颗训练牙的 形状模型的图已生成（radial_dmaps.py，约 20 分钟），
+      从 v2 第 10 轮的权重起步训 25 轮；训练时给 形状模型 的图加扰动，防止学成“照抄形状模型”</td><td class="cost">25 轮约 2 小时；效果好的话值得训到 100 轮以上</td></tr>
+      <tr><td>形状模型的图的数据准备搬到 GPU 上</td><td><span class="state">待做</span></td><td class="w">现在 44 个 CPU 核并行约 20 分钟（读口扫、估牙弓方向、表面采样、投影都是逐颗做的）。形状模型 批量推理 + 采样、投影写成矩阵运算放 GPU，预计几分钟。形状模型 换新版本要重新生成时再做</td><td class="cost">半天</td></tr>
       <tr><td>一次生成多颗，按邻牙 / 对颌贴合挑一颗</td><td><span class="state">待做</span></td><td class="w">扩散每次结果不同；评分卡本身就能当挑选标准。改动小</td><td class="cost">推理时间 × 采样数</td></tr>
-      <tr><td>图边缘（邻面）的小缺口</td><td><span class="state">待做</span></td><td class="w">D+扩散 个别牙在邻面出现缺口（报告图里的 34）。可以在边缘区域多保留 D 的形状</td><td class="cost">小</td></tr>
+      <tr><td>图边缘（邻面）的小缺口</td><td><span class="state">待做</span></td><td class="w">形状模型+扩散 个别牙在邻面出现缺口（报告图里的 34）。可以在边缘区域多保留 形状模型 的形状</td><td class="cost">小</td></tr>
       <tr><td>生成模型升级：Flow Matching + DiT，形状潜空间</td><td><span class="state">待做</span></td><td class="w">现在的扩散是 DDPM + U-Net + 2D 径向图（约 2021–22 年的配置）。换成 Flow Matching（采样步数少）+ Transformer 去噪网络，表示换成 3D 形状潜空间（窝沟分辨率更高）；或者在 TRELLIS / Hunyuan3D 这类大模型权重上微调。见业界进展页</td><td class="cost">重写模型 + 重训，几天；大模型微调需要更多显存</td></tr>
       <tr><td>窝沟更深、更细</td><td><span class="state">待做</span></td><td class="w">所有模型的窝沟都比真牙浅。径向图中心分辨率低：换成以咬合面为中心的高度图，或多视角深度图</td><td class="cost">换表示要重做缓存 + 重训</td></tr>
-      <tr><td>评分卡做成可微的损失</td><td><span class="state">部分</span></td><td class="w">模型 E 直接加进损失失败了（撑大牙冠）。改成扩散采样时的引导（guidance），不改训练</td><td class="cost">中</td></tr>
+      <tr><td>评分卡做成可微的损失</td><td><span class="state">部分</span></td><td class="w">“外形 + 间隙损失”试验 直接加进损失失败了（撑大牙冠）。改成扩散采样时的引导（guidance），不改训练</td><td class="cost">中</td></tr>
       <tr><td>复现 CrownGen / ToothCraft，在我们的评分卡上比</td><td><span class="state">待做</span></td><td class="w">CrownGen 有代码和示例数据，ToothCraft 有权重。用同一套评分卡比，才知道我们到底处在什么位置</td><td class="cost">各 1–2 天</td></tr>
       <tr><td>第三磨牙生成</td><td><span class="state">待做</span></td><td class="w">现在交给几何方法兜底</td><td class="cost">小</td></tr>
       <tr><td>用技工设计的牙冠当真值</td><td><span class="state bad">缺数据</span></td><td class="w">现在的真值是天然牙，不是修复体设计（DMC、MADCrowner 都用技工设计）。要和技工所合作拿数据</td><td class="cost">数据</td></tr>

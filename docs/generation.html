@@ -32,7 +32,7 @@ td.w{white-space:normal;min-width:260px}
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
-    <div class="eyebrow">专项 · 牙冠生成 · 更新于 2026-11-14（D + 扩散）</div>
+    <div class="eyebrow">专项 · 牙冠生成 · 更新于 2026-11-14（形状模型 + 扩散）</div>
     <h1>缺牙位置生成一颗牙冠</h1>
     <p class="lead">现状一句话：和对颌、邻牙的距离关系已经接近天然牙，但<b>整体形状不像真牙，咬合面的凹凸也不够</b>。数字好看不等于牙冠好看，下一步先解决形状。</p>
   </header>
@@ -130,9 +130,9 @@ td.w{white-space:normal;min-width:260px}
 
 
   <section>
-    <h2>新：D 出形状，扩散模型补细节（11-14，网页已默认使用）</h2>
-    <p>回归模型 D 整体形状准，但咬合面整片贴着对颌；扩散模型单独用时细节像真牙，但形状偏。把两个接起来：
-    D 先出牙冠 → 投到径向深度图上 → 加噪到第 600 步（共 1000）→ 扩散模型去噪，每一步把低频部分换回 D 的（只取扩散模型的细节）。不用重新训练。</p>
+    <h2>新：形状模型 出形状，扩散模型补细节（11-14，网页已默认使用）</h2>
+    <p>形状模型 整体形状准，但咬合面整片贴着对颌；扩散模型单独用时细节像真牙，但形状偏。把两个接起来：
+    形状模型 先出牙冠 → 投到径向深度图上 → 加噪到第 600 步（共 1000）→ 扩散模型去噪，每一步把低频部分换回 形状模型 的（只取扩散模型的细节）。不用重新训练。</p>
     <div class="tiles">
       <div class="tile"><div class="k">相对邻牙的高度</div><div class="v"><s>+0.13</s><b>0.00 mm</b></div><div class="n">天然牙 0.00</div></div>
       <div class="tile"><div class="k">咬合接触面积</div><div class="v"><s>7.4</s><b>4.5 mm²</b></div><div class="n">天然牙 2.1</div></div>
@@ -140,17 +140,17 @@ td.w{white-space:normal;min-width:260px}
       <div class="tile"><div class="k">和真牙的形状误差</div><div class="v"><s>0.28</s><b>0.27 mm</b></div><div class="n">整体形状没变差</div></div>
     </div>
     <figure>
-      <img src="images/refine_metrics.png" alt="天然牙、D、D+扩散的评分卡柱状图">
-      <figcaption>60 位没参加训练的患者、228 颗牙（Bite2Text），目标“刚好接触”，中位数。灰：天然牙；红：D；青：D + 扩散。</figcaption>
+      <img src="images/refine_metrics.png" alt="天然牙、形状模型、形状模型+扩散的评分卡柱状图">
+      <figcaption>60 位没参加训练的患者、228 颗牙（Bite2Text），目标“刚好接触”，中位数。灰：天然牙；红：形状模型；青：形状模型 + 扩散。</figcaption>
     </figure>
     <figure>
-      <img src="images/refine_fit.png" alt="四颗牙：D、D+扩散、真牙，咬合面和颊侧">
-      <figcaption>磨牙、前磨牙各取 D 形状误差 30%、70% 分位的两颗（不挑）。咬合面按到对颌的距离上色（黄 = 接触）：D 的黄色接触区成片，D+扩散变成几个点，更像真牙。颊侧外形基本跟着 D。
+      <img src="images/refine_fit.png" alt="四颗牙：形状模型、形状模型+扩散、真牙，咬合面和颊侧">
+      <figcaption>磨牙、前磨牙各取 形状模型 形状误差 30%、70% 分位的两颗（不挑）。咬合面按到对颌的距离上色（黄 = 接触）：形状模型 的黄色接触区成片，形状模型+扩散变成几个点，更像真牙。颊侧外形基本跟着 形状模型。
       还不够的：窝沟仍比真牙浅、浅；34 的远中边缘多出一个小缺口（扩散模型在图边缘不稳定）。</figcaption>
     </figure>
     <div class="scroll">
     <table>
-      <tr><th>指标（中位数）</th><th>天然牙</th><th>D</th><th>D + 扩散</th><th>只用扩散（v1）</th></tr>
+      <tr><th>指标（中位数）</th><th>天然牙</th><th>形状模型</th><th>形状模型 + 扩散</th><th>只用扩散（v1）</th></tr>
       <tr><td>形状误差 Chamfer</td><td>—</td><td>0.279</td><td><b>0.272</b></td><td>0.37</td></tr>
       <tr><td>RMSE / Hausdorff</td><td>—</td><td>0.33 / 1.18</td><td>0.33 / 1.20</td><td>0.52 / 1.58</td></tr>
       <tr><td>牙尖 / 中央窝位置偏差</td><td>—</td><td>0.83 / 0.84</td><td>0.84 / 0.86</td><td>1.18 / 1.80</td></tr>
@@ -161,7 +161,7 @@ td.w{white-space:normal;min-width:260px}
     </table>
     </div>
     <p>和别家比：CrownFusion 等用扩散模型直接生成牙冠；我们发现单独扩散形状偏（和 CrownFusion 论文里扩散比回归 Chamfer 大一致），
-    所以用“回归出形状 + 扩散补细节”（类似 SDEdit 的做法），两边的长处都拿到。下一步：扩散模型接着训（v2 正在训），以及在 D 的输出上专门训一个补细节的扩散模型。</p>
+    所以用“回归出形状 + 扩散补细节”（类似 SDEdit 的做法），两边的长处都拿到。下一步：扩散模型接着训（v2 正在训），以及在 形状模型 的输出上专门训一个补细节的扩散模型。</p>
   </section>
 
   <section>
@@ -236,13 +236,13 @@ td.w{white-space:normal;min-width:260px}
     <table>
       <tr><th>模型</th><th>和真牙的距离</th><th>穿入对颌 &gt; 0.1 mm</th><th>到对颌的最近距离和真牙差</th></tr>
       <tr><td>原模型（不看对颌）</td><td><span class="bar r" style="width:89px"></span>0.446 mm</td><td><span class="bar r" style="width:94px"></span>47%</td><td>0.28 mm</td></tr>
-      <tr><td>A　只加对颌整体特征</td><td><span class="bar" style="width:77px"></span>0.386 mm</td><td><span class="bar" style="width:64px"></span>32%</td><td>0.21 mm</td></tr>
-      <tr><td>B　A + 逐顶点修正</td><td><span class="bar" style="width:73px"></span>0.363 mm</td><td><span class="bar" style="width:14px"></span>7%</td><td>0.17 mm</td></tr>
-      <tr><td>C　B + 最近距离对齐真牙</td><td><span class="bar" style="width:78px"></span>0.389 mm</td><td><span class="bar" style="width:34px"></span>17%</td><td>0.13 mm</td></tr>
-      <tr class="pick"><td>D　采用：对颌只取最近一层</td><td><span class="bar" style="width:76px"></span>0.382 mm</td><td><span class="bar" style="width:24px"></span>12%</td><td>0.14 mm</td></tr>
+      <tr><td>试验 1：只加对颌整体特征</td><td><span class="bar" style="width:77px"></span>0.386 mm</td><td><span class="bar" style="width:64px"></span>32%</td><td>0.21 mm</td></tr>
+      <tr><td>试验 2：试验 1 + 逐顶点修正</td><td><span class="bar" style="width:73px"></span>0.363 mm</td><td><span class="bar" style="width:14px"></span>7%</td><td>0.17 mm</td></tr>
+      <tr><td>试验 3：试验 2 + 最近距离对齐真牙</td><td><span class="bar" style="width:78px"></span>0.389 mm</td><td><span class="bar" style="width:34px"></span>17%</td><td>0.13 mm</td></tr>
+      <tr class="pick"><td>形状模型（采用）：对颌只取最近一层</td><td><span class="bar" style="width:76px"></span>0.382 mm</td><td><span class="bar" style="width:24px"></span>12%</td><td>0.14 mm</td></tr>
     </table>
     </div>
-    <p class="note">留出的 42 位患者、1375 颗牙，模型直接输出。“穿入”是用对颌的点近似量的，同样量法真牙是 23%，只用来比较模型。B 在表上最好，但放进完整流程后牙冠平均高出 0.64 mm（训练和实际使用时给的对颌范围不一样），D 把两边统一后没有这个问题。</p>
+    <p class="note">留出的 42 位患者、1375 颗牙，模型直接输出。“穿入”是用对颌的点近似量的，同样量法真牙是 23%，只用来比较模型。试验 2 在表上最好，但放进完整流程后牙冠平均高出 0.64 mm（训练和实际使用时给的对颌范围不一样），形状模型 把两边统一后没有这个问题。</p>
   </section>
 
   <section>
