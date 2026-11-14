@@ -31,6 +31,22 @@ N_ANT = 2048  # 输入的对颌点数
 ANT_RADIUS = 10.0  # 对颌只取原点周围（咬合面内）这么远的部分，mm
 ANT_KEEP = 100000  # 每个颌缓存的对颌点数上限
 ANT_SLAB = 4.0  # 对颌只取最靠近本颌的这么厚一层，mm
+NB_POINTS = 512  # 每颗紧邻的牙取的点数（只在训练的损失里用）
+
+
+def shape_terms(pred, gt, nb, has_nb):
+    """整体形状的两类量，训练时当损失、验证时当指标（都是 mm，每个样本一个数）：
+    extent：生成牙和真牙在 x、y、z 三个方向上的最大 / 最小坐标差多少（外形尺寸、位置、高度）；
+    gap：生成牙到近中 / 远中邻牙的最小距离，和真牙到邻牙的最小距离差多少（没有那一侧邻牙的不算）。"""
+    import torch
+
+    extent = (torch.cat([pred.max(dim=1)[0], pred.min(dim=1)[0]], dim=1) - torch.cat([gt.max(dim=1)[0], gt.min(dim=1)[0]], dim=1)).abs().mean(dim=1)
+    gap = torch.zeros_like(extent)
+    for k in range(2):
+        d_pred = torch.cdist(pred, nb[:, k]).amin(dim=(1, 2))
+        d_real = torch.cdist(gt, nb[:, k]).amin(dim=(1, 2))
+        gap = gap + (d_pred - d_real).abs() * has_nb[:, k]
+    return extent, gap / has_nb.sum(dim=1).clamp(min=1)
 
 
 def antagonist_points(vertices: np.ndarray, normals: np.ndarray) -> np.ndarray:
@@ -244,12 +260,21 @@ def make_sample(fdi: np.ndarray, pts: np.ndarray, rim: np.ndarray, t: int, rng: 
             keep.remove(int(i))
     ctx, ctx_idx, origin = build_context(fdi[keep], pts[keep], target, rng)
     gt = np.concatenate([pts[t], rim[t]]) - origin  # 真牙点和边界点一起变换，返回时再拆开
+    # 近中、远中紧邻的牙（留在上下文里的才算）：训练时用来约束“和邻牙的间隙要和真牙一样”
+    idx_all = np.array([arch_index(f, target) for f in fdi])
+    ti = arch_index(target, target)
+    nb, has_nb = np.zeros((2, NB_POINTS, 3)), np.zeros(2, np.float32)
+    for k, want in enumerate((ti - 1, ti + 1)):
+        j = [i for i in keep if idx_all[i] == want]
+        if j:
+            nb[k] = pts[j[0]][rng.integers(0, TOOTH_POINTS, NB_POINTS)] - origin
+            has_nb[k] = 1
     a6 = None if (ant_drop and rng.random() < ant_drop) else crop_antagonist(ant, origin, rng)
     has_ant = a6 is not None
     if a6 is None:
         a6 = np.zeros((N_ANT, 6), np.float32)
     if target // 10 in (2, 3):  # 左侧 → 镜像成右侧
-        ctx, gt = ctx * [-1, 1, 1], gt * [-1, 1, 1]
+        ctx, gt, nb = ctx * [-1, 1, 1], gt * [-1, 1, 1], nb * [-1, 1, 1]
         a6 = a6 * np.array([-1, 1, 1, -1, 1, 1], np.float32)
     if augment:
         a, b, c = np.deg2rad(rng.uniform(-10, 10)), np.deg2rad(rng.uniform(-5, 5)), np.deg2rad(rng.uniform(-5, 5))
@@ -258,11 +283,11 @@ def make_sample(fdi: np.ndarray, pts: np.ndarray, rim: np.ndarray, t: int, rng: 
         ry = np.array([[np.cos(c), 0, np.sin(c)], [0, 1, 0], [-np.sin(c), 0, np.cos(c)]])
         r = (rz @ rx @ ry).T
         m = r * rng.uniform(0.95, 1.05)
-        ctx, gt = ctx @ m, gt @ m
+        ctx, gt, nb = ctx @ m, gt @ m, nb @ m
         a6 = np.concatenate([a6[:, :3] @ m, a6[:, 3:] @ r], axis=1)
     gt = gt.astype(np.float32)
     return (ctx.astype(np.float32), ctx_idx.astype(np.int64), target_class(target), gt[:TOOTH_POINTS], gt[TOOTH_POINTS:],
-            a6.astype(np.float32), np.float32(has_ant))
+            a6.astype(np.float32), np.float32(has_ant), nb.astype(np.float32), has_nb)
 
 
 def load_cache(cache: Path | list[Path]):
@@ -287,10 +312,10 @@ def _dataset(scans, items, train: bool, ant_drop: float = 0.0, use_ant: bool = T
         def __getitem__(self, i):
             s, t = items[i]
             rng = np.random.default_rng() if train else np.random.default_rng(i)
-            ctx, ctx_idx, cls, gt, rim, ant, has_ant = make_sample(
+            ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb = make_sample(
                 scans[s][1], scans[s][2], scans[s][3], t, rng, drop=train, augment=train,
                 ant=scans[s][4] if use_ant else None, ant_drop=ant_drop if train else 0.0)
-            return ctx, ctx_idx, cls, gt, rim, ant, has_ant, i
+            return ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, i
 
     return DS()
 
@@ -473,7 +498,8 @@ def load_model(path: Path, device: str):
 
 def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr: float, workers: int, max_scans: int | None, edge_weight: float,
           template: str = "sphere", init: Path | None = None, lap_weight: float = 0.0, rim_weight: float = 1.0,
-          antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0) -> dict:
+          antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0,
+          extent_weight: float = 0.0, gap_weight: float = 0.0) -> dict:
     import torch
 
     torch.manual_seed(0)
@@ -516,11 +542,14 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     for epoch in range(1, epochs + 1):
         model.train()
         total, n = 0.0, 0
-        for ctx, ctx_idx, cls, gt, rim, ant, has_ant, _ in dl:
+        for ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, _ in dl:
             ctx, ctx_idx, cls, gt, rim = ctx.to(device), ctx_idx.to(device), cls.to(device), gt.to(device), rim.to(device)
             ant, has_ant = ant.to(device), has_ant.to(device)
             pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
             cd = chamfer(pred, gt).mean()
+            if extent_weight or gap_weight:  # 整体形状：外形尺寸 / 高度、和邻牙的间隙都向真牙看齐
+                extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
+                cd = cd + extent_weight * extent.mean() + gap_weight * gap.mean()
             if antagonist and has_ant.sum() > 0 and (pen_weight or clear_weight):
                 sd = antagonist_distance(pred, ant)
                 if pen_weight:  # 穿进对颌的部分：按穿入深度罚（对所有顶点取平均）
@@ -548,7 +577,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         val = evaluate(model, dv, device)
         row = {"epoch": epoch, "train_loss": round(total / n, 4), "val_chamfer_mm": round(val["chamfer_mm"], 4),
                "val_rim_mm": round(val["rim_mm"], 4), "val_area_mm2": round(val["area_mm2"], 1), "minutes": round((time.time() - t0) / 60, 1)}
-        row.update({f"val_{k}": round(v, 4) for k, v in val.get("occlusion", {}).items()})
+        row.update({f"val_{k}": round(v, 4) for k, v in {**val.get("shape", {}), **val.get("occlusion", {})}.items()})
         print(json.dumps(row), flush=True)
         ckpt = {"state": model.state_dict(), "epoch": epoch, "val": val, "template": template, "antagonist": antagonist, "refine": refine}
         torch.save(ckpt, out.with_name(out.stem + ".last.pt"))  # 最后一轮总是留着（验证分数没超过起点时 out 不会被覆盖）
@@ -564,15 +593,17 @@ def evaluate(model, loader, device, collect: bool = False):
     import torch
 
     model.eval()
-    cds, cens, rows, areas, clear, with_ant = [], [], [], [], [], []
+    cds, cens, rows, areas, clear, with_ant, shape = [], [], [], [], [], [], []
     f = model.faces
     use_ant = getattr(model, "antagonist", False)
     with torch.no_grad():
-        for ctx, ctx_idx, cls, gt, rim, ant, has_ant, i in loader:
+        for ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, i in loader:
             ant, has_ant = ant.to(device), has_ant.to(device)
             pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant, has_ant) if use_ant else model(ctx.to(device), ctx_idx.to(device), cls.to(device))
             gt = gt.to(device)
             cd = chamfer(pred, gt)
+            extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
+            shape.append(torch.stack([extent, gap], dim=1).cpu())
             # 有对颌的样本：生成的牙到对颌的最小距离（近似），和真牙点到对颌的最小距离
             c_pred, c_real = antagonist_distance(pred, ant).min(dim=1)[0], antagonist_distance(gt, ant).min(dim=1)[0]
             clear.append(torch.stack([c_pred, c_real], dim=1).cpu()), with_ant.append(has_ant.cpu() > 0)
@@ -586,6 +617,8 @@ def evaluate(model, loader, device, collect: bool = False):
                 rows += [(int(a), int(b), float(c), float(d)) for a, b, c, d in zip(i, cls, cd.cpu(), cen.cpu())]
     out = {"chamfer_mm": float(torch.cat(cds).mean()), "rim_mm": float(torch.cat(cens).mean()),
            "area_mm2": float(torch.cat(areas).mean()), "n": int(sum(len(c) for c in cds))}
+    sh = torch.cat(shape)
+    out["shape"] = {"extent_mm": float(sh[:, 0].mean()), "gap_mm": float(sh[:, 1].mean())}
     sel = torch.cat(with_ant)
     if sel.any():
         c = torch.cat(clear)[sel]
@@ -638,7 +671,7 @@ def run_eval(model_path: Path, cache: Path, out: Path, batch_size: int, n_sample
     step = max(1, len(ds) // max(n_samples, 1))
     (out / "samples").mkdir(exist_ok=True)
     for j in range(0, len(ds), step)[:n_samples]:
-        ctx, ctx_idx, cls, gt, _, ant, has_ant, _ = ds[j]
+        ctx, ctx_idx, cls, gt, _, ant, has_ant, _, _, _ = ds[j]
         with torch.no_grad():
             pred = model(torch.tensor(ctx)[None].to(device), torch.tensor(ctx_idx)[None].to(device), torch.tensor([cls]).to(device),
                          torch.tensor(ant)[None].to(device), torch.tensor([has_ant]).to(device))[0].cpu().numpy()
@@ -822,6 +855,8 @@ def main() -> None:
     t.add_argument("--ant-drop", type=float, default=0.3, help="训练时随机不给对颌的比例（没有对颌时也要能用）")
     t.add_argument("--pen-weight", type=float, default=10.0, help="穿入对颌的惩罚")
     t.add_argument("--clear-weight", type=float, default=0.0, help="到对颌的最小距离对齐真牙（0 = 不用）")
+    t.add_argument("--extent-weight", type=float, default=0.0, help="外形尺寸、位置、高度（三个方向的最大 / 最小坐标）对齐真牙")
+    t.add_argument("--gap-weight", type=float, default=0.0, help="到近中 / 远中邻牙的最小距离对齐真牙")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--cache", type=Path, required=True)
@@ -837,7 +872,8 @@ def main() -> None:
     elif args.cmd == "train":
         train(args.cache, args.out, args.epochs, args.batch_size, args.lr, args.workers, args.max_scans, args.edge_weight,
               template=args.template, init=args.init, lap_weight=args.lap_weight, rim_weight=args.rim_weight,
-              antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight)
+              antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight,
+              extent_weight=args.extent_weight, gap_weight=args.gap_weight)
     else:
         run_eval(args.model, args.cache, args.out, args.batch_size, args.samples, args.hide_antagonist)
 

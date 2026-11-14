@@ -32,7 +32,8 @@ def test_make_sample_centers_between_neighbors_and_mirrors_left_side():
     rim = pts[:, : gen.RIM_POINTS]
     right = gen.make_sample(fdi, pts, rim, 2, np.random.default_rng(1), drop=False, augment=False)  # 46
     left = gen.make_sample(fdi, pts, rim, 6, np.random.default_rng(1), drop=False, augment=False)  # 36
-    for ctx, ctx_idx, cls, gt, r, ant, has_ant in (right, left):
+    for ctx, ctx_idx, cls, gt, r, ant, has_ant, nb, has_nb in (right, left):
+        assert nb.shape == (2, gen.NB_POINTS, 3) and has_nb.tolist() == [1, 1]  # 45、47 都在：两侧邻牙都有
         assert has_ant == 0 and ant.shape == (gen.N_ANT, 6)  # 没给对颌
         assert ctx.shape == (gen.N_CTX, 3) and gt.shape == (gen.TOOTH_POINTS, 3) and r.shape == (gen.RIM_POINTS, 3)
         assert cls == gen.target_class(46)  # 左右同名牙是同一类
