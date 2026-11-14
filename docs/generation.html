@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>牙齿生成 · dental_3d_ai</title>
+<title>牙冠生成 · dental_3d_ai</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
 <link rel="stylesheet" href="site.css">
 <style>
@@ -27,15 +27,42 @@ td.w{white-space:normal;min-width:260px}
 </head>
 <body>
 <nav><div class="in"><span class="brand">Dental <b>3D</b> AI</span>
-<a href="index.html">总览</a><a href="segmentation.html">牙齿分割</a><a class="on" href="generation.html">牙齿生成</a><a href="margin.html">颈缘线</a>
+<a href="index.html">总览</a><a href="segmentation.html">牙齿分割</a><a class="on" href="generation.html">牙冠生成</a><a href="margin.html">颈缘线</a>
 <a href="history.html">来时路</a><a href="landscape.html">业界进展</a><a href="ideas.html">想法清单</a>
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
-    <div class="eyebrow">专项 · 牙齿生成 · 更新于 2026-11-14（D + 扩散）</div>
+    <div class="eyebrow">专项 · 牙冠生成 · 更新于 2026-11-14（D + 扩散）</div>
     <h1>缺牙位置生成一颗牙冠</h1>
     <p class="lead">现状一句话：和对颌、邻牙的距离关系已经接近天然牙，但<b>整体形状不像真牙，咬合面的凹凸也不够</b>。数字好看不等于牙冠好看，下一步先解决形状。</p>
   </header>
+
+  <section>
+    <h2>牙冠的上下两半</h2>
+    <div class="two">
+      <figure>
+        <svg viewBox="0 0 420 300" role="img" aria-label="牙冠上下两半" style="width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px">
+          <rect x="0" y="0" width="420" height="40" fill="#3a4a66"/><text x="12" y="25" fill="#cfd8e8" font-size="13">对颌（上面的牙）</text>
+          <rect x="18" y="80" width="80" height="120" rx="24" fill="#e8d9a8"/><rect x="322" y="80" width="80" height="120" rx="24" fill="#e8d9a8"/>
+          <text x="30" y="150" fill="#3a2f12" font-size="12">邻牙</text><text x="345" y="150" fill="#3a2f12" font-size="12">邻牙</text>
+          <path d="M110 205 L118 95 Q140 60 165 85 Q185 105 210 80 Q235 58 260 85 Q285 60 302 95 L310 205 Z" fill="#22c7d6" opacity=".85"/>
+          <path d="M150 215 L158 150 Q210 130 262 150 L270 215 Z" fill="#c9b98a"/>
+          <rect x="0" y="210" width="420" height="90" fill="#e3a59a"/>
+          <text x="180" y="260" fill="#3a1410" font-size="12">牙龈</text>
+          <path d="M110 205 Q210 225 310 205" fill="none" stroke="#3ddc97" stroke-width="3"/>
+          <text x="186" y="185" fill="#3a2f12" font-size="11">预备体 / 基台</text>
+          <line x1="0" y1="140" x2="420" y2="140" stroke="#f5b74f" stroke-dasharray="6 5"/>
+          <text x="330" y="60" fill="#f5b74f" font-size="12">上半部分</text><text x="330" y="235" fill="#f5b74f" font-size="12">下半部分</text>
+          <text x="120" y="288" fill="#3ddc97" font-size="12">绿线：颈缘线（牙冠边缘对齐这里）</text>
+        </svg>
+      </figure>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="tile"><div class="k">上半部分：看得见的外形</div><div class="n" style="font-size:14px;color:var(--fg)">咬合面的牙尖和窝沟、和对颌咬得对不对、和左右邻牙贴不贴。<b>现在的评分卡量的就是这些</b>，用天然牙数据训练和评估。</div></div>
+        <div class="tile"><div class="k">下半部分：看不见的贴合</div><div class="n" style="font-size:14px;color:var(--fg)">内表面贴合预备体 / 基台（留粘接间隙）、边缘沿<a href="margin.html">颈缘线</a>封闭、和牙龈过渡贴合（不硌、不空）、最薄处够厚。<b>要有“预备体 + 技工设计牙冠”的数据才能训练和评估</b>，现在先用几何方法做，流程已铺好。</div></div>
+        <div class="tile"><div class="k">两半是联动的</div><div class="n" style="font-size:14px;color:var(--fg)">邻接要贴上，会改变靠近牙颈的外形；颈缘线决定牙冠底边在哪、从牙龈里“长出来”的弧度怎么走；咬合调整（抬高 / 磨低）又不能动底边。最终是一颗完整封闭、能直接打印的牙冠。</div></div>
+      </div>
+    </div>
+  </section>
 
   <section class="explain">
     <details class="explain-box" open>
