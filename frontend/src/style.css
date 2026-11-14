@@ -157,7 +157,7 @@ ul.error { padding-left: 18px; }
 
 /* 还没选病例时，三维视图中间给一句提示 */
 main { position: relative; }
-.layout:not(:has(.cases li.active)) main::after {
+.layout:not(:has(.toolbar)) main::after {
   content: "从左侧点一个示例病例开始"; position: absolute; left: 50%; top: 46%; translate: -50% -50%;
   padding: 12px 22px; border: 1px dashed var(--line); border-radius: 999px; color: var(--muted); font-size: 14px; letter-spacing: 0.06em;
   pointer-events: none; white-space: nowrap;
@@ -176,3 +176,41 @@ table.compare th, table.compare td { padding: 5px 6px; text-align: right; border
 table.compare th { color: var(--dim); font-weight: 600; }
 table.compare th:first-child, table.compare td:first-child { text-align: left; color: var(--fg); font-weight: 700; }
 .inline select { flex: 1; min-width: 0; }
+
+/* 三维视图底部的快捷按钮 */
+.viewbar {
+  position: absolute; left: 50%; bottom: 18px; translate: -50% 0; z-index: 3;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 7px; max-width: calc(100% - 28px);
+  border-radius: 999px; background: rgba(13, 22, 40, 0.82); border: 1px solid var(--line);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.viewbar button {
+  padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--raised); color: var(--muted);
+  font-size: 12.5px; white-space: nowrap;
+}
+.viewbar button:hover { border-color: var(--accent); color: var(--fg); }
+.viewbar button.on { background: var(--accent-soft); border-color: rgba(34, 199, 214, 0.6); color: var(--fg); }
+
+/* 病例列表：一行一个示例，点开向右展开二级面板 */
+.layout { position: relative; }
+.demos li.open { border-color: var(--accent); background: #17284a; }
+.demos button em {
+  display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-style: normal; font-size: 11px; font-weight: 700; vertical-align: 1px;
+}
+.flyout {
+  position: absolute; left: 360px; top: 0; bottom: 0; width: 290px; z-index: 6; overflow-y: auto; padding: 16px 16px 24px;
+  background: rgba(13, 22, 40, 0.96); border-right: 1px solid var(--line); box-shadow: 18px 0 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.flyout header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.flyout header b { font-size: 14.5px; line-height: 1.4; }
+.flyout header button { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 0 4px; }
+.flyout header button:hover { color: var(--fg); }
+.flyout .run { width: 100%; padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.flyout .run:hover { filter: brightness(1.1); }
+.flyout h3 { margin: 18px 0 8px; font-size: 11.5px; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
+.flyout .cases li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.st { font-style: normal; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--raised); color: var(--muted); white-space: nowrap; }
+.st.done { color: var(--ok); } .st.failed { color: var(--err); } .st.running, .st.queued { color: var(--warn); }
+@media (max-width: 720px) { .flyout { left: 0; right: 0; width: auto; top: auto; max-height: 60%; border-right: 0; border-top: 1px solid var(--line); } }

@@ -22,6 +22,8 @@ export function App() {
   const [current, setCurrent] = useState<Case | null>(null);
   const [cervical, setCervical] = useState<Record<string, number[][]>>();
   const [showCervical, setShowCervical] = useState(true);
+  /** 展开的二级面板：示例 id，或 "__uploads"（自己上传的） */
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [antagonistOpacity, setAntagonistOpacity] = useState(0.32);
   const [compare, setCompare] = useState<"off" | "overlay" | "heat">("off");
   const [showTags, setShowTags] = useState(true);
@@ -195,29 +197,34 @@ export function App() {
 
         {demos.length > 0 && (
           <>
-            <h2>示例病例</h2>
+            <h2>病例</h2>
             <ul className="demos">
-              {demos.map((d) => (
-                <li key={d.id}>
-                  <button type="button" disabled={!d.available} onClick={() => openDemo(d)} title={d.description}>
-                    {d.title}
+              {demos.map((d) => {
+                const runs = cases.filter((c) => c.demo?.id === d.id).length;
+                return (
+                  <li key={d.id} className={openGroup === d.id ? "open" : ""}>
+                    <button type="button" disabled={!d.available} onClick={() => setOpenGroup(openGroup === d.id ? null : d.id)} title={d.description}>
+                      {d.title}
+                      {runs > 0 && <em>{runs}</em>}
+                    </button>
+                    <small>{d.available ? d.description : d.unavailable_reason}</small>
+                  </li>
+                );
+              })}
+              {cases.some((c) => !c.demo) && (
+                <li className={openGroup === "__uploads" ? "open" : ""}>
+                  <button type="button" onClick={() => setOpenGroup(openGroup === "__uploads" ? null : "__uploads")}>
+                    我上传的口扫
+                    <em>{cases.filter((c) => !c.demo).length}</em>
                   </button>
-                  <small>{d.available ? d.description : d.unavailable_reason}</small>
+                  <small>自己上传并处理过的病例</small>
                 </li>
-              ))}
+              )}
             </ul>
             <p className="note">示例数据：Teeth3DS（CC BY-NC-ND 4.0），仅用于非商业演示</p>
           </>
         )}
 
-        <h2>病例</h2>
-        <ul className="cases">
-          {cases.map((c) => (
-            <li key={c.id} className={c.id === current?.id ? "active" : ""} onClick={() => select(c)}>
-              {c.demo ? `示例：${c.demo.title}` : c.jaw === "upper" ? "上颌" : "下颌"} · {new Date(c.created_at).toLocaleString()} · {c.status}
-            </li>
-          ))}
-        </ul>
 
         {current && (
           <section>
@@ -375,6 +382,36 @@ export function App() {
           </section>
         )}
       </aside>
+      {openGroup &&
+        (() => {
+          const demo = demos.find((d) => d.id === openGroup);
+          const runs = cases.filter((c) => (demo ? c.demo?.id === demo.id : !c.demo));
+          const STATUS: Record<string, string> = { uploaded: "已上传", queued: "排队中", running: "处理中", done: "完成", failed: "失败" };
+          return (
+            <div className="flyout">
+              <header>
+                <b>{demo ? demo.title : "我上传的口扫"}</b>
+                <button type="button" onClick={() => setOpenGroup(null)} aria-label="关闭">
+                  ×
+                </button>
+              </header>
+              {demo && (
+                <button type="button" className="run" onClick={() => openDemo(demo)}>
+                  新建一次运行
+                </button>
+              )}
+              <h3>{runs.length > 0 ? `历史运行（${runs.length}）` : "还没有运行过"}</h3>
+              <ul className="cases">
+                {runs.map((c) => (
+                  <li key={c.id} className={c.id === current?.id ? "active" : ""} onClick={() => select(c)}>
+                    <span>{new Date(c.created_at).toLocaleString()}</span>
+                    <i className={`st ${c.status}`}>{STATUS[c.status] ?? c.status}</i>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
       <main>
         {current?.status === "done" ? (
           <LabelEditor
@@ -405,6 +442,36 @@ export function App() {
           />
         ) : (
           <Viewer meshUrl={current ? api.fileUrl(current.id, current.files.mesh) : undefined} />
+        )}
+        {current?.status === "done" && report && report.generated.length > 0 && (
+          <div className="viewbar" role="toolbar" aria-label="显示选项">
+            <button type="button" className={showTags ? "on" : ""} onClick={() => setShowTags(!showTags)} title="牙上的“生成 牙号”标签">
+              牙号标签：{showTags ? "显示" : "隐藏"}
+            </button>
+            {current.files.antagonist && (
+              <button
+                type="button"
+                className={antagonistOpacity > 0 ? "on" : ""}
+                onClick={() => setAntagonistOpacity(antagonistOpacity === 0 ? 0.32 : antagonistOpacity < 1 ? 1 : 0)}
+                title="点一下在 隐藏 / 半透明 / 不透明 之间切换"
+              >
+                对颌：{antagonistOpacity === 0 ? "隐藏" : antagonistOpacity < 1 ? "半透明" : "不透明"}
+              </button>
+            )}
+            <button type="button" className={isolate ? "on" : ""} onClick={() => setIsolate(!isolate)} title="隐藏牙弓和对颌，只留生成的牙">
+              只看生成牙：{isolate ? "开" : "关"}
+            </button>
+            {originalUrls.length > 0 && (
+              <button
+                type="button"
+                className={compare !== "off" ? "on" : ""}
+                onClick={() => setCompare(compare === "off" ? "overlay" : compare === "overlay" ? "heat" : "off")}
+                title="点一下在 不对比 / 叠加原始牙 / 偏差色图 之间切换"
+              >
+                对比原始牙：{compare === "off" ? "关" : compare === "overlay" ? "叠加" : "偏差色图"}
+              </button>
+            )}
+          </div>
         )}
       </main>
     </div>
