@@ -81,6 +81,17 @@ docker compose --profile gpu up --build
 
 浏览器打开 http://localhost:8080 。
 
+首页左下的“示例病例”里点一个就能跑（缺牙生成、预备体牙冠、自动分割等 6 个，数据在仓库 `demo/` 目录，不用自己准备文件），
+处理完在“病例”列表里点开看三维结果。
+
+连不上 Docker Hub（拉 python / node / nginx / redis 镜像超时）时用镜像站：
+
+```bash
+DOCKER_REGISTRY=docker.m.daocloud.io docker compose up --build
+```
+
+服务跑在另一台机器上时，在自己电脑上做端口转发再打开 http://localhost:8080 ：`ssh -N -L 8080:localhost:8080 <用户>@<服务器>`。
+
 ## 本地开发
 
 需要 Python ≥ 3.10、Node ≥ 18。

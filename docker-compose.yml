@@ -2,13 +2,17 @@
 #   docker compose up --build
 # 同时启动 TGNet 分割服务（需要 NVIDIA GPU 和 nvidia-container-toolkit，权重放在 models/tgnet/）：
 #   SEGMENTER_URL=http://tgnet:8001 docker compose --profile gpu up --build
-# 浏览器打开 http://localhost:8080
+# 浏览器打开 http://localhost:8080，首页“示例病例”里点一个就能跑（数据在仓库 demo/ 目录，不用自己准备文件）
+# 连不上 Docker Hub（拉 python / node / nginx / redis 镜像超时）时，用镜像站：
+#   DOCKER_REGISTRY=docker.m.daocloud.io docker compose up --build
 
 x-backend-common: &backend-common
   image: dental3d-backend  # backend 和 worker 共用一个镜像
   build:
     context: .
     dockerfile: backend/Dockerfile
+    args:
+      REGISTRY: ${DOCKER_REGISTRY:-docker.io}
   environment:
     # 处理任务进 Redis 队列，由 worker 服务处理；去掉这一行则在 API 进程里处理
     REDIS_URL: redis://redis:6379/0
@@ -38,7 +42,10 @@ x-backend-common: &backend-common
 
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-docker.io}
     ports:
       - "8080:80"
     depends_on:
@@ -60,7 +67,7 @@ services:
       - redis
 
   redis:
-    image: redis:7-alpine
+    image: ${DOCKER_REGISTRY:-docker.io}/library/redis:7-alpine
 
   tgnet:
     profiles: ["gpu"]

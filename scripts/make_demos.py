@@ -20,8 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCANS = ["01KTSH6A_lower", "016N696F_upper", "RXKYWHG6_lower"]
 DEMOS = [
-    {"id": "lower-missing-36", "title": "下颌缺 36：对侧镜像生成",
-     "description": "完整下颌去掉 36，用对侧 46 镜像生成，底面贴合牙龈", "scan": "01KTSH6A_lower", "missing": [36]},
+    {"id": "lower-missing-36", "title": "下颌缺 36：生成牙冠",
+     "description": "完整下颌去掉 36，生成牙冠（有学习模型时用它，否则用对侧 46 镜像），底面贴合牙龈", "scan": "01KTSH6A_lower", "missing": [36]},
     {"id": "lower-prep-46", "title": "下颌 46 预备体：颈缘线 + 牙冠",
      "description": "46 模拟磨成肩台预备体，自动检测颈缘线并生成预备体牙冠（可在编辑器里改颈缘线）",
      "scan": "01KTSH6A_lower", "prepared": [46]},

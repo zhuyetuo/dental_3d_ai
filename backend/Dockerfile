@@ -1,5 +1,7 @@
 # 构建上下文是仓库根目录：docker build -f backend/Dockerfile .
-FROM python:3.12-slim
+# REGISTRY：连不上 Docker Hub 时换成镜像站（见 docker-compose.yml 开头）
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/library/python:3.12-slim
 
 ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
 WORKDIR /app

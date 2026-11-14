@@ -1,8 +1,8 @@
 [
   {
     "id": "lower-missing-36",
-    "title": "下颌缺 36：对侧镜像生成",
-    "description": "完整下颌去掉 36，用对侧 46 镜像生成，底面贴合牙龈",
+    "title": "下颌缺 36：生成牙冠",
+    "description": "完整下颌去掉 36，生成牙冠（有学习模型时用它，否则用对侧 46 镜像），底面贴合牙龈",
     "scan": "01KTSH6A_lower",
     "missing": [
       36
