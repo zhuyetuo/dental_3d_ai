@@ -58,6 +58,29 @@ def _margin_overrides(case: dict) -> dict[int, dict]:
     return {int(k): v for k, v in data.items()}
 
 
+def _compare_with_originals(case_id: str, files: dict, report: dict) -> dict:
+    """示例里被去掉的真牙（original_<牙号>.stl）和生成的牙比：真牙表面每个点到生成牙表面的距离。
+    只算这个方向：生成的实体多一个贴牙龈的底面，真牙（开放的牙冠）没有对应的部分。"""
+    import numpy as np
+    import trimesh
+    from scipy.spatial import cKDTree
+
+    out = {}
+    for g in report.get("generated", []):
+        name = files.get(f"original_{g['fdi']}")
+        if not name:
+            continue
+        gen = trimesh.load(storage.case_path(case_id, "result") / g["file"])
+        real = trimesh.load(storage.case_path(case_id, name))
+        d = cKDTree(trimesh.sample.sample_surface(gen, 60000, seed=0)[0]).query(np.asarray(real.vertices))[0]
+        out[str(g["fdi"])] = {
+            "mean_mm": round(float(d.mean()), 3), "median_mm": round(float(np.median(d)), 3),
+            "p95_mm": round(float(np.percentile(d, 95)), 3), "max_mm": round(float(d.max()), 3),
+            "within_03": round(float((d <= 0.3).mean()), 3),
+        }
+    return out
+
+
 def process_case(case_id: str) -> None:
     case = storage.load_case(case_id)
     case.update(status="running", error=None)
@@ -83,6 +106,9 @@ def process_case(case_id: str) -> None:
             prepared_teeth=case.get("prepared_teeth", []),
             margin_overrides=_margin_overrides(case),
         )
+        comparison = _compare_with_originals(case_id, files, report)
+        if comparison:
+            report["comparison"] = comparison
         # 重新计算会重新生成牙冠，之前的手动调整不再适用
         case.update(status="done", report=report, adjustments={})
     except Exception as exc:  # 任务失败要记录到病例上，前端才能显示

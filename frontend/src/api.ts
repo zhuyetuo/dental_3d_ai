@@ -39,6 +39,8 @@ export interface Report {
   warnings: string[];
   missing: MissingTooth[];
   generated: GeneratedTooth[];
+  /** 示例里有原始牙时：原始牙表面到生成牙的距离（牙号 → 统计） */
+  comparison?: Record<string, { mean_mm: number; median_mm: number; p95_mm: number; max_mm: number; within_03: number }>;
 }
 
 export interface Case {

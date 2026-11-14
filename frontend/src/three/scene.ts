@@ -106,9 +106,50 @@ export interface Overlays {
   cervicalLines?: Record<string, number[][]>;
   showCervical: boolean;
   antagonistUrl?: string;
-  showAntagonist?: boolean;
+  /** 0 = 不显示，1 = 不透明（看对颌的凹凸面），中间是半透明 */
+  antagonistOpacity?: number;
   originalUrls?: string[];
-  showOriginal?: boolean;
+  /** 和原始牙对比：overlay = 半透明金色叠上去；heat = 生成的牙按到原始牙的距离上色 */
+  compare?: "off" | "overlay" | "heat";
+  showTags?: boolean;
+  /** 只看生成的牙（和原始牙）：牙弓、对颌都藏起来 */
+  isolate?: boolean;
+}
+
+/** 生成牙的每个顶点到原始牙最近顶点的距离 → 顶点颜色：绿 ≤ 0.2 mm，黄 0.5 mm，红 ≥ 1 mm；超过 1.5 mm 的（封底部分，原始牙没有）灰色。 */
+function colorByDeviation(mesh: THREE.Mesh, center: THREE.Vector3, target: Float32Array) {
+  const pos = mesh.geometry.getAttribute("position");
+  const colors = new Float32Array(pos.count * 3);
+  const stops: [number, number[]][] = [[0.2, [0.24, 0.86, 0.59]], [0.5, [1.0, 0.86, 0.3]], [1.0, [0.95, 0.25, 0.22]]];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + center.x, y = pos.getY(i) + center.y, z = pos.getZ(i) + center.z;
+    let best = Infinity;
+    for (let j = 0; j < target.length; j += 3) {
+      const dx = target[j] - x, dy = target[j + 1] - y, dz = target[j + 2] - z;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < best) best = d;
+    }
+    const d = Math.sqrt(best);
+    let c = [0.45, 0.5, 0.58];
+    if (d <= stops[0][0]) c = stops[0][1];
+    else if (d <= 1.5) {
+      c = stops[2][1];
+      for (let k = 1; k < stops.length; k++) {
+        if (d <= stops[k][0]) {
+          const t = (d - stops[k - 1][0]) / (stops[k][0] - stops[k - 1][0]);
+          c = stops[k - 1][1].map((v, n) => v + (stops[k][1][n] - v) * t);
+          break;
+        }
+      }
+    }
+    colors.set(c, i * 3);
+  }
+  mesh.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const m = mesh.material as THREE.MeshStandardMaterial;
+  m.vertexColors = true;
+  m.color.set(0xffffff);
+  m.emissive.set(0x000000);
+  m.needsUpdate = true;
 }
 
 export const GENERATED_COLOR = 0x19d3e6;
@@ -142,12 +183,33 @@ function makeTag(text: string, at: THREE.Vector3, color: string): THREE.Sprite {
 }
 
 /** 生成牙（高亮蓝色）和牙颈线（黄色线框）。返回取消函数，防止旧请求晚到时加进场景。 */
-export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls, cervicalLines, showCervical, antagonistUrl, showAntagonist, originalUrls, showOriginal }: Overlays) {
+export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays) {
+  const { generatedUrls, cervicalLines, showCervical, antagonistUrl, originalUrls } = props;
+  const antagonistOpacity = props.antagonistOpacity ?? 0;
+  const compare = props.compare ?? "off";
+  const showTags = props.showTags ?? true;
+  const isolate = props.isolate ?? false;
   useEffect(() => {
     const group = ctx.current?.overlays;
     if (!group) return;
     group.clear();
     let cancelled = false;
+    const content = (ctx.current as unknown as { content?: THREE.Object3D }).content;
+    if (content) content.visible = !isolate;
+    // 偏差色图要先拿到原始牙的顶点
+    const originalPoints =
+      compare === "heat" && originalUrls?.length
+        ? Promise.all(originalUrls.map(loadGeometry)).then((gs) => {
+            const arrays = gs.map((g) => g.getAttribute("position").array as Float32Array);
+            const all = new Float32Array(arrays.reduce((n, a) => n + a.length, 0));
+            let at = 0;
+            for (const a of arrays) {
+              all.set(a, at);
+              at += a.length;
+            }
+            return all;
+          })
+        : null;
 
     for (const url of generatedUrls) {
       loadGeometry(url).then((geometry) => {
@@ -163,10 +225,13 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls
         const fdi = Number(/(?:tooth|crown)_(\d+)\.stl/.exec(url)?.[1] ?? NaN);
         mesh.userData = { generated: true, fdi, url, center: center.clone() };
         group.add(mesh);
-        if (Number.isFinite(fdi)) group.add(makeTag(`生成 ${fdi}`, center, "#19d3e6"));
+        if (showTags && Number.isFinite(fdi)) group.add(makeTag(`生成 ${fdi}`, center, "#19d3e6"));
+        originalPoints?.then((points) => {
+          if (!cancelled) colorByDeviation(mesh, center, points);
+        });
       });
     }
-    if (showOriginal) {
+    if (compare === "overlay") {
       // 示例里被去掉的真牙：半透明金色叠在生成的牙上，直接看差在哪
       for (const url of originalUrls ?? []) {
         loadGeometry(url).then((geometry) => {
@@ -180,13 +245,14 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls
         });
       }
     }
-    if (showAntagonist && antagonistUrl) {
+    if (antagonistUrl && antagonistOpacity > 0 && !isolate) {
       // 对颌：半透明，不参与拾取，只用来看生成的牙冠和它的咬合关系
       loadGeometry(antagonistUrl).then((geometry) => {
         if (cancelled) return;
         geometry.computeVertexNormals();
         const material = new THREE.MeshStandardMaterial({
-          color: 0xd5dde8, roughness: 0.6, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide,
+          color: 0xd5dde8, roughness: 0.6, side: THREE.DoubleSide,
+          transparent: antagonistOpacity < 1, opacity: antagonistOpacity, depthWrite: antagonistOpacity >= 1,
         });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.userData = { antagonist: true };
@@ -204,5 +270,5 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls
     return () => {
       cancelled = true;
     };
-  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, showAntagonist, originalUrls, showOriginal]);
+  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, antagonistOpacity, originalUrls, compare, showTags, isolate]);
 }

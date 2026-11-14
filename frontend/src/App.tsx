@@ -22,8 +22,10 @@ export function App() {
   const [current, setCurrent] = useState<Case | null>(null);
   const [cervical, setCervical] = useState<Record<string, number[][]>>();
   const [showCervical, setShowCervical] = useState(true);
-  const [showAntagonist, setShowAntagonist] = useState(true);
-  const [showOriginal, setShowOriginal] = useState(false);
+  const [antagonistOpacity, setAntagonistOpacity] = useState(0.32);
+  const [compare, setCompare] = useState<"off" | "overlay" | "heat">("off");
+  const [showTags, setShowTags] = useState(true);
+  const [isolate, setIsolate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const onDirtyChange = useCallback((d: boolean) => setDirty(d), []);
@@ -312,16 +314,60 @@ export function App() {
                   <input type="checkbox" checked={showCervical} onChange={(e) => setShowCervical(e.target.checked)} />
                   显示牙颈线
                 </label>
+                {report.generated.length > 0 && (
+                  <>
+                    <label className="inline">
+                      <input type="checkbox" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} />
+                      显示“生成 牙号”标签
+                    </label>
+                    <label className="inline">
+                      <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} />
+                      只看生成的牙（隐藏牙弓和对颌）
+                    </label>
+                  </>
+                )}
+                {compare === "heat" && (
+                  <ul className="legend">
+                    <li><i style={{ background: "#3ddc97" }} />偏差 ≤ 0.2 mm</li>
+                    <li><i style={{ background: "#ffdb4d" }} />0.5 mm</li>
+                    <li><i style={{ background: "#f24038" }} />≥ 1 mm</li>
+                    <li><i style={{ background: "#737f94" }} />封底部分（原始牙没有）</li>
+                  </ul>
+                )}
+                {report.comparison && Object.keys(report.comparison).length > 0 && (
+                  <table className="compare">
+                    <thead>
+                      <tr><th>牙号</th><th>平均</th><th>中位数</th><th>95%</th><th>最大</th><th>0.3 mm 内</th></tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(report.comparison).map(([fdi, c]) => (
+                        <tr key={fdi}>
+                          <td>{fdi}</td><td>{c.mean_mm.toFixed(2)}</td><td>{c.median_mm.toFixed(2)}</td>
+                          <td>{c.p95_mm.toFixed(2)}</td><td>{c.max_mm.toFixed(2)}</td><td>{Math.round(c.within_03 * 100)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <caption>原始牙表面到生成牙的距离（mm）</caption>
+                  </table>
+                )}
                 {originalUrls.length > 0 && (
                   <label className="inline">
-                    <input type="checkbox" checked={showOriginal} onChange={(e) => setShowOriginal(e.target.checked)} />
-                    叠加原始牙（和生成的牙对比）
+                    和原始牙对比
+                    <select value={compare} onChange={(e) => setCompare(e.target.value as typeof compare)}>
+                      <option value="off">不对比</option>
+                      <option value="overlay">叠加原始牙（金色半透明）</option>
+                      <option value="heat">偏差色图（生成的牙按偏差上色）</option>
+                    </select>
                   </label>
                 )}
                 {current.files.antagonist && (
                   <label className="inline">
-                    <input type="checkbox" checked={showAntagonist} onChange={(e) => setShowAntagonist(e.target.checked)} />
-                    显示对颌（半透明）
+                    对颌
+                    <select value={antagonistOpacity} onChange={(e) => setAntagonistOpacity(Number(e.target.value))}>
+                      <option value={0}>隐藏</option>
+                      <option value={0.32}>半透明</option>
+                      <option value={1}>不透明（看对颌的凹凸面）</option>
+                    </select>
                   </label>
                 )}
               </>
@@ -351,9 +397,11 @@ export function App() {
             cervicalLines={cervical}
             showCervical={showCervical}
             antagonistUrl={current.files.antagonist ? api.fileUrl(current.id, current.files.antagonist) : undefined}
-            showAntagonist={showAntagonist}
+            antagonistOpacity={antagonistOpacity}
             originalUrls={originalUrls}
-            showOriginal={showOriginal}
+            compare={compare}
+            showTags={showTags}
+            isolate={isolate}
           />
         ) : (
           <Viewer meshUrl={current ? api.fileUrl(current.id, current.files.mesh) : undefined} />
