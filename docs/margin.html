@@ -10,11 +10,6 @@
 .dir{font-size:12px;padding:1px 8px;border-radius:9px;background:var(--chip);white-space:nowrap}
 .dir.lo{color:var(--good)} .dir.hi{color:var(--accent)} .dir.mid{color:var(--warn)}
 td.w{white-space:normal;min-width:260px}
-.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.fig{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
-.fig svg{width:100%;height:auto}
-.fig b{font-family:var(--display)}
-.fig span{font-size:13px;color:var(--muted)}
 .explain-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 16px}
 .explain-box[open]{padding-bottom:16px}
 .explain-box>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:8px 0}
@@ -23,6 +18,12 @@ td.w{white-space:normal;min-width:260px}
 .explain-box>summary::after{content:"收起 ▲";margin-left:auto;font-size:13px;color:var(--muted)}
 .explain-box:not([open])>summary::after{content:"展开 ▼"}
 .explain-box .inner{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:16px}
+.fig{background:#0b1426;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.fig svg{width:100%;height:auto;display:block}
+.fig[style*="grid-column"] svg{max-width:860px;margin:0 auto}
+.fig b{font-family:var(--display);font-size:17px}
+.fig span{font-size:14px;color:var(--muted);line-height:1.55}
 </style>
 </head>
 <body>
@@ -42,64 +43,21 @@ td.w{white-space:normal;min-width:260px}
       <summary><h2>先看懂指标</h2></summary>
       <div class="inner">
     <div class="figs">
-        <div class="fig" style="grid-column:1/-1">
-          <b>为什么颈缘线要准</b>
-          <svg viewBox="0 0 720 170" role="img" aria-label="颈缘线短了、刚好、长了">
-            <g font-size="12">
-              <!-- 三个小图：预备体（米色）+ 牙冠（青色半透明）+ 牙龈（粉） -->
-              <g transform="translate(10,0)">
-                <rect x="0" y="120" width="220" height="40" fill="#e3a59a"/>
-                <path d="M60 125 L70 45 Q110 25 150 45 L160 125 Z" fill="#e8d9a8"/>
-                <path d="M50 108 L62 35 Q110 5 158 35 L170 108 Z" fill="#22c7d6" opacity=".55"/>
-                <circle cx="56" cy="114" r="9" fill="none" stroke="#ff7d6e" stroke-width="2"/>
-                <text x="20" y="18" fill="#ff7d6e">短了：边缘有缝</text><text x="20" y="152" fill="#3a1410">漏、继发龋坏</text>
-              </g>
-              <g transform="translate(250,0)">
-                <rect x="0" y="120" width="220" height="40" fill="#e3a59a"/>
-                <path d="M60 125 L70 45 Q110 25 150 45 L160 125 Z" fill="#e8d9a8"/>
-                <path d="M54 124 L62 35 Q110 5 158 35 L166 124 Z" fill="#22c7d6" opacity=".55"/>
-                <circle cx="58" cy="122" r="9" fill="none" stroke="#3ddc97" stroke-width="2"/>
-                <text x="20" y="18" fill="#3ddc97">刚好：边缘封闭</text><text x="20" y="152" fill="#3a1410">和牙龈过渡自然</text>
-              </g>
-              <g transform="translate(490,0)">
-                <rect x="0" y="120" width="220" height="40" fill="#e3a59a"/>
-                <path d="M60 125 L70 45 Q110 25 150 45 L160 125 Z" fill="#e8d9a8"/>
-                <path d="M44 138 L62 35 Q110 5 158 35 L176 138 Z" fill="#22c7d6" opacity=".55"/>
-                <circle cx="48" cy="134" r="9" fill="none" stroke="#ff7d6e" stroke-width="2"/>
-                <text x="20" y="18" fill="#ff7d6e">长了：压进牙龈</text><text x="20" y="152" fill="#3a1410">硌肉、牙龈发炎</text>
-              </g>
-            </g>
-          </svg>
-          <span>米色：磨好的牙（预备体，种植时是基台）；青色：牙冠；粉色：牙龈。颈缘线就是牙冠边缘要对齐的那一圈线，所以误差要控制在 0.1–0.2 mm。</span>
-        </div>
-      <div class="fig">
-        <svg viewBox="0 0 240 120" role="img" aria-label="颈缘线">
-          <path d="M60 20 Q120 5 180 20 L195 95 Q120 110 45 95 Z" fill="#e8d9a8"/>
-          <path d="M45 80 Q120 100 195 80" fill="none" stroke="#3ddc97" stroke-width="3"/>
-          <path d="M45 74 Q120 104 195 85" fill="none" stroke="#ff7d6e" stroke-width="2.5" stroke-dasharray="6 4"/>
-          <text x="70" y="45" fill="#3a2f12" font-size="11">磨好的牙（预备体）</text>
-          <text x="10" y="114" fill="#3ddc97" font-size="11">绿：技工画的线</text><text x="120" y="114" fill="#ff7d6e" font-size="11">红：模型预测</text>
-        </svg>
-        <b>颈缘线</b><span>牙冠边缘要贴合的那一圈线。预测线和技工画的线越重合越好。</span>
+      <div class="fig" style="grid-column:1/-1">
+        <svg viewBox="0 0 582 262" role="img" aria-label="颈缘线短了、刚好、长了" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><g transform="translate(0,0)"><rect x="4" y="4" width="182" height="252" rx="16" fill="#0b1426" stroke="#ff6b6b" stroke-opacity=".55" stroke-width="2"/><circle cx="30" cy="32" r="14" fill="#ff6b6b"/><text x="30" y="38" text-anchor="middle" font-size="17" font-weight="800" fill="#08131f">✗</text><text x="52" y="38" font-size="16" font-weight="700" fill="#ff6b6b" text-anchor="start">短了：有缝</text><defs><linearGradient id="gum45" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c1b9"/><stop offset="1" stop-color="#e38f86"/></linearGradient></defs><path d="M4,256 L4,200 Q19.2,190.0 34.3,200.0 Q49.5,190.0 64.7,200.0 Q79.8,190.0 95.0,200.0 Q110.2,190.0 125.3,200.0 Q140.5,190.0 155.7,200.0 Q170.8,190.0 186.0,200.0 L186,256 Z" fill="url(#gum45)"/><defs><linearGradient id="g46" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ead0"/><stop offset="1" stop-color="#d9c69a"/></linearGradient></defs><path d="M48,204 L61.160000000000004,106.8 Q95.0,87.36 128.84,106.8 L142,204 Z" fill="url(#g46)" stroke="#a8925f" stroke-width="2.5"/><defs><linearGradient id="g47" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ff3fa"/><stop offset="1" stop-color="#1fb9c9"/></linearGradient></defs><path d="M36,184 L47.8,108.4 Q65.5,63.6 80.84,85.36 Q95.0,102.0 109.16,85.36 Q124.5,63.6 142.2,108.4 L154,184 Z" fill="url(#g47)" fill-opacity=".72" stroke="#0b7f8c" stroke-width="2.5"/><circle cx="40" cy="186" r="11" fill="none" stroke="#ff6b6b" stroke-width="3"/><text x="26" y="244" font-size="15" font-weight="600" fill="#5a1d18" text-anchor="start">漏、会蛀</text></g><g transform="translate(196,0)"><rect x="4" y="4" width="182" height="252" rx="16" fill="#0b1426" stroke="#3ddc97" stroke-opacity=".55" stroke-width="2"/><circle cx="30" cy="32" r="14" fill="#3ddc97"/><text x="30" y="38" text-anchor="middle" font-size="17" font-weight="800" fill="#08131f">✓</text><text x="52" y="38" font-size="16" font-weight="700" fill="#3ddc97" text-anchor="start">刚好：封住</text><defs><linearGradient id="gum48" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c1b9"/><stop offset="1" stop-color="#e38f86"/></linearGradient></defs><path d="M4,256 L4,200 Q19.2,190.0 34.3,200.0 Q49.5,190.0 64.7,200.0 Q79.8,190.0 95.0,200.0 Q110.2,190.0 125.3,200.0 Q140.5,190.0 155.7,200.0 Q170.8,190.0 186.0,200.0 L186,256 Z" fill="url(#gum48)"/><defs><linearGradient id="g49" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ead0"/><stop offset="1" stop-color="#d9c69a"/></linearGradient></defs><path d="M48,204 L61.160000000000004,106.8 Q95.0,87.36 128.84,106.8 L142,204 Z" fill="url(#g49)" stroke="#a8925f" stroke-width="2.5"/><defs><linearGradient id="g50" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ff3fa"/><stop offset="1" stop-color="#1fb9c9"/></linearGradient></defs><path d="M36,198 L47.8,108.4 Q65.5,63.6 80.84,85.36 Q95.0,102.0 109.16,85.36 Q124.5,63.6 142.2,108.4 L154,198 Z" fill="url(#g50)" fill-opacity=".72" stroke="#0b7f8c" stroke-width="2.5"/><circle cx="40" cy="198" r="11" fill="none" stroke="#3ddc97" stroke-width="3"/><text x="26" y="244" font-size="15" font-weight="600" fill="#5a1d18" text-anchor="start">过渡自然</text></g><g transform="translate(392,0)"><rect x="4" y="4" width="182" height="252" rx="16" fill="#0b1426" stroke="#ff6b6b" stroke-opacity=".55" stroke-width="2"/><circle cx="30" cy="32" r="14" fill="#ff6b6b"/><text x="30" y="38" text-anchor="middle" font-size="17" font-weight="800" fill="#08131f">✗</text><text x="52" y="38" font-size="16" font-weight="700" fill="#ff6b6b" text-anchor="start">长了：压牙龈</text><defs><linearGradient id="gum51" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c1b9"/><stop offset="1" stop-color="#e38f86"/></linearGradient></defs><path d="M4,256 L4,200 Q19.2,190.0 34.3,200.0 Q49.5,190.0 64.7,200.0 Q79.8,190.0 95.0,200.0 Q110.2,190.0 125.3,200.0 Q140.5,190.0 155.7,200.0 Q170.8,190.0 186.0,200.0 L186,256 Z" fill="url(#gum51)"/><defs><linearGradient id="g52" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ead0"/><stop offset="1" stop-color="#d9c69a"/></linearGradient></defs><path d="M48,204 L61.160000000000004,106.8 Q95.0,87.36 128.84,106.8 L142,204 Z" fill="url(#g52)" stroke="#a8925f" stroke-width="2.5"/><defs><linearGradient id="g53" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ff3fa"/><stop offset="1" stop-color="#1fb9c9"/></linearGradient></defs><path d="M36,216 L47.8,108.4 Q65.5,63.6 80.84,85.36 Q95.0,102.0 109.16,85.36 Q124.5,63.6 142.2,108.4 L154,216 Z" fill="url(#g53)" fill-opacity=".72" stroke="#0b7f8c" stroke-width="2.5"/><circle cx="40" cy="214" r="11" fill="none" stroke="#ff6b6b" stroke-width="3"/><text x="26" y="244" font-size="15" font-weight="600" fill="#5a1d18" text-anchor="start">硌肉、发炎</text></g></svg>
+        <b>为什么颈缘线要准</b><span>米色：磨好的牙（预备体，种植时是基台）；青：牙冠；粉：牙龈。牙冠边缘要正好对在颈缘线上，误差控制在 0.1–0.2 mm。</span>
       </div>
       <div class="fig">
-        <svg viewBox="0 0 240 120" role="img" aria-label="平均误差">
-          <path d="M20 70 Q120 40 220 70" fill="none" stroke="#3ddc97" stroke-width="3"/>
-          <path d="M20 62 Q120 52 220 78" fill="none" stroke="#ff7d6e" stroke-width="2.5" stroke-dasharray="6 4"/>
-          <g stroke="#8b9bb8"><line x1="50" y1="62" x2="50" y2="58"/><line x1="90" y1="53" x2="90" y2="48"/><line x1="130" y1="54" x2="130" y2="47"/><line x1="170" y1="60" x2="170" y2="54"/></g>
-          <line x1="210" y1="76" x2="210" y2="67" stroke="#f5b74f" stroke-width="2"/>
-          <text x="20" y="104" fill="#8b9bb8" font-size="11">灰线平均 = 平均误差；</text><text x="20" y="117" fill="#f5b74f" font-size="11">黄（最长）= Hausdorff 最大误差</text>
-        </svg>
-        <b>平均误差 / 最大误差</b><span>预测线上每个点到真线的距离：取平均是平均误差，取最大是 Hausdorff。</span>
+        <svg viewBox="0 0 440 260" role="img" aria-label="颈缘线" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><defs><linearGradient id="gum54" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c1b9"/><stop offset="1" stop-color="#e38f86"/></linearGradient></defs><path d="M10,256 L10,186 Q45.0,176.0 80.0,186.0 Q115.0,176.0 150.0,186.0 Q185.0,176.0 220.0,186.0 Q255.0,176.0 290.0,186.0 Q325.0,176.0 360.0,186.0 Q395.0,176.0 430.0,186.0 L430,256 Z" fill="url(#gum54)"/><defs><linearGradient id="g55" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ead0"/><stop offset="1" stop-color="#d9c69a"/></linearGradient></defs><path d="M150,196 L169.6,79.0 Q220.0,55.6 270.4,79.0 L290,196 Z" fill="url(#g55)" stroke="#a8925f" stroke-width="2.5"/><path d="M150 194 Q220 214 290 194" fill="none" stroke="#3ddc97" stroke-width="5"/><path d="M150 186 Q220 222 290 200" fill="none" stroke="#ff6b6b" stroke-width="3.5" stroke-dasharray="8 5"/><rect x="20.0" y="20.0" width="113.8" height="27" rx="13.5" fill="#3ddc97"/><text x="76.9" y="39.0" text-anchor="middle" font-size="15" font-weight="700" fill="#08131f">绿：技工画的线</text><rect x="250.0" y="20.0" width="99.5" height="27" rx="13.5" fill="#ff6b6b"/><text x="299.8" y="39.0" text-anchor="middle" font-size="15" font-weight="700" fill="#08131f">红：模型预测</text></svg>
+        <b>颈缘线</b><span>磨好的牙底部、贴着牙龈的那一圈线。预测线（红）和技工画的线（绿）越重合越好。</span>
       </div>
       <div class="fig">
-        <svg viewBox="0 0 240 120" role="img" aria-label="0.2 毫米带">
-          <path d="M20 60 Q120 30 220 60" fill="none" stroke="#3ddc97" stroke-width="22" opacity=".25"/>
-          <path d="M20 60 Q120 30 220 60" fill="none" stroke="#3ddc97" stroke-width="2"/>
-          <path d="M20 57 Q70 40 120 50 Q160 58 220 72" fill="none" stroke="#ff7d6e" stroke-width="2.5" stroke-dasharray="6 4"/>
-          <text x="20" y="104" fill="#3ddc97" font-size="11">浅绿带 = 真线两边 0.2 mm</text>
-        </svg>
-        <b>0.2 mm 以内的点</b><span>红线落在浅绿带里的比例。0.2 mm 约等于两个技工之间画线的差别，进了带就算合格。</span>
+        <svg viewBox="0 0 440 250" role="img" aria-label="平均和最大误差" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><path d="M30 160 Q220 60 410 160" fill="none" stroke="#3ddc97" stroke-width="5"/><path d="M30 136 Q220 100 410 190" fill="none" stroke="#ff6b6b" stroke-width="3.5" stroke-dasharray="8 5"/><line x1="76" y1="139" x2="76" y2="129" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><line x1="144" y1="118" x2="144" y2="126" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><line x1="220" y1="110" x2="220" y2="132" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><line x1="296" y1="118" x2="296" y2="147" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><line x1="357" y1="136" x2="357" y2="167" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><line x1="399" y1="154" x2="399" y2="185" stroke="#f5b74f" stroke-width="6" stroke-linecap="round"/><text x="20" y="230" font-size="16" font-weight="600" fill="#e8eef8" text-anchor="start">白线平均 = 平均误差</text><text x="250" y="230" font-size="16" font-weight="600" fill="#f5b74f" text-anchor="start">黄线（最长）= 最大误差</text></svg>
+        <b>平均误差 / 最大误差</b><span>预测线上每个点到真线的距离：取平均是平均误差，取最大的是 Hausdorff。</span>
+      </div>
+      <div class="fig">
+        <svg viewBox="0 0 440 240" role="img" aria-label="0.2 毫米带" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><path d="M30 150 Q220 60 410 150" fill="none" stroke="#3ddc97" stroke-opacity=".28" stroke-width="40" stroke-linecap="round"/><path d="M30 150 Q220 60 410 150" fill="none" stroke="#3ddc97" stroke-width="4"/><path d="M30 144 Q130 92 220 108 Q300 120 410 176" fill="none" stroke="#ff6b6b" stroke-width="3.5" stroke-dasharray="8 5"/><circle cx="395" cy="168" r="12" fill="none" stroke="#ff6b6b" stroke-width="3"/><rect x="20.0" y="196.0" width="270.5" height="27" rx="13.5" fill="#3ddc97"/><text x="155.2" y="215.0" text-anchor="middle" font-size="15" font-weight="700" fill="#08131f">浅绿带 = 真线两边各 0.2 mm</text></svg>
+        <b>0.2 mm 以内的点</b><span>红线有多少落在浅绿带里。0.2 mm 约等于两个技工画线的差别，进了带就算合格。</span>
       </div>
     </div>
     <div class="scroll"><table>

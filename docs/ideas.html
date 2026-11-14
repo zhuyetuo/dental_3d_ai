@@ -30,13 +30,13 @@ td.w{white-space:normal;min-width:240px}
       <tr><th>想法</th><th>状态</th><th>为什么 / 现在到哪</th><th>代价</th></tr>
       <tr><td>扩散模型接着训（v2）</td><td><span class="state mid">暂停</span></td><td class="w">v1 只训了 30 轮，损失还在降。v2 从 v1 接着训，11-15 训到第 10 轮时暂停，GPU 让给“看着形状模型补细节的扩散”。
       检查点在服务器 runs/radial_diffusion_v2/model_paused.pt，用 --init 接着训</td><td class="cost">剩 30 轮约 2.5 小时；可能要 100 小时以上才饱和</td></tr>
-      <tr><td>专门训一个“看着形状模型补细节”的扩散模型</td><td><span class="state mid">进行中</span></td><td class="w">把 形状模型 的输出当条件、真牙当目标专门训（radial_diffusion train --with-d）。11-15：3.4 万颗训练牙的 形状模型的图已生成（radial_dmaps.py，约 20 分钟），
-      从 v2 第 10 轮的权重起步训 25 轮；训练时给 形状模型 的图加扰动，防止学成“照抄形状模型”</td><td class="cost">25 轮约 2 小时；效果好的话值得训到 100 轮以上</td></tr>
+      <tr><td>专门训一个“看着形状模型补细节”的扩散模型</td><td><span class="state mid">进行中</span></td><td class="w">把形状模型的输出当条件、真牙当目标专门训（radial_diffusion train --with-d）。11-15：3.4 万颗训练牙的形状模型的图已生成（radial_dmaps.py，约 20 分钟），
+      从 v2 第 10 轮的权重起步训 25 轮；训练时给形状模型的图加扰动，防止学成“照抄形状模型”</td><td class="cost">25 轮约 2 小时；效果好的话值得训到 100 轮以上</td></tr>
       <tr><td>数据准备搬到 GPU 上</td><td><span class="state mid">部分完成</span></td><td class="w">11-15：径向深度图、形状模型的输出图有了 GPU 版（radial_gpu.py）：
       投影成图快 5–15 倍；原始口扫解析一次存成网格缓存，之后不再解析；分 8 个 GPU 进程并行，bite_val 102 个颌 92 秒 → 约 15–30 秒。
       TeethSplineSeg 的预处理：原来单进程逐个做最远点采样（每个扫描 9 秒），改成 16 个进程同时用 GPU。还可以做：批量矩阵版最远点采样（几十个扫描一起，每个约 0.8 秒）</td><td class="cost">剩下的半天</td></tr>
       <tr><td>一次生成多颗，按邻牙 / 对颌贴合挑一颗</td><td><span class="state">待做</span></td><td class="w">扩散每次结果不同；评分卡本身就能当挑选标准。改动小</td><td class="cost">推理时间 × 采样数</td></tr>
-      <tr><td>图边缘（邻面）的小缺口</td><td><span class="state">待做</span></td><td class="w">形状模型+扩散 个别牙在邻面出现缺口（报告图里的 34）。可以在边缘区域多保留 形状模型 的形状</td><td class="cost">小</td></tr>
+      <tr><td>图边缘（邻面）的小缺口</td><td><span class="state">待做</span></td><td class="w">形状模型+扩散 个别牙在邻面出现缺口（报告图里的 34）。可以在边缘区域多保留形状模型的形状</td><td class="cost">小</td></tr>
       <tr><td>生成模型升级：Flow Matching + DiT，形状潜空间</td><td><span class="state">待做</span></td><td class="w">现在的扩散是 DDPM + U-Net + 2D 径向图（约 2021–22 年的配置）。换成 Flow Matching（采样步数少）+ Transformer 去噪网络，表示换成 3D 形状潜空间（窝沟分辨率更高）；或者在 TRELLIS / Hunyuan3D 这类大模型权重上微调。见业界进展页</td><td class="cost">重写模型 + 重训，几天；大模型微调需要更多显存</td></tr>
       <tr><td>窝沟更深、更细</td><td><span class="state">待做</span></td><td class="w">所有模型的窝沟都比真牙浅。径向图中心分辨率低：换成以咬合面为中心的高度图，或多视角深度图</td><td class="cost">换表示要重做缓存 + 重训</td></tr>
       <tr><td>评分卡做成可微的损失</td><td><span class="state">部分</span></td><td class="w">“外形 + 间隙损失”试验 直接加进损失失败了（撑大牙冠）。改成扩散采样时的引导（guidance），不改训练</td><td class="cost">中</td></tr>

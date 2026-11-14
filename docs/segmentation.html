@@ -10,11 +10,6 @@
 .dir{font-size:12px;padding:1px 8px;border-radius:9px;background:var(--chip);white-space:nowrap}
 .dir.lo{color:var(--good)} .dir.hi{color:var(--accent)} .dir.mid{color:var(--warn)}
 td.w{white-space:normal;min-width:260px}
-.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.fig{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
-.fig svg{width:100%;height:auto}
-.fig b{font-family:var(--display)}
-.fig span{font-size:13px;color:var(--muted)}
 .explain-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 16px}
 .explain-box[open]{padding-bottom:16px}
 .explain-box>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:8px 0}
@@ -23,6 +18,12 @@ td.w{white-space:normal;min-width:260px}
 .explain-box>summary::after{content:"收起 ▲";margin-left:auto;font-size:13px;color:var(--muted)}
 .explain-box:not([open])>summary::after{content:"展开 ▼"}
 .explain-box .inner{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:16px}
+.fig{background:#0b1426;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.fig svg{width:100%;height:auto;display:block}
+.fig[style*="grid-column"] svg{max-width:860px;margin:0 auto}
+.fig b{font-family:var(--display);font-size:17px}
+.fig span{font-size:14px;color:var(--muted);line-height:1.55}
 </style>
 </head>
 <body>
@@ -43,45 +44,20 @@ td.w{white-space:normal;min-width:260px}
       <div class="inner">
     <div class="figs">
       <div class="fig">
-        <svg viewBox="0 0 240 110" role="img" aria-label="IoU">
-          <ellipse cx="100" cy="55" rx="55" ry="38" fill="#e8d9a8" opacity=".75"/>
-          <ellipse cx="140" cy="55" rx="55" ry="38" fill="#22c7d6" opacity=".6"/>
-          <text x="52" y="58" fill="#3a2f12" font-size="11">答案</text><text x="166" y="58" fill="#04222a" font-size="11">预测</text>
-          <text x="104" y="58" fill="#fff" font-size="11">重叠</text>
-        </svg>
-        <b>T-mIoU</b><span>每颗牙：重叠部分 ÷ 两块合起来的面积。完全重合 = 100%，所有牙取平均。</span>
+        <svg viewBox="0 0 440 270" role="img" aria-label="IoU" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><defs><linearGradient id="g25" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient><linearGradient id="g26" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ff3fa"/><stop offset="1" stop-color="#1fb9c9"/></linearGradient></defs><ellipse cx="170" cy="130" rx="110" ry="80" fill="url(#g25)" stroke="#b39d6b" stroke-width="3"/><ellipse cx="260" cy="130" rx="110" ry="80" fill="url(#g26)" fill-opacity=".7" stroke="#0b7f8c" stroke-width="3"/><text x="90" y="136" font-size="18" font-weight="700" fill="#4a3b14" text-anchor="start">答案</text><text x="300" y="136" font-size="18" font-weight="700" fill="#06343a" text-anchor="start">预测</text><text x="215" y="136" font-size="18" font-weight="800" fill="#ffffff" text-anchor="middle">重叠</text><text x="20" y="250" font-size="16" font-weight="600" fill="#e8eef8" text-anchor="start">重叠 ÷ 两块合起来 = 这颗牙的 IoU，所有牙取平均</text></svg>
+        <b>T-mIoU</b><span>分出来的每颗牙和标准答案重叠了多少。完全重合 = 100%。分割论文都用它比。</span>
       </div>
       <div class="fig">
-        <svg viewBox="0 0 240 110" role="img" aria-label="牙号">
-          <g font-size="12" text-anchor="middle">
-            <rect x="12" y="30" width="40" height="45" rx="12" fill="#e8d9a8"/><text x="32" y="58" fill="#3a2f12">34</text>
-            <rect x="57" y="30" width="40" height="45" rx="12" fill="#e8d9a8"/><text x="77" y="58" fill="#3a2f12">35</text>
-            <rect x="102" y="30" width="56" height="45" rx="14" fill="#ff7d6e"/><text x="130" y="58" fill="#3a0a06">35?</text>
-            <rect x="163" y="30" width="60" height="45" rx="14" fill="#e8d9a8"/><text x="193" y="58" fill="#3a2f12">37</text>
-          </g>
-          <text x="20" y="100" fill="#ff7d6e" font-size="11">红：牙号标错（应为 36）</text>
-        </svg>
-        <b>牙号全对</b><span>每颗牙的牙号都对，这个口扫才算“全对”。错一颗也不算。</span>
+        <svg viewBox="0 0 450 270" role="img" aria-label="牙号" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><defs><linearGradient id="g27" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="50.0" cy="205.0" rx="22" ry="20" fill="url(#g27)" stroke="#b39d6b" stroke-width="2.5"/><text x="50.0" y="211.0" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">36</text><defs><linearGradient id="g28" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="57.088729617462974" cy="159.92279090537124" rx="22" ry="20" fill="url(#g28)" stroke="#b39d6b" stroke-width="2.5"/><text x="57.088729617462974" y="165.92279090537124" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">35</text><defs><linearGradient id="g29" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="77.7806317545433" cy="118.49746920710439" rx="22" ry="20" fill="url(#g29)" stroke="#b39d6b" stroke-width="2.5"/><text x="77.7806317545433" y="124.49746920710439" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">34</text><defs><linearGradient id="g30" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="110.3993715595751" cy="84.08006810331868" rx="22" ry="20" fill="url(#g30)" stroke="#b39d6b" stroke-width="2.5"/><text x="110.3993715595751" y="90.08006810331868" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">33</text><defs><linearGradient id="g31" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="152.30237272466988" cy="59.458880743277064" rx="22" ry="20" fill="url(#g31)" stroke="#b39d6b" stroke-width="2.5"/><text x="152.30237272466988" y="65.45888074327706" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">32</text><defs><linearGradient id="g32" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="200.09490330217506" cy="46.62856929905078" rx="22" ry="20" fill="url(#g32)" stroke="#b39d6b" stroke-width="2.5"/><text x="200.09490330217506" y="52.62856929905078" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">31</text><defs><linearGradient id="g33" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="249.9050966978249" cy="46.62856929905075" rx="22" ry="20" fill="url(#g33)" stroke="#b39d6b" stroke-width="2.5"/><text x="249.9050966978249" y="52.62856929905075" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">41</text><defs><linearGradient id="g34" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="297.6976272753301" cy="59.458880743277064" rx="22" ry="20" fill="url(#g34)" stroke="#b39d6b" stroke-width="2.5"/><text x="297.6976272753301" y="65.45888074327706" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">42</text><defs><linearGradient id="g35" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="339.6006284404249" cy="84.08006810331868" rx="22" ry="20" fill="url(#g35)" stroke="#b39d6b" stroke-width="2.5"/><text x="339.6006284404249" y="90.08006810331868" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">43</text><defs><linearGradient id="g36" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="372.21936824545674" cy="118.49746920710442" rx="22" ry="20" fill="url(#g36)" stroke="#b39d6b" stroke-width="2.5"/><text x="372.21936824545674" y="124.49746920710442" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">44</text><defs><linearGradient id="g37" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><ellipse cx="392.91127038253705" cy="159.9227909053712" rx="22" ry="20" fill="url(#g37)" stroke="#b39d6b" stroke-width="2.5"/><text x="392.91127038253705" y="165.9227909053712" font-size="14" font-weight="700" fill="#3a2f12" text-anchor="middle">45</text><defs><linearGradient id="g38" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd1cc"/><stop offset="1" stop-color="#ff6b6b"/></linearGradient></defs><ellipse cx="400.0" cy="204.99999999999997" rx="22" ry="20" fill="url(#g38)" stroke="#ff6b6b" stroke-width="2.5"/><text x="400.0" y="210.99999999999997" font-size="14" font-weight="700" fill="#5a0d08" text-anchor="middle">47</text><rect x="250.0" y="232.0" width="142.2" height="27" rx="13.5" fill="#ff6b6b"/><text x="321.1" y="251.0" text-anchor="middle" font-size="15" font-weight="700" fill="#08131f">错了：应该是 46</text><text x="225" y="150" font-size="15" font-weight="600" fill="#9aa8c4" text-anchor="middle">下颌（俯视）</text></svg>
+        <b>牙号全对</b><span>一个口扫里每颗牙的牙号都对，才算“全对”。错一颗也不算。</span>
       </div>
       <div class="fig">
-        <svg viewBox="0 0 240 110" role="img" aria-label="幻影牙">
-          <rect x="12" y="30" width="55" height="45" rx="14" fill="#e8d9a8"/>
-          <rect x="85" y="55" width="70" height="20" rx="6" fill="#ff7d6e" opacity=".85"/>
-          <rect x="173" y="30" width="55" height="45" rx="14" fill="#e8d9a8"/>
-          <line x1="70" y1="78" x2="170" y2="78" stroke="#d99a8f" stroke-width="3"/>
-          <text x="88" y="48" fill="#ff7d6e" font-size="11">幻影牙</text><text x="80" y="100" fill="#8b9bb8" font-size="11">缺牙处（只剩牙龈）</text>
-        </svg>
-        <b>幻影牙</b><span>缺牙处只有牙龈，却被标成了一颗牙。有它就发现不了缺牙。</span>
+        <svg viewBox="0 0 440 260" role="img" aria-label="幻影牙" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><defs><linearGradient id="gum39" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c1b9"/><stop offset="1" stop-color="#e38f86"/></linearGradient></defs><path d="M10,250 L10,190 Q45.0,180.0 80.0,190.0 Q115.0,180.0 150.0,190.0 Q185.0,180.0 220.0,190.0 Q255.0,180.0 290.0,190.0 Q325.0,180.0 360.0,190.0 Q395.0,180.0 430.0,190.0 L430,250 Z" fill="url(#gum39)"/><defs><linearGradient id="g40" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><g><path d="M41.0,200.0 C25.6,158.2 27.8,114.2 47.6,101.0 Q59.7,85.6 70.7,101.0 Q85.0,116.4 99.3,101.0 Q110.3,85.6 122.4,101.0 C142.2,114.2 144.4,158.2 129.0,200.0 Q85.0,207.7 41.0,200.0 Z" fill="url(#g40)" stroke="#b39d6b" stroke-width="2.5" /><path d="M52.0,128.5 Q54.2,112.0 65.2,109.8" fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/></g><defs><linearGradient id="g41" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><g><path d="M311.0,200.0 C295.6,158.2 297.8,114.2 317.6,101.0 Q329.7,85.6 340.7,101.0 Q355.0,116.4 369.3,101.0 Q380.3,85.6 392.4,101.0 C412.2,114.2 414.4,158.2 399.0,200.0 Q355.0,207.7 311.0,200.0 Z" fill="url(#g41)" stroke="#b39d6b" stroke-width="2.5" /><path d="M322.0,128.5 Q324.2,112.0 335.2,109.8" fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/></g><path d="M170 196 L170 120 Q170 80 220 80 Q270 80 270 120 L270 196 L255 184 L240 196 L225 184 L210 196 L195 184 Z" fill="#ffffff" fill-opacity=".18" stroke="#ff6b6b" stroke-width="3" stroke-dasharray="7 5"/><circle cx="203" cy="122" r="7" fill="#ff6b6b"/><circle cx="237" cy="122" r="7" fill="#ff6b6b"/><rect x="150.0" y="26.0" width="170.8" height="27" rx="13.5" fill="#ff6b6b"/><text x="235.4" y="45.0" text-anchor="middle" font-size="15" font-weight="700" fill="#08131f">幻影牙：这里其实没有牙</text></svg>
+        <b>幻影牙</b><span>缺牙的地方只剩牙龈，却被标成了一颗牙。有它就发现不了缺牙。越少越好。</span>
       </div>
       <div class="fig">
-        <svg viewBox="0 0 240 110" role="img" aria-label="缺牙检出">
-          <rect x="12" y="30" width="55" height="45" rx="14" fill="#e8d9a8"/>
-          <rect x="173" y="30" width="55" height="45" rx="14" fill="#e8d9a8"/>
-          <line x1="70" y1="78" x2="170" y2="78" stroke="#d99a8f" stroke-width="3"/>
-          <rect x="88" y="34" width="64" height="24" rx="12" fill="none" stroke="#3ddc97" stroke-width="2" stroke-dasharray="4 3"/>
-          <text x="100" y="51" fill="#3ddc97" font-size="11">缺 36</text>
-        </svg>
-        <b>缺牙检出</b><span>缺了的牙被报出来、牙号也对，才算检出；“放宽”= 报成相邻牙号也算。</span>
+        <svg viewBox="0 0 440 260" role="img" aria-label="缺牙检出" font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif"><defs><linearGradient id="gum42" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c1b9"/><stop offset="1" stop-color="#e38f86"/></linearGradient></defs><path d="M10,250 L10,190 Q45.0,180.0 80.0,190.0 Q115.0,180.0 150.0,190.0 Q185.0,180.0 220.0,190.0 Q255.0,180.0 290.0,190.0 Q325.0,180.0 360.0,190.0 Q395.0,180.0 430.0,190.0 L430,250 Z" fill="url(#gum42)"/><defs><linearGradient id="g43" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><g><path d="M41.0,200.0 C25.6,158.2 27.8,114.2 47.6,101.0 Q59.7,85.6 70.7,101.0 Q85.0,116.4 99.3,101.0 Q110.3,85.6 122.4,101.0 C142.2,114.2 144.4,158.2 129.0,200.0 Q85.0,207.7 41.0,200.0 Z" fill="url(#g43)" stroke="#b39d6b" stroke-width="2.5" /><path d="M52.0,128.5 Q54.2,112.0 65.2,109.8" fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/></g><defs><linearGradient id="g44" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e7d8b0"/></linearGradient></defs><g><path d="M311.0,200.0 C295.6,158.2 297.8,114.2 317.6,101.0 Q329.7,85.6 340.7,101.0 Q355.0,116.4 369.3,101.0 Q380.3,85.6 392.4,101.0 C412.2,114.2 414.4,158.2 399.0,200.0 Q355.0,207.7 311.0,200.0 Z" fill="url(#g44)" stroke="#b39d6b" stroke-width="2.5" /><path d="M322.0,128.5 Q324.2,112.0 335.2,109.8" fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/></g><ellipse cx="220" cy="150" rx="62" ry="58" fill="none" stroke="#3ddc97" stroke-width="4" stroke-dasharray="9 6"/><rect x="160.0" y="26.0" width="156.5" height="27" rx="13.5" fill="#3ddc97"/><text x="238.2" y="45.0" text-anchor="middle" font-size="15" font-weight="700" fill="#08131f">找到了：缺 36 ✓</text><text x="220" y="160" font-size="40" font-weight="800" fill="#3ddc97" text-anchor="middle">?</text></svg>
+        <b>缺牙检出</b><span>缺了的牙被报出来、牙号也对才算；“放宽”= 报成相邻牙号也算。越多越好。</span>
       </div>
     </div>
     <div class="scroll"><table>

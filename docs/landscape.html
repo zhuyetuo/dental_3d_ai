@@ -79,7 +79,7 @@ td.w{white-space:normal;min-width:260px}
     <div class="flow">
       <div class="step"><b>几何 / 模板</b>对侧镜像、标准牙库 + 手动调整（传统 CAD）</div>
       <div class="step"><b>点云补全</b>DMC、ToothCR：上下文 → 补出缺的牙</div>
-      <div class="step"><b>模板变形</b>MADCrowner、我们的 形状模型：模板牙按上下文变形，形状稳</div>
+      <div class="step"><b>模板变形</b>MADCrowner、我们的形状模型：模板牙按上下文变形，形状稳</div>
       <div class="step new"><b>扩散生成</b>CrownGen、ToothCraft、CrownFusion：细节更像真牙，但形状会偏</div>
       <div class="step new"><b>组合</b>我们 11-14：模板变形出形状 + 扩散补细节</div>
     </div>
@@ -108,7 +108,7 @@ td.w{white-space:normal;min-width:260px}
       <tr><th>年份</th><th>生成方法</th><th>核心思想</th><th>在牙科里的代表</th></tr>
       <tr><td>2018 以前</td><td>模板 / 统计形状模型</td><td class="w">牙库里挑标准牙，缩放、变形贴进缺隙（传统 CAD 的做法）</td><td class="w">3Shape、exocad 的牙库；我们的“几何方法”</td></tr>
       <tr><td>2014–2020</td><td>GAN</td><td class="w">生成器和判别器对抗；生成快，但训练不稳、容易模式坍塌</td><td class="w">早期 AI 牙冠（2D 深度图 GAN），2026 仍有 GAN 牙冠论文</td></tr>
-      <tr><td>2018–2021</td><td>点云补全：PCN、FoldingNet → <b>PoinTr（Transformer，2021）</b></td><td class="w">把“缺一颗牙”当成点云补全；Transformer 编码上下文</td><td class="w">DMC（2023，PoinTr）、DCrownFormer（2024）、<b>我们的 形状模型 是这一类的模板变形版本</b></td></tr>
+      <tr><td>2018–2021</td><td>点云补全：PCN、FoldingNet → <b>PoinTr（Transformer，2021）</b></td><td class="w">把“缺一颗牙”当成点云补全；Transformer 编码上下文</td><td class="w">DMC（2023，PoinTr）、DCrownFormer（2024）、<b>我们的形状模型是这一类的模板变形版本</b></td></tr>
       <tr><td>2020–2022</td><td><b>扩散模型</b>：DDPM、DDIM；3D 上 PVD、LION</td><td class="w">从噪声一步步去噪；多样性和细节最好，代价是采样慢</td><td class="w">CrownGen（2025，点云扩散）、ToothCraft（2026，SDF 扩散）、<b>我们的径向深度图扩散（U-Net）</b></td></tr>
       <tr><td>2023</td><td>DiT（Transformer 当扩散的去噪网络）、3DShape2VecSet（形状潜空间）</td><td class="w">去噪网络从 U-Net 换成 Transformer；先把形状压成一组潜向量再在潜空间扩散</td><td class="w">牙科里还很少</td></tr>
       <tr><td>2023–2024</td><td><b>Flow Matching / Rectified Flow</b></td><td class="w">扩散的“直线版”：学从噪声到数据的速度场，采样步数少、训练更稳；SD3（2024）开始成为主流</td><td class="w">牙科里还没见到</td></tr>
