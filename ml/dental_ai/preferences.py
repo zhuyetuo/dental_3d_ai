@@ -16,7 +16,7 @@ Category = Literal["crown", "bridge", "inlay_onlay", "coping", "nightguard", "cu
 @dataclass
 class DesignPreferences:
     contacts_distance: float = -0.03  # 与近远中邻牙的距离
-    occlusion_distance: float = 0.30  # 与对颌牙的最小距离
+    occlusion_distance: float | None = 0.30  # 与对颌牙的最小距离；None = 不做咬合调整（对颌只给生成模型看）
     cement_gap: float = 0.03  # 预备体冠内表面与预备体之间的粘接间隙（场景 B）
     crown_thickness: float = 0.50  # 最小冠厚度（场景 B）
     gum_relief: float = 0.05  # 缺失牙底面到牙龈的距离；<0 为压入牙龈的卵圆形桥体

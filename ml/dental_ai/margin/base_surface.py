@@ -165,4 +165,5 @@ def close_with_gum_base(
     result = trimesh.Trimesh(np.vstack(vertices), np.vstack(faces), process=False)
     # 新加的三角形绕序按构造方式不一定与牙冠一致：统一绕序，并让法向朝外
     trimesh.repair.fix_normals(result)
+    result.metadata["crown_vertices"] = len(crown.vertices)  # 前这么多个顶点是（切过底边的）牙冠，后面是虚拟颈缘线和底面
     return result

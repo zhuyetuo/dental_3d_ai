@@ -120,10 +120,18 @@ def adjust_occlusion(
     # 1. 抬高
     if lift and d_min > target + tolerance:
         if d_min - target <= max_lift:
-            lift = d_min - target + overlap
             weight = np.clip((to_edge[idx] - 1.0) / 3.0, 0.0, 1.0)  # 牙颈一圈不动，3 mm 以上整体上移
-            crown.vertices[idx] = crown.vertices[idx] + np.outer(weight * lift, up)
-            info["occlusal_lift_mm"] = round(lift, 3)
+            lifted = 0.0
+            # 离对颌最近的地方不一定在权重为 1 的区域（前磨牙牙冠短，牙尖离底边不到 4 mm），抬一次不够就再抬
+            for _ in range(4):
+                step = min(d_min - target + overlap, max_lift + overlap - lifted)
+                crown.vertices[idx] = crown.vertices[idx] + np.outer(weight * step, up)
+                lifted += step
+                d = distance()
+                d_min = float(d[np.isfinite(d)].min()) if np.isfinite(d).any() else np.inf
+                if d_min <= target + tolerance or lifted >= max_lift + overlap - 1e-6:
+                    break
+            info["occlusal_lift_mm"] = round(lifted, 3)
         else:
             warnings.append(f"离对颌 {d_min:.1f} mm，超过可抬高的范围（{max_lift:.1f} mm），没有建立咬合接触")
 

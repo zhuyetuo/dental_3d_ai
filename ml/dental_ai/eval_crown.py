@@ -10,6 +10,7 @@
 - natural：原来的真牙，量出来的分布就是及格线；
 - generated：把这颗牙去掉（synthetic.simulate_missing），走完整流程生成，给对颌，咬合距离用默认设计参数（0.30 mm）；
 - generated_contact：同上，咬合距离设成 0（要求刚好接触）；
+- generated_raw：给对颌，但流程里不做咬合调整——生成模型自己看着对颌生成的结果（模型没有对颌分支时等于不给对颌）；
 - generated_no_antagonist：同上，但不给对颌（现在后端没有对颌时的情况）。
 
 汇总里每个指标给出中位数和 5%–95% 分位；生成的牙冠另外给出“落在天然牙 5%–95% 范围内”的比例。
@@ -35,7 +36,7 @@ METRICS = [
     "relief", "detail", "height_vs_neighbors", "arch_offset",
     "ref_chamfer_l1", "ref_surf_p95", "ref_fscore_0.3", "ref_position", "ref_top",
 ]
-KINDS = ("natural", "generated", "generated_contact", "generated_no_antagonist")
+KINDS = ("natural", "generated", "generated_contact", "generated_raw", "generated_no_antagonist")
 _STATE: dict = {}
 
 
@@ -96,8 +97,8 @@ def _one(args) -> list[dict]:
                 ant = _crop(meshes[other], np.asarray(real.vertices), 12.0)
                 rows.append({**base, "kind": "natural", **score_crown(real, up, mesial, distal, ant)})
                 mesh2, lab2 = simulate_missing(mesh, lab, jaw, (fdi,))
-                contact = DesignPreferences(occlusion_distance=0.0)
-                for kind, antagonist, prefs in (("generated", ant, None), ("generated_contact", ant, contact), ("generated_no_antagonist", None, None)):
+                contact, raw = DesignPreferences(occlusion_distance=0.0), DesignPreferences(occlusion_distance=None)
+                for kind, antagonist, prefs in (("generated", ant, None), ("generated_contact", ant, contact), ("generated_raw", ant, raw), ("generated_no_antagonist", None, None)):
                     with tempfile.TemporaryDirectory() as tmp:
                         gen = LearnedGenerator(gen_model, fallback=MirrorTemplateGenerator())
                         report = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=antagonist, preferences=prefs)
@@ -106,7 +107,11 @@ def _one(args) -> list[dict]:
                             rows.append({**base, "kind": kind, "error": "未生成：" + "; ".join(w for w in report["warnings"] if str(fdi) in w)[:160]})
                             continue
                         solid = trimesh.load(Path(tmp) / done[fdi]["file"])
-                    rows.append({**base, "kind": kind, "source": done[fdi].get("source"), **score_crown(solid, up, mesial, distal, ant, reference=real)})
+                    pipe = done[fdi].get("contacts_mm") or {}
+                    extra = {"source": done[fdi].get("source"), "pipe_mesial": pipe.get(str(fdi - 1)), "pipe_distal": pipe.get(str(fdi + 1)),
+                             "pipe_lift_mm": done[fdi].get("occlusal_lift_mm"), "pipe_reduction_mm": done[fdi].get("occlusal_reduction_mm"),
+                             "antagonist_input": done[fdi].get("antagonist_input")}
+                    rows.append({**base, "kind": kind, **extra, **score_crown(solid, up, mesial, distal, ant, reference=real)})
             except Exception as exc:  # 评估要跑完整批，单颗失败记下来
                 rows.append({**base, "kind": "error", "error": f"{type(exc).__name__}: {exc}"[:200]})
     return rows

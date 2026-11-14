@@ -32,12 +32,54 @@ def test_make_sample_centers_between_neighbors_and_mirrors_left_side():
     rim = pts[:, : gen.RIM_POINTS]
     right = gen.make_sample(fdi, pts, rim, 2, np.random.default_rng(1), drop=False, augment=False)  # 46
     left = gen.make_sample(fdi, pts, rim, 6, np.random.default_rng(1), drop=False, augment=False)  # 36
-    for ctx, ctx_idx, cls, gt, r in (right, left):
+    for ctx, ctx_idx, cls, gt, r, ant, has_ant in (right, left):
+        assert has_ant == 0 and ant.shape == (gen.N_ANT, 6)  # 没给对颌
         assert ctx.shape == (gen.N_CTX, 3) and gt.shape == (gen.TOOTH_POINTS, 3) and r.shape == (gen.RIM_POINTS, 3)
         assert cls == gen.target_class(46)  # 左右同名牙是同一类
         assert np.linalg.norm(gt.mean(axis=0)) < 1.5  # 原点在两侧邻牙（45、47）质心的中点附近
     # 36 镜像后与 46 落在同一侧：真牙相对原点的偏移一致（数据本身左右对称）
     assert np.allclose(right[3].mean(axis=0), left[3].mean(axis=0), atol=0.2)
+
+
+def test_make_sample_crops_antagonist_around_gap_and_mirrors_it():
+    rng = np.random.default_rng(0)
+    fdi = np.array([44, 45, 46, 47, 34, 35, 36, 37])
+    centers = {44: (-14, 5), 45: (-16, 12), 46: (-19, 20), 47: (-22, 30), 34: (14, 5), 35: (16, 12), 36: (19, 20), 37: (22, 30)}
+    pts = np.stack([rng.normal(0, 0.5, (gen.TOOTH_POINTS, 3)) + [*centers[int(f)], 0.0] for f in fdi]).astype(np.float32)
+    rim = pts[:, : gen.RIM_POINTS]
+    # 对颌：z = 2 的一个平面，法向朝上（绕序反了的口扫）→ antagonist_points 统一成朝下
+    xy = rng.uniform(-40, 40, (60000, 2))
+    ant = gen.antagonist_points(np.column_stack([xy, np.full(len(xy), 2.0)]), np.tile([0.0, 0.0, 1.0], (len(xy), 1)))
+    assert np.allclose(ant[:, 5], -1)
+    right = gen.make_sample(fdi, pts, rim, 2, np.random.default_rng(1), drop=False, augment=False, ant=ant)
+    left = gen.make_sample(fdi, pts, rim, 6, np.random.default_rng(1), drop=False, augment=False, ant=ant)
+    for sample in (right, left):
+        a, has_ant = sample[5], sample[6]
+        assert has_ant == 1 and a.shape == (gen.N_ANT, 6)
+        assert np.linalg.norm(a[:, :2], axis=1).max() < gen.ANT_RADIUS  # 已减去原点，只留缺隙上方
+        assert np.allclose(a[:, 2], 2.0, atol=0.3) and np.allclose(a[:, 5], -1)
+    # 对颌离缺隙很远：当作没有
+    far = ant.copy()
+    far[:, 0] += 200
+    assert gen.make_sample(fdi, pts, rim, 2, np.random.default_rng(1), drop=False, augment=False, ant=far)[6] == 0
+
+
+def test_antagonist_model_forward_and_distance():
+    torch = pytest.importorskip("torch")
+    model = gen.build_model(template="dome", antagonist=True, refine=True).eval()
+    ctx, idx, cls = torch.randn(2, gen.N_CTX, 3), torch.randint(0, 16, (2, gen.N_CTX)), torch.tensor([3, 12])
+    ant = torch.cat([torch.randn(2, gen.N_ANT, 3), torch.nn.functional.normalize(torch.randn(2, gen.N_ANT, 3), dim=-1)], dim=-1)
+    with torch.no_grad():
+        with_ant = model(ctx, idx, cls, ant, torch.tensor([1.0, 0.0]))
+        without = model(ctx, idx, cls)
+    assert with_ant.shape == without.shape == (2, model.template.shape[0], 3)
+    assert torch.allclose(with_ant[1], without[1], atol=1e-5)  # has_ant = 0 的样本和不给对颌一样
+    # 平面 z = 1（法向朝下）下方 0.4 mm 的点：距离 +0.4；上方 0.2 mm：−0.2；离得远：inf
+    xy = torch.rand(1, 4000, 2) * 10
+    plane = torch.cat([xy, torch.ones(1, 4000, 1), torch.zeros(1, 4000, 2), -torch.ones(1, 4000, 1)], dim=-1)
+    pts = torch.tensor([[[5.0, 5.0, 0.6], [5.0, 5.0, 1.2], [5.0, 5.0, -9.0]]])
+    d = gen.antagonist_distance(pts, plane)[0]
+    assert abs(float(d[0]) - 0.4) < 1e-4 and abs(float(d[1]) + 0.2) < 1e-4 and torch.isinf(d[2])
 
 
 def test_model_forward_shapes():

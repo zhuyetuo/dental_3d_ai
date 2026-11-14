@@ -151,18 +151,28 @@ def run(
                 for f in (target.mesial, target.distal)
                 if f is not None and abs(order.index(f) - order.index(target.fdi)) == 1
             }
-            if antagonist is not None:  # 先咬合后邻接：抬高、磨低都沿咬合方向，不影响近远中的距离
+            fit_occlusion = antagonist is not None and prefs.occlusion_distance is not None
+            if fit_occlusion:  # 先咬合后邻接：抬高、磨低都沿咬合方向，不影响近远中的距离
                 occlusion, occlusion_warnings = adjust_occlusion(tooth.crown, antagonist, up, prefs.occlusion_distance)
                 tooth.info.update(occlusion)
                 report["warnings"] += [f"{target.fdi} {w}" for w in occlusion_warnings]
             contacts, contact_warnings = adjust_contacts(tooth.crown, neighbors, prefs.contacts_distance, movable)
-            if antagonist is not None:  # 邻接调整会把牙面往邻牙方向推，可能又离对颌太近：再磨一遍（只磨不抬）
+            if fit_occlusion:  # 邻接调整会把牙面往邻牙方向推，可能又离对颌太近：再磨一遍（只磨不抬）
                 again, _ = adjust_occlusion(tooth.crown, antagonist, up, prefs.occlusion_distance, lift=False)
+                tooth.info["occlusal_clearance_mm"] = again["occlusal_clearance_mm"]
+                tooth.info["occlusal_reduction_mm"] = round(tooth.info.get("occlusal_reduction_mm", 0.0) + again["occlusal_reduction_mm"], 3)
+            solid = close_with_gum_base(tooth.crown, gum, up, relief=prefs.gum_relief, taper=prefs.emergence_taper)
+            # 封底前要把底边切成扇贝形，而生成牙冠的底边在邻面处正好升到接触点旁边，接触点那一小块常被切掉：评分卡上
+            # 流程报告“已到位”的邻面里约两成封底后有 0.15–0.45 mm 的缝。所以封底后在实体上再调一次，底面和虚拟颈缘线不动
+            part = np.zeros(len(solid.vertices), dtype=bool)
+            part[: solid.metadata["crown_vertices"]] = True
+            contacts, contact_warnings = adjust_contacts(solid, neighbors, prefs.contacts_distance, part)
+            if fit_occlusion:
+                again, _ = adjust_occlusion(solid, antagonist, up, prefs.occlusion_distance, part, lift=False)
                 tooth.info["occlusal_clearance_mm"] = again["occlusal_clearance_mm"]
                 tooth.info["occlusal_reduction_mm"] = round(tooth.info.get("occlusal_reduction_mm", 0.0) + again["occlusal_reduction_mm"], 3)
             tooth.info["contacts_mm"] = {str(k): v for k, v in contacts.items()}
             report["warnings"] += contact_warnings
-            solid = close_with_gum_base(tooth.crown, gum, up, relief=prefs.gum_relief, taper=prefs.emergence_taper)
         except (LookupError, ValueError) as exc:
             report["warnings"].append(f"{target.fdi} 生成失败: {exc}")
             continue

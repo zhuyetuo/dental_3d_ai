@@ -23,6 +23,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| [docs/index.html](docs/index.html) | **效果报告页**（图为主）：每次训练有提升后更新；仓库打开 GitHub Pages（main 分支 `/docs`）后就是项目主页 |
 | [docs/results.md](docs/results.md) | **模型效果一览**：分割、缺失牙生成、颈缘线的效果图、指标和已知问题 |
 | [docs/resources.md](docs/resources.md) | **外部资料清单**：牙冠生成、点云补全、咬合等方向的论文、代码、数据集，以及每一项能不能用上 |
 | [docs/system-architecture.md](docs/system-architecture.md) | 系统架构：前端、后端、算法服务、3D 渲染与交互、部署 |
