@@ -65,3 +65,20 @@ ul,ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;max-
 .road{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .road .step b{margin-bottom:4px}
 footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+
+/* 左侧目录（toc.js 生成）：宽屏固定在左边，窄屏是页面顶部可展开的“本页目录” */
+h2{scroll-margin-top:64px}
+.toc{max-width:1080px;margin:16px auto 0;padding:0 16px}
+.toc details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px}
+.toc summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.toc ol{list-style:none;padding:6px 0 2px;margin:0;gap:2px}
+.toc a{display:block;padding:4px 10px;border-left:2px solid transparent;color:var(--muted);text-decoration:none;font-size:13px;line-height:1.4}
+.toc a:hover{color:var(--fg)}
+.toc a.on{color:var(--fg);border-left-color:var(--accent);background:var(--chip)}
+@media (min-width:1100px){
+  .toc{position:fixed;top:60px;left:max(16px,calc(50vw - 540px - 236px));width:212px;max-height:calc(100vh - 80px);overflow:auto;margin:0;padding:0}
+  .toc details{background:transparent;border:0;padding:0}
+  .toc summary{list-style:none;pointer-events:none;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:0 10px 6px}
+  .toc summary::-webkit-details-marker{display:none}
+  body.has-toc .wrap{margin-left:max(252px,calc(50vw - 540px))}
+}

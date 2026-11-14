@@ -153,18 +153,50 @@ def alphas(device):
     return (f[1:] / f[0]).clamp(1e-5, 0.9999)  # 累乘的 alpha（余弦日程）
 
 
-def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearance: float | None = None):
-    """DDIM 采样。给了 ant（mm，0 = 没有）和 clearance 时，每一步都把预测的牙冠限制在“离对颌至少 clearance”以内。"""
+def lowpass(depth, mask, sigma: float):
+    """只在有牙冠的像素里做高斯模糊（归一化卷积），边缘不会被“没有牙冠”的像素拉低。depth、mask (B, S, S)。"""
+    import torch
+    import torch.nn.functional as F
+
+    r = int(3 * sigma)
+    k = torch.exp(-torch.arange(-r, r + 1, device=depth.device).float() ** 2 / (2 * sigma ** 2))
+    k = k / k.sum()
+
+    def blur(x):
+        x = F.conv2d(x[:, None], k.view(1, 1, 1, -1), padding=(0, r))
+        return F.conv2d(x, k.view(1, 1, -1, 1), padding=(r, 0))[:, 0]
+
+    m = mask.float()
+    return blur(depth * m) / blur(m).clamp(min=1e-3)
+
+
+def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearance: float | None = None,
+           init=None, strength: float = 1.0, keep_sigma: float | None = None):
+    """DDIM 采样。给了 ant（mm，0 = 没有）和 clearance 时，每一步都把预测的牙冠限制在“离对颌至少 clearance”以内。
+
+    init（编码后的牙冠图，(B, 2, S, S)）：从它加噪到 strength（0–1）那一步开始去噪（SDEdit），整体形状跟着 init。
+    keep_sigma（像素）：每一步把预测的低频部分换回 init 的（保留 init 的整体形状和外轮廓），只取扩散模型的细节。"""
     import torch
 
     ac = alphas(cond.device)
     x = torch.randn(len(cond), 2, SIZE, SIZE, device=cond.device, generator=generator)
-    ts = torch.linspace(STEPS - 1, 0, steps, device=cond.device).long()
+    t_top = STEPS - 1 if init is None else max(1, int(round(strength * (STEPS - 1))))
+    ts = torch.linspace(t_top, 0, max(2, int(round(steps * t_top / (STEPS - 1)))), device=cond.device).long()
+    if init is not None:
+        a = ac[ts[0]]
+        x = a.sqrt() * init + (1 - a).sqrt() * x
+        if keep_sigma:
+            init_mask = init[:, 1] > 0
+            init_low = lowpass(init[:, 0], init_mask, keep_sigma)
     for i, t in enumerate(ts):
         a = ac[t]
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=cond.is_cuda):
             v = model(x, cond, t.expand(len(x)), cls).float()
         x0 = (a.sqrt() * x - (1 - a).sqrt() * v).clamp(-1.2, 1.2)
+        if init is not None and keep_sigma:
+            d = x0[:, 0]
+            d = torch.where(init_mask, init_low + (d - lowpass(d, init_mask, keep_sigma)), d)
+            x0 = torch.stack([d, init[:, 1]], dim=1).clamp(-1.2, 1.2)
         if ant is not None and clearance is not None:
             limit = torch.where(ant > 0, (ant - clearance) / TOOTH_SCALE - 1, torch.full_like(ant, 9.0))
             x0 = torch.stack([torch.minimum(x0[:, 0], limit), x0[:, 1]], dim=1)
@@ -294,12 +326,15 @@ class RadialDiffusionGenerator:
 
     name = "radial_diffusion"
 
-    def __init__(self, model_path, fallback=None, device: str | None = None, steps: int = 50, clearance: float | None = None, seed: int = 0):
+    def __init__(self, model_path, fallback=None, device: str | None = None, steps: int = 50, clearance: float | None = None, seed: int = 0,
+                 refine: float | None = None, keep_sigma: float | None = None):
+        """refine（0–1）：先让 fallback（学习模型 D）出整体形状，扩散模型从它加噪到这一步再去噪，只补细节。keep_sigma 见 sample。"""
         import os
 
         self.model_path, self.fallback = Path(model_path), fallback
         self.device = device or os.environ.get("GEN_DEVICE")
         self.steps, self.clearance, self.seed = steps, clearance, seed
+        self.refine, self.keep_sigma = refine, keep_sigma
         self._model = None
 
     @property
@@ -348,11 +383,27 @@ class RadialDiffusionGenerator:
         a = torch.tensor(maps.get("ant", np.zeros((SIZE, SIZE), np.float32)), device=self.device)[None]
         cond = build_condition(torch.tensor(maps["ctx"], device=self.device)[None], a, torch.tensor([float(has)], device=self.device))
         g = torch.Generator(device=self.device).manual_seed(self.seed)
+        init, base = None, None
+        if self.refine is not None and self.fallback is not None:  # 学习模型 D 出整体形状，投到同一张径向图上当起点
+            from .radial import splat
+
+            base = self.fallback.generate(ctx, target)
+            sign0 = np.array([-1.0, 1.0, 1.0]) if flip else np.ones(3)
+            pts = np.asarray(trimesh.sample.sample_surface(base.crown, 150000, seed=0)[0]) @ rot.T
+            d0 = clean_depth(splat((pts - origin) * sign0, np.zeros(3)))
+            if (d0 > 0).sum() < 1500:
+                base.info["radial_fallback"] = "D 的牙冠投不到径向图上"
+                return base
+            init = encode_tooth(torch.tensor(d0, device=self.device)[None])
         with torch.no_grad():
             x = sample(self._model, cond, torch.tensor([target_class(target.fdi)], device=self.device), self.steps, g,
-                       ant=a if has and self.clearance is not None else None, clearance=self.clearance)
+                       ant=a if has and self.clearance is not None else None, clearance=self.clearance,
+                       init=init, strength=self.refine or 1.0, keep_sigma=self.keep_sigma)
         depth = clean_depth(decode_tooth(x)[0].cpu().numpy())
         if (depth > 0).sum() < 1500:
+            if base is not None:
+                base.info["radial_fallback"] = "生成的牙冠太小"
+                return base
             return self._fall(ctx, target, "生成的牙冠太小")
         crown = map_to_mesh(depth, np.zeros(3))
         sign = np.array([-1.0, 1.0, 1.0]) if flip else np.ones(3)
@@ -361,9 +412,15 @@ class RadialDiffusionGenerator:
         if ((crown.triangles_center - world.mean(axis=0)) * crown.face_normals).sum() < 0:
             crown.invert()
         if len(boundary_loops(crown)) != 1:
+            if base is not None:
+                base.info["radial_fallback"] = "生成的牙冠边界不是一圈"
+                return base
             return self._fall(ctx, target, "生成的牙冠边界不是一圈")
         info = {"source": f"radial_diffusion:{self.model_path.name}", "placement": "radial_diffusion", "gap_mm": target.gap_mm,
                 "occlusal_drop_mm": 0.0, "antagonist_input": has}
+        if base is not None:
+            info.update({k: v for k, v in base.info.items() if k not in ("source", "placement", "occlusal_drop_mm")})
+            info.update({"source": f"radial_refine:{self.model_path.name}", "refine": self.refine, "keep_sigma": self.keep_sigma})
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
 

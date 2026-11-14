@@ -816,7 +816,16 @@ def make_generator(model_path=None, template_dir=None, preferences=None):
     base = MirrorTemplateGenerator(template_dir=template_dir, preferences=preferences)
     model_path = model_path or os.environ.get("GEN_MODEL")
     if model_path and Path(model_path).exists():
-        return LearnedGenerator(model_path, fallback=base)
+        learned = LearnedGenerator(model_path, fallback=base)
+        # 有扩散模型（RADIAL_MODEL）时：D 出整体形状，扩散模型从它加噪到 RADIAL_REFINE 再去噪、只补细节（低频保留 D 的）。
+        # 评分卡（60 位患者）上整体形状不变，相对邻牙高度、咬合接触面积、挤进邻牙都更接近天然牙，见 docs/results.md
+        radial = os.environ.get("RADIAL_MODEL")
+        if radial and Path(radial).exists():
+            from .radial_diffusion import RadialDiffusionGenerator
+
+            return RadialDiffusionGenerator(radial, fallback=learned, refine=float(os.environ.get("RADIAL_REFINE", "0.6")),
+                                            keep_sigma=float(os.environ.get("RADIAL_KEEP_SIGMA", "6")))
+        return learned
     return base
 
 

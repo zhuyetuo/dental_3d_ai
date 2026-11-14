@@ -58,6 +58,7 @@ async def create_case(
     antagonist: UploadFile | None = File(None),
     preferences: str | None = Form(None, description="设计参数 JSON，字段见 dental_ai.preferences.DesignPreferences"),
     prepared: str | None = Form(None, description="预备体牙号，逗号分隔，如 46,36"),
+    generate: str | None = Form(None, description="生成哪些缺失牙：auto（默认，检测到的全部）、none（只分割），或牙号逗号分隔"),
 ) -> dict:
     try:
         prefs = DesignPreferences.from_dict(json.loads(preferences) if preferences else None)
@@ -68,8 +69,10 @@ async def create_case(
     except ValueError:
         raise HTTPException(400, f"预备体牙号格式错误: {prepared}") from None
     _check_teeth(jaw, prepared_teeth)
+    generate_teeth = _parse_generate(jaw, generate)
     case = storage.create_case(jaw, prefs.to_dict())
     case["prepared_teeth"] = prepared_teeth
+    case["generate_teeth"] = generate_teeth
     files = case["files"]
     files["mesh"] = await _save_upload(case["id"], mesh, "mesh", MESH_SUFFIXES)
     if labels is not None:
@@ -130,6 +133,50 @@ def _check_teeth(jaw: str, teeth) -> None:
     invalid = sorted(int(t) for t in set(teeth) - set(arch_order(jaw, include_third_molars=True)))
     if invalid:
         raise HTTPException(400, f"{jaw} 不允许的牙号: {invalid}")
+
+
+def _parse_generate(jaw: str, value: str | None) -> list[int] | None:
+    value = (value or "auto").strip().lower()
+    if value == "auto":
+        return None
+    if value == "none":
+        return []
+    try:
+        teeth = sorted({int(t) for t in value.replace("，", ",").split(",") if t.strip()})
+    except ValueError:
+        raise HTTPException(400, f"生成牙号格式错误: {value}") from None
+    _check_teeth(jaw, teeth)
+    return teeth
+
+
+class GenerateUpdate(BaseModel):
+    teeth: list[int] | None  # None = 检测到的缺失牙全部生成，[] = 不生成
+
+
+@app.put("/api/cases/{case_id}/generate")
+def update_generate(case_id: str, body: GenerateUpdate) -> dict:
+    """选择生成哪些缺失牙。之后调用 /run 重新计算（分割结果沿用）。"""
+    case = _get_case(case_id)
+    if case["status"] in ("queued", "running"):
+        raise HTTPException(409, "任务正在运行，结束后再修改")
+    if body.teeth is not None:
+        _check_teeth(case["jaw"], body.teeth)
+    case["generate_teeth"] = None if body.teeth is None else sorted(set(body.teeth))
+    storage.save_case(case)
+    return case
+
+
+@app.post("/api/cases/{case_id}/resegment", status_code=202)
+def resegment(case_id: str, background: BackgroundTasks) -> dict:
+    """丢掉上传的 / 人工修正的标签，重新用模型自动分割并重新计算（历史版本的标签文件保留）。"""
+    case = _get_case(case_id)
+    if case["status"] in ("queued", "running"):
+        raise HTTPException(409, "任务正在运行")
+    case["files"].pop("labels", None)
+    case["status"] = "queued"
+    storage.save_case(case)
+    jobs.submit(case_id, background)
+    return case
 
 
 class PreparedUpdate(BaseModel):

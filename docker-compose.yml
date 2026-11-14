@@ -13,6 +13,7 @@ x-backend-common: &backend-common
     dockerfile: backend/Dockerfile
     args:
       REGISTRY: ${DOCKER_REGISTRY:-docker.io}
+      BASE_IMAGE: ${BACKEND_BASE_IMAGE:-${DOCKER_REGISTRY:-docker.io}/library/python:3.12-slim}
   environment:
     # 处理任务进 Redis 队列，由 worker 服务处理；去掉这一行则在 API 进程里处理
     REDIS_URL: redis://redis:6379/0
@@ -31,6 +32,8 @@ x-backend-common: &backend-common
     DEEP_MODEL: /models/segmentation/deep.pt
     # 学习式缺失牙生成模型（python -m dental_ai.generation.learned train），存在时优先于对侧镜像 / 模板；不想用就去掉这一行
     GEN_MODEL: /models/generation/toothgen_open.pt
+    # 径向深度图扩散模型（python -m dental_ai.generation.radial_diffusion train）：上面的模型出整体形状，它补咬合面细节；不想用就去掉这一行
+    RADIAL_MODEL: /models/generation/radial_diffusion.pt
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:

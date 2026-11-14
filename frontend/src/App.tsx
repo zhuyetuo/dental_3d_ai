@@ -28,6 +28,10 @@ export function App() {
   const [compare, setCompare] = useState<"off" | "overlay" | "heat">("off");
   const [showTags, setShowTags] = useState(true);
   const [isolate, setIsolate] = useState(false);
+  /** 第 2 步里勾选的、要生成的缺失牙 */
+  const [pick, setPick] = useState<Set<number>>(new Set());
+  /** 正在提交“生成 / 重新分割”：按钮立刻给反馈，网络慢时也不会重复点 */
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const onDirtyChange = useCallback((d: boolean) => setDirty(d), []);
@@ -46,6 +50,7 @@ export function App() {
     if (dirty && !window.confirm("当前病例有未保存的标注修改，确定要离开吗？")) return;
     setDirty(false);
     setCurrent(c);
+    setOpenGroup(null);
   }
 
   async function saveMargins(margins: MarginMap) {
@@ -74,6 +79,47 @@ export function App() {
     refresh();
   }
 
+  // 换病例或重新计算后，勾选状态跟着结果走：指定过就用指定的，否则是检测到的全部缺失牙
+  useEffect(() => {
+    const r = current?.report;
+    if (!r) return setPick(new Set());
+    const chosen = current?.generate_teeth;
+    setPick(new Set(chosen ?? r.missing.filter((m) => m.kind !== "closed").map((m) => m.fdi)));
+  }, [current?.id, current?.finished_at]);
+
+  async function generateSelected() {
+    if (!current) return;
+    if (dirty && !window.confirm("当前病例有未保存的标注修改，重新生成会丢掉这些修改，确定吗？")) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await api.setGenerate(current.id, [...pick].sort());
+      setDirty(false);
+      setCurrent(await api.runCase(current.id));
+      refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resegment() {
+    if (!current) return;
+    if ((dirty || current.label_edits?.length) && !window.confirm("重新自动分割会丢掉人工修正的牙号（历史版本仍保留），确定吗？")) return;
+    setError(null);
+    setBusy(true);
+    try {
+      setDirty(false);
+      setCurrent(await api.resegment(current.id));
+      refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const refresh = () => api.listCases().then(setCases).catch((e) => setError(String(e)));
   useEffect(() => {
     refresh();
@@ -86,6 +132,7 @@ export function App() {
     try {
       setDirty(false);
       setCurrent(await api.createDemoCase(d.id));
+      setOpenGroup(null);
       refresh();
     } catch (err) {
       setError(String(err));
@@ -95,12 +142,22 @@ export function App() {
   // 任务运行中时轮询状态；生产环境可以换成 WebSocket 推送
   useEffect(() => {
     if (!current || !["queued", "running"].includes(current.status)) return;
-    const timer = setInterval(async () => {
-      const c = await api.getCase(current.id);
-      setCurrent(c);
-      if (!["queued", "running"].includes(c.status)) refresh();
+    // 上一次返回后再发下一次：网络慢时请求不会越堆越多
+    let stopped = false;
+    const timer = setTimeout(async () => {
+      try {
+        const c = await api.getCase(current.id);
+        if (stopped) return;
+        setCurrent(c);
+        if (!["queued", "running"].includes(c.status)) refresh();
+      } catch {
+        if (!stopped) setCurrent({ ...current }); // 出错了过一会儿再试
+      }
     }, 1500);
-    return () => clearInterval(timer);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, [current]);
 
   useEffect(() => {
@@ -151,6 +208,7 @@ export function App() {
     [current?.id],
   );
   const report = current?.report;
+  const running = current ? ["queued", "running"].includes(current.status) : false;
   return (
     <div className="layout">
       <aside>
@@ -183,6 +241,13 @@ export function App() {
           <label>
             对颌网格（可选，用于咬合约束）
             <input type="file" name="antagonist" accept=".stl,.ply,.obj" />
+          </label>
+          <label>
+            上传后
+            <select name="generate" defaultValue="auto">
+              <option value="auto">分割，并生成检测到的全部缺失牙</option>
+              <option value="none">只分割（之后在第 2 步选要生成的牙）</option>
+            </select>
           </label>
           <fieldset>
             <legend>设计参数 (mm)</legend>
@@ -238,6 +303,53 @@ export function App() {
             {current.error && <p className="error">{current.error}</p>}
             {report && (
               <>
+                <div className="steps">
+                  <div className="step">
+                    <h3><i>1</i>分割</h3>
+                    <p>
+                      识别到 {report.teeth.length} 颗牙 ·{" "}
+                      {report.segmenter === "manual" ? "人工修正" : report.segmenter === "label_file" ? "上传的标签" : `模型 ${report.segmenter}`}
+                    </p>
+                    <p className="note">要改：上方工具栏 改牙号 / 画笔 / 拆牙，改完点“保存并重新计算”。</p>
+                    <button type="button" className="ghost" disabled={busy || running} onClick={resegment}>
+                      {busy ? "提交中…" : running ? "处理中…" : "重新自动分割"}
+                    </button>
+                  </div>
+                  <div className="step">
+                    <h3><i>2</i>生成牙</h3>
+                    {report.missing.length === 0 ? (
+                      <p>没有检测到缺失牙</p>
+                    ) : (
+                      <ul className="pick">
+                        {report.missing.map((m) => (
+                          <li key={m.fdi}>
+                            <label className="inline">
+                              <input
+                                type="checkbox"
+                                disabled={m.kind === "closed"}
+                                checked={pick.has(m.fdi)}
+                                onChange={(e) => {
+                                  const next = new Set(pick);
+                                  if (e.target.checked) next.add(m.fdi);
+                                  else next.delete(m.fdi);
+                                  setPick(next);
+                                }}
+                              />
+                              {m.description}
+                              <small>
+                                {KIND_TEXT[m.kind]}
+                                {report.generated.some((g) => g.fdi === m.fdi) && " · 已生成"}
+                              </small>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button type="button" disabled={report.missing.length === 0 || busy || running} onClick={generateSelected}>
+                      {busy ? "提交中…" : running ? "处理中…" : pick.size > 0 ? `生成选中的牙（${pick.size}）` : "不生成（清除生成的牙）"}
+                    </button>
+                  </div>
+                </div>
                 {report.generated.length > 0 && (
                   <p className="generated-list">
                     生成的牙：
@@ -247,7 +359,7 @@ export function App() {
                   </p>
                 )}
                 <ul className="legend">
-                  <li><i style={{ background: "#19d3e6" }} />生成的牙（牙上有标签）</li>
+                  {report.generated.length > 0 && <li><i style={{ background: "#19d3e6" }} />生成的牙（牙上有标签）</li>}
                   {originalUrls.length > 0 && <li><i style={{ background: "#ffc857" }} />原始牙</li>}
                   {current.files.antagonist && <li><i style={{ background: "#d5dde8" }} />对颌</li>}
                 </ul>
@@ -391,6 +503,7 @@ export function App() {
         (() => {
           const demo = demos.find((d) => d.id === openGroup);
           const runs = cases.filter((c) => (demo ? c.demo?.id === demo.id : !c.demo));
+          if (current && !runs.some((c) => c.id === current.id) && (demo ? current.demo?.id === demo.id : !current.demo)) runs.unshift(current);
           const STATUS: Record<string, string> = { uploaded: "已上传", queued: "排队中", running: "处理中", done: "完成", failed: "失败" };
           return (
             <div className="flyout">

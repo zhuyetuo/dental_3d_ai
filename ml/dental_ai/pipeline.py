@@ -45,9 +45,11 @@ def run(
     fix_numbering: bool = True,
     prepared_teeth: list[int] | None = None,
     margin_overrides: dict[int, dict] | None = None,
+    generate_teeth: list[int] | None = None,
 ) -> dict:
     """prepared_teeth：预备体牙号，为它们检测颈缘线。
-    margin_overrides：人工编辑过的颈缘线 {牙号: {"points": [...], "control": [...]}}，直接沿用，不再自动检测。"""
+    margin_overrides：人工编辑过的颈缘线 {牙号: {"points": [...], "control": [...]}}，直接沿用，不再自动检测。
+    generate_teeth：只生成这些缺失牙；None = 检测到的全部，[] = 只分割不生成。"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     prefs = preferences or DesignPreferences()
@@ -80,6 +82,7 @@ def run(
         + [f"{s} 和 {o} 是同一颗牙被分成了两个牙号，已合并为 {o}；缺的可能是 {s} 也可能是 {o}，请确认牙号" for s, o in merged],
         "missing": [],
         "generated": [],
+        "generate_teeth": None if generate_teeth is None else sorted(generate_teeth),
     }
     (out / "cervical_lines.json").write_text(json.dumps(all_cervical_lines(mesh, labels)))
 
@@ -138,6 +141,8 @@ def run(
         )
     for target in missing:
         if target.kind == "closed":
+            continue
+        if generate_teeth is not None and target.fdi not in generate_teeth:
             continue
         try:
             tooth = generator.generate(ctx, target)

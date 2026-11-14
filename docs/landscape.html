@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>业界进展 · dental_3d_ai</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+<link rel="stylesheet" href="site.css">
+<style>
+.yr{font-family:var(--display);font-size:20px;color:var(--accent);margin-top:6px}
+td.w{white-space:normal;min-width:260px}
+.src{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<nav><div class="in"><span class="brand">Dental <b>3D</b> AI</span>
+<a href="index.html">总览</a><a href="segmentation.html">牙齿分割</a><a href="generation.html">牙齿生成</a><a href="margin.html">颈缘线</a>
+<a href="history.html">来时路</a><a class="on" href="landscape.html">业界进展</a><a href="ideas.html">想法清单</a>
+<a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">学术界 + 产业界 · 持续跟踪 · 更新于 2026-11-14</div>
+    <h1>这个方向走到哪了：里程碑和最新进展</h1>
+    <p class="lead">分割、牙冠生成、颈缘线三条线，按年份记学术界的代表工作和产业界的产品节点；最后和我们自己的数字放在一起比。
+    每次大的迭代前查一遍新论文，每月做一次全面更新。厂商数字都是厂商自己说的，单独标出。</p>
+  </header>
+
+  <section>
+    <h2>一眼看现在（2026-11）</h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">分割</div><div class="v">~92–93%</div><div class="n">公开集 T-mIoU 已饱和（TeethSplineSeg 92.6%、3DTeethSAM 91.9%）；难点在跨来源、缺牙、拥挤</div></div>
+      <div class="tile"><div class="k">牙冠生成</div><div class="v">扩散 / 模板变形</div><div class="n">从点云补全 → 模板变形 / 扩散；咬合面细节仍是公认难点；最好的（DCrownFormer+）已商业化收回代码</div></div>
+      <div class="tile"><div class="k">颈缘线</div><div class="v">~0.1–0.2 mm</div><div class="n">多数病例达到技工一致水平；数据都在技工所手里，公开的只有切牙 52 例 + 各牙位 78 例</div></div>
+      <div class="tile"><div class="k">产业</div><div class="v">单冠 1–2 分钟</div><div class="n">3Shape Automate、exocad AI Design、Dentbird、先临 AI Design；exocad 3.3 已支持最多 3 颗相邻后牙</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>里程碑时间线</h2>
+    <div class="scroll"><table>
+      <tr><th>时间</th><th>方向</th><th>工作 / 产品</th><th>意义</th></tr>
+      <tr><td class="yr" colspan="4">2019–2021</td></tr>
+      <tr><td>2019–2020</td><td>分割</td><td>MeshSegNet（MICCAI 2019 / TMI 2020）</td><td class="w">最早一批直接在口扫网格上做逐面分割的深度网络</td></tr>
+      <tr><td>2021</td><td>分割</td><td>TSegNet（MedIA）</td><td class="w">先找牙齿中心再分实例，“实例分割”路线的起点</td></tr>
+      <tr><td class="yr" colspan="4">2022</td></tr>
+      <tr><td>2022</td><td>分割 / 数据</td><td>Teeth3DS + 3DTeethSeg'22 挑战赛（MICCAI）</td><td class="w">第一个大规模公开口扫标注数据（1800 个扫描）；TGNet 拿第一，成为后来的基线</td></tr>
+      <tr><td>2022</td><td>生成</td><td>ToothCR（PAKDD）</td><td class="w">补全 + 重建两阶段的早期牙冠生成</td></tr>
+      <tr><td class="yr" colspan="4">2023</td></tr>
+      <tr><td>2023</td><td>生成</td><td>DMC（MICCAI）</td><td class="w">预备体 + 邻牙 + 对颌 → Transformer 点云补全 + 可微泊松重建；第一次把“上下文 + 网格输出”做完整</td></tr>
+      <tr><td class="yr" colspan="4">2024</td></tr>
+      <tr><td>2024</td><td>生成</td><td>DCrownFormer（MICCAI）</td><td class="w">预备体 + 对颌直接出网格</td></tr>
+      <tr><td>2024</td><td>颈缘线</td><td>Adaptive Point Learning（Alsheghri 等）</td><td class="w">颈缘线当点云生成，带不确定性</td></tr>
+      <tr><td>2024</td><td>关键点 / 数据</td><td>Teeth3DS+ / 3DTeethLand'24</td><td class="w">第一个公开的 3D 牙齿关键点数据集（牙尖、窝等），评估咬合面形态有了标准</td></tr>
+      <tr><td>—</td><td>产业</td><td>3Shape Automate（上线年份待核）</td><td class="w">云端 AI 设计服务，后牙单冠约 90 秒、2–3 美元（厂商）；2024 年扩展到前牙</td></tr>
+      <tr><td>2024</td><td>产业</td><td>exocad AI Design（DentalCAD 3.2）</td><td class="w">桌面 CAD 内置 AI 单冠建议，约 2 分钟</td></tr>
+      <tr><td class="yr" colspan="4">2025</td></tr>
+      <tr><td>2025</td><td>分割</td><td>CrossTooth（CVPR）</td><td class="w">多视图渲染特征 + 点云，边界更准；代码和权重公开</td></tr>
+      <tr><td>2025</td><td>生成</td><td>DCrownFormer+（MedIA）</td><td class="w">改善咬合面细节；<b>技术转让给韩国公司，代码不再公开</b></td></tr>
+      <tr><td>2025</td><td>生成</td><td>VBCD（MICCAI）、ToothForge（IPMI）</td><td class="w">体素粗到细 + 牙位提示；谱域生成，毫秒级</td></tr>
+      <tr><td>2025</td><td>颈缘线</td><td>Alsheghri 等，全牙位（CBM）</td><td class="w">1113 个真实预备体，78 例中 70 例在 200 μm 内</td></tr>
+      <tr><td>2025-09</td><td>产业</td><td>先临三维 AI Design</td><td class="w">扫描仪厂商补齐设计；宣传单冠约 60 秒（厂商）</td></tr>
+      <tr><td>2025-12</td><td>生成</td><td>CrownGen（arXiv 2512.21890）</td><td class="w">牙齿级点云扩散，一次生成多颗；26 例临床研究不劣于技工</td></tr>
+      <tr><td class="yr" colspan="4">2026</td></tr>
+      <tr><td>2026 初</td><td>分割</td><td>3DTeethSAM（AAAI）</td><td class="w">多视图渲染 + SAM2，T-mIoU 91.9%，第三磨牙明显提升</td></tr>
+      <tr><td>2026-01</td><td>临床评价</td><td>exocad / 3Shape Automate / Dentbird 对比（Dental Materials）</td><td class="w">按形态、咬合接触、断裂强度、边缘密合比较三家；多篇综述提醒咬合方案要人复核</td></tr>
+      <tr><td>2026-03</td><td>生成</td><td>MADCrowner（MedIA，Apache-2.0）</td><td class="w">颈缘线分割 + 模板变形；4602 名患者的技工设计数据；和我们的模板路线最接近，作者把扩散列为下一步</td></tr>
+      <tr><td>2026-03</td><td>生成</td><td>ToothCraft（VISAPP）</td><td class="w">以局部牙弓为条件的 SDF 扩散，用合成残缺牙训练；有权重（AGPL）</td></tr>
+      <tr><td>2026-03</td><td>分割</td><td>TSegAgent（MICCAI）</td><td class="w">SAM3 + 视觉语言模型零样本；自报 93.4%，他人实测开源版差很多</td></tr>
+      <tr><td>2026-05</td><td>生成</td><td>分类引导的局部口扫 → 牙冠方案（arXiv 2605.15241）</td><td class="w">检索 + 拟合路线，只有定性结果</td></tr>
+      <tr><td>2026-06</td><td>生成</td><td>深度谱模型（arXiv 2606.31293）</td><td class="w">ToothForge 的后续，形状生成更稳健</td></tr>
+      <tr><td>2026-08</td><td>分割</td><td>TeethSplineSeg（B 样条牙弓坐标）</td><td class="w">PTv3 + 牙弓连续坐标，T-mIoU 92.6%，训练 2 小时、推理 0.8 秒</td></tr>
+      <tr><td>2026</td><td>产业</td><td>exocad DentalCAD 3.3</td><td class="w">AI 支持最多 3 颗相邻后牙冠 / 3 单位桥，加上咬合垫 AI</td></tr>
+      <tr><td>—</td><td>生成</td><td>CrownFusion（项目页 crownfusion.github.io）</td><td class="w">扩散模型生成牙冠；我们的径向深度图表示参考了它的“把 3D 牙冠变成 2D 图再用图像扩散”的思路</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>技术路线怎么演进的</h2>
+    <div class="flow">
+      <div class="step"><b>几何 / 模板</b>对侧镜像、标准牙库 + 手动调整（传统 CAD）</div>
+      <div class="step"><b>点云补全</b>DMC、ToothCR：上下文 → 补出缺的牙</div>
+      <div class="step"><b>模板变形</b>MADCrowner、我们的 D：模板牙按上下文变形，形状稳</div>
+      <div class="step new"><b>扩散生成</b>CrownGen、ToothCraft、CrownFusion：细节更像真牙，但形状会偏</div>
+      <div class="step new"><b>组合</b>我们 11-14：模板变形出形状 + 扩散补细节</div>
+    </div>
+    <p class="note">分割已经从“专用点云网络”走到“多视图渲染 + 视觉基础模型”和“点云 + 牙弓结构先验”两条路；
+    颈缘线从几何规则走到网格二分类 / 点云生成。三条线的共同瓶颈都是数据：技工设计好的牙冠和颈缘线只在技工所和企业手里。</p>
+  </section>
+
+  <section>
+    <h2>我们和他们比</h2>
+    <div class="scroll"><table>
+      <tr><th>方向</th><th>我们（2026-11-14）</th><th>别家公开的最好数字</th><th>能不能直接比</th></tr>
+      <tr><td>分割</td><td>T-mIoU 87.4%（公平测试集 174 个）；真实缺牙检出 55%</td><td>TeethSplineSeg 92.6%、3DTeethSAM 91.9%</td><td class="w">测试集划分不同，要在同一批扫描上跑他们的权重才算数（有代码和权重，待做）</td></tr>
+      <tr><td>牙冠生成</td><td>和天然牙 Chamfer 0.27 mm；邻接有缝 3.5%；高度和天然牙一致</td><td>DMC Chamfer 0.062（归一化坐标）；CrownGen 临床不劣于技工</td><td class="w">不能：DMC 不是毫米、真值是技工设计；我们的真值是天然牙。CrownGen 有代码和示例数据，可以拿来在我们的评分卡上跑</td></tr>
+      <tr><td>颈缘线</td><td>误差中位数 0.038–0.053 mm（单独代型）</td><td>Alsheghri 70/78 例在 200 μm 内；MADCrowner Hausdorff 0.33 mm</td><td class="w">量法不同（中位数 / 比例 / 最大误差）；我们还没在整颌口扫上测</td></tr>
+      <tr><td>速度</td><td>一颗牙整单约 1.5 分钟（CPU，含分割）</td><td>3Shape 90 秒、先临 60 秒（厂商）</td><td class="w">同一量级</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>跟踪方式</h2>
+    <ul>
+      <li>每轮大迭代前：搜 arXiv / MICCAI / MedIA 近 3 个月的牙冠生成、分割、颈缘线论文，有代码的 clone 下来看；</li>
+      <li>每月一次：更新这页的时间线和“我们和他们比”；厂商新版本（3Shape、exocad、先临、Dentbird）看发布说明；</li>
+      <li>有权重的方法尽量放到我们的评分卡上跑，避免只比各自报告的数字。</li>
+    </ul>
+    <p class="src">来源：各论文 arXiv 页面和代码仓库；厂商官网与 Dental Tribune 等报道。详细的核实过程和更正记录在仓库 docs/research-log.md、docs/industry-landscape.md。</p>
+  </section>
+</div>
+<script src="toc.js" defer></script>
+</body>
+</html>

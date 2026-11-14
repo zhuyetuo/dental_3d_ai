@@ -235,3 +235,15 @@ details.fold form::before { content: none; }
 .demos button { padding: 9px 34px 9px 13px; }
 .demos small { display: none; }
 .demos li.open small { display: block; margin-top: -4px; }
+
+/* 结果里的两步：① 分割 ② 生成牙 */
+.steps { display: grid; gap: 10px; margin: 6px 0 14px; }
+.step { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--raised); display: grid; gap: 6px; }
+.step h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--fg); }
+.step h3 i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+  display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; }
+.step p { margin: 0; }
+.step ul.pick { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.step ul.pick small { margin-left: 6px; color: var(--muted); }
+.step button.ghost { background: transparent; border: 1px solid var(--line); color: var(--fg); }
+.step button:disabled { opacity: 0.5; cursor: default; }

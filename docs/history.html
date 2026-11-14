@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>来时路 · dental_3d_ai</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+<link rel="stylesheet" href="site.css">
+<style>
+.tl{display:flex;flex-direction:column;gap:0;border-left:2px solid var(--line);margin-left:6px}
+.ev{position:relative;padding:0 0 22px 22px;display:flex;flex-direction:column;gap:6px}
+.ev::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--panel);border:2px solid var(--muted)}
+.ev.ok::before{border-color:var(--good);background:var(--good)}
+.ev.no::before{border-color:var(--bad)}
+.ev.mid::before{border-color:var(--warn)}
+.ev .d{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ev h3{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.ev p{margin:0;max-width:78ch;color:var(--fg)}
+.ev .num{font-family:var(--display);font-variant-numeric:tabular-nums}
+.ev .num s{color:var(--bad);margin-right:4px}
+.ev .num b{color:var(--good)}
+.ev img{max-width:min(560px,100%);border-radius:8px;border:1px solid var(--line);background:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.filter button{background:var(--panel);color:var(--muted);border:1px solid var(--line);border-radius:14px;padding:3px 12px;font:inherit;font-size:13px;cursor:pointer}
+.filter button.on{color:var(--fg);border-color:var(--accent)}
+.lesson{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:flex;flex-direction:column;gap:4px}
+.lesson b{font-family:var(--display)}
+</style>
+</head>
+<body>
+<nav><div class="in"><span class="brand">Dental <b>3D</b> AI</span>
+<a href="index.html">总览</a><a href="segmentation.html">牙齿分割</a><a href="generation.html">牙齿生成</a><a href="margin.html">颈缘线</a>
+<a class="on" href="history.html">来时路</a><a href="landscape.html">业界进展</a><a href="ideas.html">想法清单</a>
+<a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-14</div>
+    <h1>来时路：每一轮试了什么、结果怎样</h1>
+    <p class="lead">成功的、失败的都记。卡住的时候回头看：哪类改法有效、哪类总是白费，往往比再想一个新点子更有用。
+    <span class="state ok">● 采用</span> <span class="state bad">● 没采用</span> <span class="state mid">● 部分 / 默认关闭</span></p>
+  </header>
+
+  <section>
+    <h2>回头看：到目前为止的规律</h2>
+    <div class="two">
+      <div class="lesson"><b>1. 先看失败病例，常比重新训练有效</b><span>真实缺牙检出 43% → 55% 靠的是“合并被切开的牙”这条后处理，模拟闭合缺隙重训只多了 2 个点；咬合“够不着就抬、穿过去的磨掉”也是改做法不是改模型。</span></div>
+      <div class="lesson"><b>2. 距离指标好 ≠ 牙冠好看</b><span>真牙细节库、扩散 v1 外观更像真牙，但和真牙的距离反而变大。所以评分卡加了邻接、咬合、牙尖窝沟，按“先整体形状、再咬合面”的顺序判断。</span></div>
+      <div class="lesson"><b>3. 组合比替换好</b><span>扩散模型单独用形状偏，回归模型 D 单独用细节平；D 出形状、扩散补细节，两边的长处都拿到（11-14）。</span></div>
+      <div class="lesson"><b>4. 直接往损失里加约束容易牺牲形状</b><span>模型 E 加外形尺寸 / 邻牙间隙损失，挤进邻牙 25% → 52%。约束放在生成后的调整（或扩散采样时逐像素限制）更稳。</span></div>
+      <div class="lesson"><b>5. 模拟数据和真实数据差得远</b><span>模拟缺牙检出 9 成，真实缺牙只有 4 成；模拟的闭合缺隙只是平移，真实的牙会倾斜、旋转。要尽早拿真实数据测。</span></div>
+      <div class="lesson"><b>6. 训练和推理的输入要一致</b><span>模型 B 训练时对颌是裁过的、推理时给整颌，结果整体偏高 0.64 mm；改成同样的裁法（D）就好了。</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>时间线</h2>
+    <div class="chips filter" id="filter">
+      <button class="on" data-k="all">全部</button><button data-k="seg">分割</button><button data-k="gen">牙冠生成</button>
+      <button data-k="margin">颈缘线</button><button data-k="eval">评估</button><button data-k="web">网页 / 工程</button>
+    </div>
+    <div class="tl" id="tl">
+
+      <div class="ev ok" data-k="gen"><div class="d">2026-11-14</div>
+        <h3>D 出形状、扩散模型补细节<span class="tag">牙冠生成</span></h3>
+        <p>D 的牙冠投到径向深度图，加噪到 600/1000 步再去噪，每步把低频换回 D 的。不需要重新训练。网页默认生成器换成它。</p>
+        <p class="num">相对邻牙高度 <s>+0.13</s><b>0.00 mm</b> · 咬合接触面积 <s>7.4</s><b>4.5 mm²</b> · 挤进邻牙 <s>25%</s><b>21%</b> · 形状误差 <s>0.279</s><b>0.272 mm</b></p>
+        <img src="images/refine_metrics.png" alt="D+扩散评分卡" loading="lazy"></div>
+
+      <div class="ev no" data-k="gen"><div class="d">2026-11-14</div>
+        <h3>扩散模型第一版（径向深度图）<span class="tag">牙冠生成</span></h3>
+        <p>3.4 万颗牙、30 轮、2.5 小时。咬合接触面积、挤进邻牙更像天然牙，但整体形状明显更差。启发了上面的组合做法。</p>
+        <p class="num">形状误差 <s>0.28</s> → 0.37 mm · 中央窝偏差 0.84 → 1.80 mm</p>
+        <img src="images/radial_diffusion_v1.png" alt="扩散 v1" loading="lazy"></div>
+
+      <div class="ev ok" data-k="eval"><div class="d">2026-11-14</div>
+        <h3>评分卡加文献指标<span class="tag">评估</span></h3>
+        <p>牙尖 / 中央窝标志点误差、RMSE、Hausdorff、虚拟咬合纸面积（照 CrownGen、MADCrowner 等论文的量法）。已知问题：低矮的磨牙牙尖会漏检。</p></div>
+
+      <div class="ev no" data-k="gen"><div class="d">2026-11-14</div>
+        <h3>模型 E：外形尺寸 + 邻牙间隙进损失<span class="tag">牙冠生成</span></h3>
+        <p>想让评分卡直接当损失。结果牙冠被撑大。</p>
+        <p class="num">挤进邻牙 <s>25%</s> → 52%</p></div>
+
+      <div class="ev ok" data-k="gen"><div class="d">2026-11-14</div>
+        <h3>生成模型看对颌（模型 D）+ 封底后补做邻接<span class="tag">牙冠生成</span></h3>
+        <p>每个点看最近的 8 个对颌点；对颌按“牙冠上方 4 mm 厚的一片”裁剪，训练和推理一致。封底会切掉接触点，封底后在实体上再调一次邻接。</p>
+        <p class="num">直接输出穿进对颌 <s>48%</s><b>5%</b> · 邻接有缝 <s>38%</s><b>3.9%</b> · 要求接触却没咬上 <s>6.6%</s><b>1.3%</b></p>
+        <img src="images/occlusion_metrics.png" alt="对颌模型评分卡" loading="lazy"></div>
+
+      <div class="ev ok" data-k="gen"><div class="d">2026-11-14</div>
+        <h3>咬合调整改成“够不着就抬、穿过去的磨掉”<span class="tag">牙冠生成</span></h3>
+        <p>以前整颗牙往下平移到不碰，89% 完全咬不上。现在照技工的做法两步走。点到曲面距离搬到显卡上算。</p>
+        <p class="num">目标“刚好接触”时没有接触 <s>89%</s><b>~1%</b></p></div>
+
+      <div class="ev ok" data-k="eval"><div class="d">2026-11-13</div>
+        <h3>牙冠质量评分卡<span class="tag">评估</span></h3>
+        <p>同一套量法量天然牙和生成牙，天然牙的分布就是及格线：邻接、咬合、形态、和真牙的误差。Bite2Text 60 位患者、235 颗牙。顺带查出邻接调整常常没生效、STL 导出失败两个 bug。</p></div>
+
+      <div class="ev ok" data-k="seg"><div class="d">2026-11-13</div>
+        <h3>合并“被切成两个牙号的一颗牙”<span class="tag">分割</span></h3>
+        <p>看失败病例发现：间隙闭合时模型把一颗牙切成两个号来凑 14 颗。后处理里合并。</p>
+        <p class="num">真实缺牙检出 <s>43%</s><b>55%</b>（含相邻牙位 72%）· 代价：牙齐全时误报 1.3% → 3.4%</p></div>
+
+      <div class="ev mid" data-k="seg"><div class="d">2026-11-13</div>
+        <h3>训练数据加“缺牙且间隙闭合”<span class="tag">分割</span></h3>
+        <p>方向对，但模拟的闭合只是平移，和真实病例差距大。</p>
+        <p class="num">真实缺牙检出 41% → 43%</p></div>
+
+      <div class="ev no" data-k="seg eval"><div class="d">2026-11-13</div>
+        <h3>真实缺牙测试（Bite2Text）<span class="tag">评估</span></h3>
+        <p>医生报告里抽出 286 颗确认缺失的恒牙。模拟缺牙检出 9 成，真实只有 41%：第一次看清模拟和真实的差距。</p></div>
+
+      <div class="ev mid" data-k="gen"><div class="d">2026-11-13</div>
+        <h3>真牙细节库<span class="tag">牙冠生成</span></h3>
+        <p>学习模型给外形，从真牙库里贴牙尖窝沟。外观更有细节，但误差略大。默认关闭。</p>
+        <p class="num">单颗缺失 0.30 → 0.33 mm</p>
+        <img src="images/generation_detail.png" alt="真牙细节库" loading="lazy"></div>
+
+      <div class="ev ok" data-k="margin"><div class="d">2026-11-13</div>
+        <h3>颈缘线加入 78 个各牙位代型<span class="tag">颈缘线</span></h3>
+        <p class="num">各牙位误差中位数 <s>0.085</s><b>0.038 mm</b> · 最差一例 <s>2.17</s><b>0.46 mm</b></p></div>
+
+      <div class="ev ok" data-k="gen"><div class="d">2026-11-12</div>
+        <h3>学习式缺失牙生成（模板变形网络）<span class="tag">牙冠生成</span></h3>
+        <p>网络看其余牙齿，直接把模板牙变形成缺失牙。比对侧镜像 / 标准模板准，但表面偏平滑。</p>
+        <p class="num">单颗缺失 <s>0.47</s><b>0.30 mm</b> · 左右都缺 <s>0.70</s><b>0.32 mm</b></p>
+        <img src="images/generation.png" alt="学习式生成" loading="lazy"></div>
+
+      <div class="ev ok" data-k="seg"><div class="d">2026-11-12</div>
+        <h3>分割：模拟缺牙训练 + 全局自注意力<span class="tag">分割</span></h3>
+        <p class="num">幻影牙 <s>41%</s><b>0%</b> · 模拟缺牙检出 <s>23%</s><b>91%</b></p>
+        <img src="images/segmentation_missing.png" alt="缺牙分割" loading="lazy"></div>
+
+      <div class="ev ok" data-k="margin"><div class="d">2026-11-12</div>
+        <h3>学习式颈缘线（单独代型）<span class="tag">颈缘线</span></h3>
+        <p>不需要初始线。切牙测试集 0.085 mm（几何方法约 0.13 mm）。还没接进整颌流程。</p></div>
+
+      <div class="ev ok" data-k="eval"><div class="d">2026-11-01</div>
+        <h3>公平测试集 + 第二轮调研<span class="tag">评估</span></h3>
+        <p>Teeth3DS 两套划分的测试集有 426 个扫描在对方训练集里，统一用交集 174 个。生成评估加双向 Chamfer、F-score（mm）。</p></div>
+
+      <div class="ev ok" data-k="seg web"><div class="d">2026-10-31</div>
+        <h3>第一次用真实口扫测，修暴露出来的问题<span class="tag">工程</span></h3>
+        <p>上颌坐标系、编号顺序、孤立顶点（7%）、Poseidon3D 左右手性相反…… CPU 基线、DGCNN、模板库、游离端统计、任务队列。</p></div>
+
+      <div class="ev ok" data-k="seg gen margin web"><div class="d">2026-10-30</div>
+        <h3>项目骨架<span class="tag">起点</span></h3>
+        <p>分割 → 缺牙检测 → 生成 → 颈缘线 → 预备体牙冠的完整流程（全部几何方法 + TGNet 服务）、标注编辑器、编号纠错、Docker 部署。</p></div>
+    </div>
+  </section>
+  <footer>每一轮的完整数字和做法在 <a href="https://github.com/zhuyetuo/dental_3d_ai/blob/main/docs/results.md">docs/results.md</a>；提交记录在代码仓库。</footer>
+</div>
+<script>
+document.getElementById('filter').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#filter button').forEach(x => x.classList.toggle('on', x === b));
+  const k = b.dataset.k;
+  document.querySelectorAll('#tl .ev').forEach(ev => { ev.hidden = k !== 'all' && !ev.dataset.k.split(' ').includes(k); });
+});
+</script>
+<script src="toc.js" defer></script>
+</body>
+</html>

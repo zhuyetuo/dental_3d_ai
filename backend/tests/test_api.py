@@ -50,6 +50,37 @@ def test_full_flow(client, tmp_path):
     assert [c["id"] for c in client.get("/api/cases").json()] == [case_id]
 
 
+def test_choose_teeth_to_generate(client, tmp_path):
+    case_id = client.post("/api/cases", data={"jaw": "lower", "generate": "none"},
+                          files=_files(tmp_path)).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["status"] == "done", case["error"]
+    assert [m["fdi"] for m in case["report"]["missing"]] == [36] and case["report"]["generated"] == []
+    assert client.put(f"/api/cases/{case_id}/generate", json={"teeth": [36]}).status_code == 200
+    client.post(f"/api/cases/{case_id}/run")
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert [g["fdi"] for g in case["report"]["generated"]] == [36]
+    assert client.put(f"/api/cases/{case_id}/generate", json={"teeth": [99]}).status_code == 400
+
+
+def test_resegment_uses_model(client, tmp_path, monkeypatch, fake_segmenter_url):
+    monkeypatch.setenv("SEGMENTER_URL", fake_segmenter_url)
+    case_id = _upload(client, tmp_path).json()["id"]
+    client.post(f"/api/cases/{case_id}/run")
+    assert client.get(f"/api/cases/{case_id}").json()["report"]["segmenter"] == "label_file"
+    assert client.post(f"/api/cases/{case_id}/resegment").status_code == 202
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["status"] == "done", case["error"]
+    assert case["report"]["segmenter"] == "tgnet" and "labels" not in case["files"]
+
+
+def _files(tmp_path):
+    mesh, labels = synthetic_arch("lower", missing=(36,))
+    save_labels(tmp_path / "l.json", labels, "lower")
+    return {"mesh": ("lower.ply", io.BytesIO(mesh.export(file_type="ply"))), "labels": ("lower.json", (tmp_path / "l.json").open("rb"))}
+
+
 def test_without_labels_or_segmenter_fails_cleanly(client, tmp_path, monkeypatch):
     monkeypatch.delenv("SEGMENTER_URL", raising=False)
     case_id = _upload(client, tmp_path, with_labels=False).json()["id"]

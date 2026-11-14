@@ -105,6 +105,7 @@ def process_case(case_id: str) -> None:
             fix_numbering=os.environ.get("NUMBERING_FIX", "1") != "0",
             prepared_teeth=case.get("prepared_teeth", []),
             margin_overrides=_margin_overrides(case),
+            generate_teeth=case.get("generate_teeth"),
         )
         comparison = _compare_with_originals(case_id, files, report)
         if comparison:

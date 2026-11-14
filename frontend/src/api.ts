@@ -55,6 +55,8 @@ export interface Case {
   finished_at?: string;
   label_edits?: { version: number; file: string; created_at: string; changed_vertices: number }[];
   prepared_teeth?: number[];
+  /** 只生成这些缺失牙；null / 没有 = 检测到的全部，[] = 只分割 */
+  generate_teeth?: number[] | null;
   margin_edits?: { version: number; file: string; created_at: string; teeth: number[] }[];
   /** 从示例病例创建 */
   demo?: { id: string; title: string };
@@ -89,6 +91,13 @@ export const api = {
   getCase: (id: string) => fetch(`/api/cases/${id}`).then((r) => json<Case>(r)),
   createCase: (form: FormData) => fetch("/api/cases", { method: "POST", body: form }).then((r) => json<Case>(r)),
   runCase: (id: string) => fetch(`/api/cases/${id}/run`, { method: "POST" }).then((r) => json<Case>(r)),
+  resegment: (id: string) => fetch(`/api/cases/${id}/resegment`, { method: "POST" }).then((r) => json<Case>(r)),
+  setGenerate: (id: string, teeth: number[] | null) =>
+    fetch(`/api/cases/${id}/generate`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teeth }),
+    }).then((r) => json<Case>(r)),
   saveLabels: (id: string, labels: number[]) =>
     fetch(`/api/cases/${id}/labels`, {
       method: "PUT",
