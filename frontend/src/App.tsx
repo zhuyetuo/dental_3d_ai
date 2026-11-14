@@ -22,6 +22,8 @@ export function App() {
   const [current, setCurrent] = useState<Case | null>(null);
   const [cervical, setCervical] = useState<Record<string, number[][]>>();
   const [showCervical, setShowCervical] = useState(true);
+  const [showAntagonist, setShowAntagonist] = useState(true);
+  const [showOriginal, setShowOriginal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const onDirtyChange = useCallback((d: boolean) => setDirty(d), []);
@@ -135,6 +137,15 @@ export function App() {
     [current?.id, current?.status, version],
   );
 
+  const originalUrls = useMemo(
+    () =>
+      current
+        ? Object.entries(current.files)
+            .filter(([key]) => key.startsWith("original_"))
+            .map(([, name]) => api.fileUrl(current.id, name))
+        : [],
+    [current?.id],
+  );
   const report = current?.report;
   return (
     <div className="layout">
@@ -213,6 +224,19 @@ export function App() {
             {current.error && <p className="error">{current.error}</p>}
             {report && (
               <>
+                {report.generated.length > 0 && (
+                  <p className="generated-list">
+                    生成的牙：
+                    {report.generated.map((g) => (
+                      <b key={g.fdi}>{g.fdi}</b>
+                    ))}
+                  </p>
+                )}
+                <ul className="legend">
+                  <li><i style={{ background: "#19d3e6" }} />生成的牙（牙上有标签）</li>
+                  {originalUrls.length > 0 && <li><i style={{ background: "#ffc857" }} />原始牙</li>}
+                  {current.files.antagonist && <li><i style={{ background: "#d5dde8" }} />对颌</li>}
+                </ul>
                 <p>识别到的牙齿：{report.teeth.join(", ")}</p>
                 <p>
                   分割来源：{report.segmenter === "manual" ? "人工修正" : report.segmenter}
@@ -288,6 +312,18 @@ export function App() {
                   <input type="checkbox" checked={showCervical} onChange={(e) => setShowCervical(e.target.checked)} />
                   显示牙颈线
                 </label>
+                {originalUrls.length > 0 && (
+                  <label className="inline">
+                    <input type="checkbox" checked={showOriginal} onChange={(e) => setShowOriginal(e.target.checked)} />
+                    叠加原始牙（和生成的牙对比）
+                  </label>
+                )}
+                {current.files.antagonist && (
+                  <label className="inline">
+                    <input type="checkbox" checked={showAntagonist} onChange={(e) => setShowAntagonist(e.target.checked)} />
+                    显示对颌（半透明）
+                  </label>
+                )}
               </>
             )}
           </section>
@@ -314,6 +350,10 @@ export function App() {
             generatedUrls={generatedUrls}
             cervicalLines={cervical}
             showCervical={showCervical}
+            antagonistUrl={current.files.antagonist ? api.fileUrl(current.id, current.files.antagonist) : undefined}
+            showAntagonist={showAntagonist}
+            originalUrls={originalUrls}
+            showOriginal={showOriginal}
           />
         ) : (
           <Viewer meshUrl={current ? api.fileUrl(current.id, current.files.mesh) : undefined} />

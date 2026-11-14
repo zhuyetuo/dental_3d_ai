@@ -84,6 +84,9 @@ docker compose --profile gpu up --build
 首页左下的“示例病例”里点一个就能跑（缺牙生成、预备体牙冠、自动分割等 6 个，数据在仓库 `demo/` 目录，不用自己准备文件），
 处理完在“病例”列表里点开看三维结果。
 
+自带示例都是单颌的（Teeth3DS 的上下颌不在咬合位）。手里有咬合对齐的上下颌口扫（Bite2Text）时，可以生成**上下颌成对**的本地示例（不提交，数据许可不允许放进公开仓库）：`python scripts/make_bite_demos.py --zip <Bite2Text.zip> --labels data/bite_labels`。
+结果页里生成的牙是青色并带“生成 <牙号>”标签；示例可以勾选“叠加原始牙”和被去掉的真牙对比，有对颌时半透明显示对颌。
+
 连不上 Docker Hub（拉 python / node / nginx / redis 镜像超时）时用镜像站：
 
 ```bash

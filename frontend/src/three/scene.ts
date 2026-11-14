@@ -105,10 +105,44 @@ export interface Overlays {
   generatedUrls: string[];
   cervicalLines?: Record<string, number[][]>;
   showCervical: boolean;
+  antagonistUrl?: string;
+  showAntagonist?: boolean;
+  originalUrls?: string[];
+  showOriginal?: boolean;
+}
+
+export const GENERATED_COLOR = 0x19d3e6;
+export const ORIGINAL_COLOR = 0xffc857;
+
+/** 贴在牙上的小标签（始终朝向相机、不被遮挡）：一眼看出哪颗是生成的。 */
+function makeTag(text: string, at: THREE.Vector3, color: string): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 96;
+  const g = canvas.getContext("2d")!;
+  g.fillStyle = "rgba(7, 13, 26, 0.9)";
+  g.strokeStyle = color;
+  g.lineWidth = 6;
+  g.beginPath();
+  g.roundRect(4, 4, 248, 88, 40);
+  g.fill();
+  g.stroke();
+  g.fillStyle = "#ffffff";
+  g.font = "bold 44px system-ui, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(text, 128, 50);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true }));
+  sprite.scale.set(6.4, 2.4, 1); // mm
+  sprite.position.copy(at);
+  sprite.renderOrder = 10;
+  sprite.raycast = () => {};
+  sprite.userData = { tag: true };
+  return sprite;
 }
 
 /** 生成牙（高亮蓝色）和牙颈线（黄色线框）。返回取消函数，防止旧请求晚到时加进场景。 */
-export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls, cervicalLines, showCervical }: Overlays) {
+export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls, cervicalLines, showCervical, antagonistUrl, showAntagonist, originalUrls, showOriginal }: Overlays) {
   useEffect(() => {
     const group = ctx.current?.overlays;
     if (!group) return;
@@ -123,11 +157,40 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls
         geometry.computeBoundingBox();
         const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
         geometry.translate(-center.x, -center.y, -center.z);
-        const material = new THREE.MeshStandardMaterial({ color: 0x4fc3f7, roughness: 0.35, metalness: 0.05 });
+        const material = new THREE.MeshStandardMaterial({ color: GENERATED_COLOR, emissive: 0x0a4a55, roughness: 0.3, metalness: 0.05 });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.copy(center);
         const fdi = Number(/(?:tooth|crown)_(\d+)\.stl/.exec(url)?.[1] ?? NaN);
         mesh.userData = { generated: true, fdi, url, center: center.clone() };
+        group.add(mesh);
+        if (Number.isFinite(fdi)) group.add(makeTag(`生成 ${fdi}`, center, "#19d3e6"));
+      });
+    }
+    if (showOriginal) {
+      // 示例里被去掉的真牙：半透明金色叠在生成的牙上，直接看差在哪
+      for (const url of originalUrls ?? []) {
+        loadGeometry(url).then((geometry) => {
+          if (cancelled) return;
+          geometry.computeVertexNormals();
+          const material = new THREE.MeshStandardMaterial({ color: ORIGINAL_COLOR, roughness: 0.4, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.userData = { original: true };
+          mesh.raycast = () => {};
+          group.add(mesh);
+        });
+      }
+    }
+    if (showAntagonist && antagonistUrl) {
+      // 对颌：半透明，不参与拾取，只用来看生成的牙冠和它的咬合关系
+      loadGeometry(antagonistUrl).then((geometry) => {
+        if (cancelled) return;
+        geometry.computeVertexNormals();
+        const material = new THREE.MeshStandardMaterial({
+          color: 0xd5dde8, roughness: 0.6, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.userData = { antagonist: true };
+        mesh.raycast = () => {};
         group.add(mesh);
       });
     }
@@ -141,5 +204,5 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, { generatedUrls
     return () => {
       cancelled = true;
     };
-  }, [ctx, generatedUrls, cervicalLines, showCervical]);
+  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, showAntagonist, originalUrls, showOriginal]);
 }

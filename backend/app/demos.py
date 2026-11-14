@@ -62,14 +62,25 @@ def materialize(demo: dict, target_dir: Path) -> dict[str, str]:
     with gzip.open(_scan_dir(demo) / f"{stem}.json.gz", "rt") as f:
         labels = np.asarray(json.load(f)["labels"], dtype=np.int64)
     jaw = demo["jaw"]
+    originals = {}
+    for fdi in demo.get("missing", []):  # 被去掉的真牙留一份，网页上可以叠在生成的牙上对比
+        if (labels == fdi).any():
+            from dental_ai.geometry import tooth_mesh
+
+            tooth_mesh(mesh, labels, fdi).export(target_dir / f"original_{fdi}.stl")
+            originals[f"original_{fdi}"] = f"original_{fdi}.stl"
     if demo.get("missing"):
         mesh, labels = simulate_missing(mesh, labels, jaw, demo["missing"])
     for fdi in demo.get("prepared", []):
         mesh, _ = simulate_preparation(mesh, labels, jaw, fdi)
-    files = {"mesh": "mesh.obj"}
+    files = {"mesh": "mesh.obj", **originals}
     mesh.export(target_dir / "mesh.obj")  # trimesh 写 OBJ 保留全部顶点，标签仍一一对应
     if demo.get("labels", True):
         save_labels(target_dir / "labels.json", labels, jaw, patient_id=stem)
         files["labels"] = "labels.json"
+    if demo.get("antagonist"):  # 上下颌成对的示例：另一个颌原样当对颌（和主扫描咬合对齐）
+        with gzip.open(_scan_dir(demo) / f"{demo['antagonist']}.obj.gz", "rb") as f:
+            (target_dir / "antagonist.obj").write_bytes(f.read())
+        files["antagonist"] = "antagonist.obj"
     return files
 
