@@ -1,0 +1,19 @@
+# TeethSplineSeg（PTv3 + spconv）对比 / 微调用的 GPU 镜像，和训练镜像同一个底：PyTorch 2.7.1 + CUDA 12.8。
+# FLASH=1 时在构建里编译 FlashAttention（要 30–60 分钟；编不成也没关系，代码会退回 PyTorch 自带的融合注意力，结果相同、慢一些）。
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel
+
+ARG FLASH=1
+ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive \
+    TORCH_CUDA_ARCH_LIST="8.6;8.9;9.0;12.0" \
+    PYTHONPATH=/root/zyt/dental_3d_ai/ml
+RUN apt-get update && apt-get install -y --no-install-recommends git wget curl libgl1 libglib2.0-0 libspatialindex-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install torch-scatter torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+RUN pip install spconv-cu126 "lightning==2.5.6" "pytorch-lightning<2.6" torchmetrics tensorboard "numpy<2" "scipy>=1.10" \
+    scikit-learn trimesh PyMaxflow addict timm tqdm pyyaml ninja packaging psutil rtree networkx
+RUN if [ "$FLASH" = "1" ]; then \
+      MAX_JOBS=${MAX_JOBS:-8} pip install flash-attn==2.8.3 --no-build-isolation \
+      || echo "FlashAttention 没编译成：PTv3 会退回 PyTorch 自带的融合注意力（结果相同，慢一些）"; \
+    fi
+WORKDIR /root/zyt/dental_3d_ai

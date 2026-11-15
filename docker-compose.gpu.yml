@@ -1,0 +1,51 @@
+# GPU 训练 / 评估环境（和网页服务的 docker-compose.yml 分开）。换服务器时用它，不用再一个个装 Python 环境。
+#
+#   docker compose -f docker-compose.gpu.yml build train            # 第一次构建（拉基础镜像约 8 GB）
+#   docker compose -f docker-compose.gpu.yml run --rm train bash scripts/gpu/train_toothgen_antagonist.sh
+#   docker compose -f docker-compose.gpu.yml run --rm splineseg bash scripts/gpu/splineseg_eval.sh
+#
+# 前提：宿主机装好 NVIDIA 驱动（5090 要 570 以上）和 NVIDIA Container Toolkit，见 docker/README.md。
+# 连不上 Docker Hub 时：DOCKER_REGISTRY=docker.m.daocloud.io docker compose -f docker-compose.gpu.yml build
+#
+# 路径和直接装环境时完全一样（仓库在 ~/zyt/dental_3d_ai、数据在 ~/zyt/dental_data），现有脚本不用改；
+# 脚本里的 “. .venv/bin/activate” 在容器里由 docker/venv-shim 接住（什么都不做，直接用镜像里的 Python）。
+
+x-gpu: &gpu
+  gpus: all
+  ipc: host            # PyTorch 数据加载进程靠共享内存传数据，容器默认只有 64 MB
+  ulimits:
+    memlock: -1
+    stack: 67108864
+  working_dir: /root/zyt/dental_3d_ai
+  environment:
+    HOME: /root
+    NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+services:
+  train:
+    <<: *gpu
+    image: dental3d-train
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.train
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-docker.io}
+    volumes:
+      - .:/root/zyt/dental_3d_ai
+      - ${DENTAL_DATA:-../dental_data}:/root/zyt/dental_data
+      - ./docker/venv-shim:/root/zyt/dental_3d_ai/.venv:ro
+
+  splineseg:
+    <<: *gpu
+    image: dental3d-splineseg
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.splineseg
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-docker.io}
+        FLASH: ${FLASH:-1}
+    volumes:
+      - .:/root/zyt/dental_3d_ai
+      - ${DENTAL_DATA:-../dental_data}:/root/zyt/dental_data
+      - ./docker/venv-shim:/root/zyt/dental_3d_ai/.venv:ro
+      - ./docker/venv-shim:/root/zyt/dental_3d_ai/.venv-splineseg:ro

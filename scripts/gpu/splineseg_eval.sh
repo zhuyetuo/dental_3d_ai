@@ -14,6 +14,8 @@ OUT=$ROOT/runs/splineseg
 if [ ! -d "$SS" ]; then
   git -c http.proxy= -c https.proxy= clone https://github.com/blackbird2003/TeethSplineSeg.git "$SS"
   git -C "$SS" checkout "$COMMIT"
+  # 我们的改动：无标注口扫也能预处理、没有 FlashAttention 时用 PyTorch 自带的融合注意力、--init_weights 微调入口
+  git -C "$SS" apply "$ROOT/scripts/gpu/teethsplineseg.patch"
 fi
 
 # 权重：Release “checkpoint” 里作者上传的 best_ckpt.ckpt；下载不到就手动下载放到 $CKPT

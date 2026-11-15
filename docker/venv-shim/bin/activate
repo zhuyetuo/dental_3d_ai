@@ -1,0 +1,1 @@
+# 容器里用镜像自带的 Python，不需要虚拟环境（docker-compose.gpu.yml 把这个目录挂到 .venv、.venv-splineseg）
