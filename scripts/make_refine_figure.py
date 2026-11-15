@@ -81,6 +81,7 @@ def fig_fit(args, out: Path):
                 solids.append(trimesh.load(Path(tmp) / g["file"]))
                 note[key] = g.get("source")
         solids.append(real)
+        export_case(len(notes), f"{name} {fdi}", pid, fdi, ctx_mesh, lab2 > 0, ant, solids, center, up, outward)
         top, side = [], []
         for s in solids:
             c, _ = fit_colors(s, ant)
@@ -91,6 +92,43 @@ def fig_fit(args, out: Path):
         notes.append(note)
     F.grid(rows, ["shape model", "shape model + diffusion detail", "real tooth"], titles, out, panel=2.8)
     print(json.dumps(notes))
+
+
+def export_case(k, title, pid, fdi, ctx_mesh, tooth_flag, ant, solids, center, up, outward):
+    """网页“3D 交互 / 动图”用：周围的牙和牙龈（每个顶点是不是牙）、对颌、三种牙冠（形状模型、形状模型 + 扩散、真牙）。
+    坐标：x = 近远中、y = 咬合方向、z = 颊侧（朝外），原点在真牙中心。"""
+    out = ROOT / "docs/assets/refine"
+    out.mkdir(parents=True, exist_ok=True)
+    up = up / np.linalg.norm(up)
+    x = np.cross(up, outward)
+    R = np.stack([x / np.linalg.norm(x), up, outward])
+
+    def compact(m, flag=None):
+        f = np.asarray(m.faces)
+        used = np.unique(f)
+        remap = -np.ones(len(m.vertices), np.int64)
+        remap[used] = np.arange(len(used))
+        v = ((np.asarray(m.vertices)[used] - center) @ R.T).astype(np.float32)
+        return v, remap[f].astype(np.uint32), (None if flag is None else np.asarray(flag)[used].astype(np.uint8))
+
+    parts, meta = [], {"title": title, "patient": pid, "fdi": fdi, "parts": []}
+    cv, cf, cflag = compact(ctx_mesh, tooth_flag)
+    parts += [cv, cf, cflag]
+    meta["parts"].append({"name": "context", "verts": len(cv), "faces": len(cf), "flag": True})
+    av, af, _ = compact(ant)
+    parts += [av, af]
+    meta["parts"].append({"name": "antagonist", "verts": len(av), "faces": len(af)})
+    for name, m in zip(("shape", "shape_diffusion", "real"), solids):
+        v, f, _ = compact(m)
+        parts += [v, f]
+        meta["parts"].append({"name": name, "verts": len(v), "faces": len(f)})
+    with open(out / f"{k}.bin", "wb") as fh:
+        for a in parts:
+            b = a.tobytes()
+            fh.write(b)
+            if len(b) % 4:  # 后面的数组要按 4 字节对齐
+                fh.write(b"\0" * (4 - len(b) % 4))
+    (out / f"{k}.json").write_text(json.dumps(meta, ensure_ascii=False))
 
 
 def fig_metrics(args, out: Path):

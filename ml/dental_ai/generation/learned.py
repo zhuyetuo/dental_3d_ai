@@ -807,6 +807,69 @@ class LearnedGenerator:
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
 
+    def generate_many(self, ctx, fdis) -> dict:
+        """同一个颌里多颗牙一起生成（数据准备、批量评估用）：牙弓方向和牙齿采样只算一次，模型一次前向。
+        每颗目标牙的上下文 = 同颌其余牙（不含目标牙），规则和逐颗调用 generate 一样，只差采样的随机性。
+        返回 {牙号: GeneratedTooth}；不支持的牙（第三磨牙、上下文不足）不在结果里，不走 fallback。"""
+        import torch
+        import trimesh
+
+        from ..geometry import estimate_arch_frame
+        from .base import GeneratedTooth
+
+        arch = estimate_arch_frame(ctx.mesh, ctx.labels, ctx.jaw)
+        rot = canonical_rotation(arch, ctx.jaw)
+        labels = np.asarray(ctx.labels).copy()
+        labels[np.isin(labels, list(ctx.excluded_donors))] = 0
+        canon = trimesh.Trimesh(np.asarray(ctx.mesh.vertices) @ rot.T, ctx.mesh.faces, process=False)
+        fdi_all, pts_all, _ = _tooth_points(canon, labels, seed=0)
+        model = self._load()
+        ant6 = None
+        if getattr(model, "antagonist", False) and ctx.antagonist is not None and len(ctx.antagonist.vertices):
+            ant6 = antagonist_points(np.asarray(ctx.antagonist.vertices) @ rot.T, np.asarray(ctx.antagonist.vertex_normals) @ rot.T)
+        rows = []
+        for f in (int(v) for v in fdis):
+            if f % 10 == 8:
+                continue
+            keep = (fdi_all != f) & np.array([(g // 10 in (1, 2)) == (f // 10 in (1, 2)) for g in fdi_all], bool)
+            if keep.sum() < 2:
+                continue
+            try:
+                c, c_idx, origin = build_context(fdi_all[keep], pts_all[keep], f, np.random.default_rng(0))
+            except ValueError:
+                continue
+            flip = f // 10 in (2, 3)
+            sign = np.array([-1.0, 1.0, 1.0]) if flip else np.ones(3)
+            a6 = crop_antagonist(ant6, origin, np.random.default_rng(0)) if ant6 is not None else None
+            rows.append((f, c * sign, c_idx, origin, sign, flip, a6))
+        if not rows:
+            return {}
+        dev = self.device
+        args = [torch.tensor(np.stack([r[1] for r in rows]).astype(np.float32), device=dev),
+                torch.tensor(np.stack([r[2] for r in rows]).astype(np.int64), device=dev),
+                torch.tensor([target_class(r[0]) for r in rows], device=dev)]
+        if getattr(model, "antagonist", False):
+            shape = next(r[6].shape for r in rows if r[6] is not None) if any(r[6] is not None for r in rows) else None
+            if shape is not None:
+                a = np.stack([(r[6] * np.concatenate([r[4], r[4]])) if r[6] is not None else np.zeros(shape) for r in rows])
+                args += [torch.tensor(a.astype(np.float32), device=dev),
+                         torch.tensor([float(r[6] is not None) for r in rows], device=dev)]
+        with torch.no_grad():
+            pred = model(*args).cpu().numpy().astype(float)
+        faces0 = model.faces.cpu().numpy()
+        out = {}
+        for r, pr in zip(rows, pred):
+            f, _, _, origin, sign, flip, a6 = r
+            verts = (pr * sign + origin) @ rot
+            crown = trimesh.Trimesh(verts, faces0[:, ::-1] if flip else faces0, process=False)
+            if ((crown.triangles_center - verts.mean(axis=0)) * crown.face_normals).sum() < 0:
+                crown.invert()
+            info = {"source": f"learned:{self.model_path.name}", "placement": "learned", "gap_mm": None, "occlusal_drop_mm": 0.0,
+                    "antagonist_input": a6 is not None}
+            out[f] = GeneratedTooth(fdi=f, crown=crown, method=self.name, info=info)
+        return out
+
+
 def make_generator(model_path=None, template_dir=None, preferences=None):
     """有学习模型（参数或环境变量 GEN_MODEL）就用它、几何方法兜底；没有就用原来的对侧镜像 / 模板。"""
     import os

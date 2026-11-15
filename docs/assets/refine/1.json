@@ -1,0 +1,1 @@
+{"title": "molar 36", "patient": "F5075", "fdi": 36, "parts": [{"name": "context", "verts": 35872, "faces": 71280, "flag": true}, {"name": "antagonist", "verts": 50469, "faces": 100221}, {"name": "shape", "verts": 2081, "faces": 4158}, {"name": "shape_diffusion", "verts": 9143, "faces": 18282}, {"name": "real", "verts": 9587, "faces": 18704}]}

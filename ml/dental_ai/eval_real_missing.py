@@ -103,21 +103,29 @@ def _segmenter(model: str, orient: bool):
 
 
 def _run_one(args):
-    zip_path, pid, jaw, model, orient = args
+    zip_path, pid, jaw, model, orient = args[:5]
+    pred_dir = args[5] if len(args) > 5 else None
     import trimesh
 
     from .pipeline import check_arch_order, correct_numbering, detect_missing, merge_split_teeth, remove_small_islands
 
     row = {"patient": pid, "jaw": jaw}
     try:
-        z = zipfile.ZipFile(zip_path)
-        with tempfile.NamedTemporaryFile(suffix=".stl") as tmp:
-            tmp.write(z.read(f"{pid}/ios/ios_{jaw}.stl"))
-            tmp.flush()
-            mesh = trimesh.load(tmp.name)
-        seg = _segmenter(model, orient)
-        labels = seg.predict(mesh, jaw)
-        orientation = getattr(seg, "last", None)
+        if pred_dir:  # 外部模型的分割结果：网格是导出给它的标准朝向 OBJ，标签是它的预测（已转成 FDI）
+            from .io import load_labels
+
+            mesh = trimesh.load(Path(pred_dir).parent / "mesh" / jaw / pid / f"{pid}_{jaw}.obj", process=False)
+            labels = np.asarray(load_labels(Path(pred_dir) / f"{pid}_{jaw}.json")[0])
+            orientation = None
+        else:
+            z = zipfile.ZipFile(zip_path)
+            with tempfile.NamedTemporaryFile(suffix=".stl") as tmp:
+                tmp.write(z.read(f"{pid}/ios/ios_{jaw}.stl"))
+                tmp.flush()
+                mesh = trimesh.load(tmp.name)
+            seg = _segmenter(model, orient)
+            labels = seg.predict(mesh, jaw)
+            orientation = getattr(seg, "last", None)
         numbering = correct_numbering(mesh, labels, jaw, canonical_vertices=orientation.apply(mesh).vertices if orientation else None)
         labels = remove_small_islands(mesh, numbering.labels)
         labels, merged = merge_split_teeth(mesh, labels, jaw, points=orientation.apply(mesh).vertices if orientation else np.asarray(mesh.vertices))
@@ -130,7 +138,8 @@ def _run_one(args):
     return row
 
 
-def run(zip_path: Path, truth: dict, model: str, out: Path, workers: int, orient: bool, controls: int, limit: int | None, seed: int = 0) -> dict:
+def run(zip_path: Path, truth: dict, model: str, out: Path, workers: int, orient: bool, controls: int, limit: int | None, seed: int = 0,
+        pred_dir: str | None = None) -> dict:
     import multiprocessing as mp
 
     rng = np.random.default_rng(seed)
@@ -140,7 +149,9 @@ def run(zip_path: Path, truth: dict, model: str, out: Path, workers: int, orient
     if limit:
         cases, ctrl = cases[:limit], ctrl[: max(2, limit // 3)]
     names = set(zipfile.ZipFile(zip_path).namelist())
-    jobs = [(str(zip_path), pid, jaw, model, orient) for pid, jaw in cases + ctrl if f"{pid}/ios/ios_{jaw}.stl" in names]
+    jobs = [(str(zip_path), pid, jaw, model, orient, pred_dir) for pid, jaw in cases + ctrl if f"{pid}/ios/ios_{jaw}.stl" in names]
+    if pred_dir:
+        jobs = [j for j in jobs if (Path(pred_dir) / f"{j[1]}_{j[2]}.json").exists()]
     print(f"确认缺牙的颌 {len(cases)} 个，对照 {len(ctrl)} 个", flush=True)
     with mp.get_context("spawn").Pool(workers) as pool:
         rows = []
@@ -212,6 +223,7 @@ def main() -> None:
     r.add_argument("--no-orient", action="store_true", help="不做朝向归一化（口扫已经是 Teeth3DS 的标准朝向）")
     r.add_argument("--controls", type=int, default=80, help="报告完全没提缺牙的对照颌数")
     r.add_argument("--limit", type=int)
+    r.add_argument("--pred-dir", help="外部模型的分割结果（FDI json）；网格读同级 mesh/ 目录里导出的 OBJ")
     args = p.parse_args()
     if args.cmd == "extract":
         truth = extract(args.zip)
@@ -222,7 +234,7 @@ def main() -> None:
                           "primary_in_place": sum(len(v["primary_in_place"]) for v in with_m.values()),
                           "by_position": dict(sorted(Counter(t % 10 for v in with_m.values() for t in v["missing"]).items()))}))
     else:
-        run(args.zip, json.loads(args.truth.read_text()), args.model, args.out, args.workers, not args.no_orient, args.controls, args.limit)
+        run(args.zip, json.loads(args.truth.read_text()), args.model, args.out, args.workers, not args.no_orient, args.controls, args.limit, pred_dir=args.pred_dir)
 
 
 if __name__ == "__main__":

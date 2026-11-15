@@ -20,8 +20,11 @@
       box.dataset.active = v;
       if (!started[v]) {
         started[v] = true;
-        if (v === 'anim') startAnim(box);
-        if (v === '3d') start3d(box);
+        if (box.dataset.kind === 'crowns') { if (v !== 'static') startCrowns(box, v); }
+        else {
+          if (v === 'anim') startAnim(box);
+          if (v === '3d') start3d(box);
+        }
       }
     }));
   });
@@ -89,6 +92,108 @@
       }
       requestAnimationFrame(frame);
     });
+  }
+
+  // ---------- 牙冠对比（形状模型 / 形状模型 + 扩散 / 真牙）：3D 交互和自动旋转的动图 ----------
+  const CROWNS = [
+    { key: 'shape', label: '形状模型', color: 0xf0a24a },
+    { key: 'shape_diffusion', label: '形状模型 + 扩散补细节', color: 0x33c3d1 },
+    { key: 'real', label: '真牙', color: 0xf2d28b },
+  ];
+  function crownData(src) {
+    if (!cache[src]) cache[src] = Promise.all([fetch(src + '.json').then(r => r.json()), fetch(src + '.bin').then(r => r.arrayBuffer())]);
+    return cache[src].then(([m, buf]) => {
+      let o = 0;
+      const take = (T, n) => { const a = new T(buf, o, n); o += n * T.BYTES_PER_ELEMENT; if (o % 4) o += 4 - (o % 4); return a; };
+      const parts = {};
+      for (const p of m.parts) {
+        const v = take(Float32Array, p.verts * 3), f = take(Uint32Array, p.faces * 3);
+        parts[p.name] = { v, f, flag: p.flag ? take(Uint8Array, p.verts) : null };
+      }
+      return { meta: m, parts };
+    });
+  }
+  function libs() {
+    return window.THREE && THREE.OrbitControls ? Promise.resolve() : loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js')
+      .then(() => loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js'));
+  }
+  function startCrowns(box, mode) {
+    const pane = box.querySelector(`.vpane[data-view="${mode}"]`);
+    const host = pane.querySelector('.v3d');
+    const cases = box.dataset.cases.split(',');
+    host.textContent = '加载中…';
+    libs().then(() => {
+      host.textContent = '';
+      const W = host.clientWidth, H = Math.round(W * 0.56);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio)); renderer.setSize(W, H); renderer.setClearColor(0x0b1426);
+      host.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x2a3550, 0.85));
+      const dl = new THREE.DirectionalLight(0xffffff, 0.75); dl.position.set(8, 20, 18); scene.add(dl);
+      const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 500);
+      cam.position.set(20, 30, 46);
+      const ctl = new THREE.OrbitControls(cam, renderer.domElement); ctl.target.set(0, 1, 0); ctl.enableDamping = true;
+      if (mode === 'anim') { ctl.autoRotate = true; ctl.autoRotateSpeed = 2.2; }
+      const group = new THREE.Group(); scene.add(group);
+      let meshes = {}, ant = null, current = 'shape_diffusion', overlay = false;
+      const label = pane.querySelector('.vlabel');
+      function make(p, mat) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(p.v, 3)); geo.setIndex(new THREE.BufferAttribute(p.f, 1)); geo.computeVertexNormals();
+        if (p.flag) {
+          const c = new Float32Array(p.v.length);
+          for (let i = 0; i < p.flag.length; i++) {
+            const t = p.flag[i]; c[3 * i] = t ? 0.95 : 0.9; c[3 * i + 1] = t ? 0.92 : 0.6; c[3 * i + 2] = t ? 0.82 : 0.56;
+          }
+          geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+        }
+        const m = new THREE.Mesh(geo, mat); group.add(m); return m;
+      }
+      function show() {
+        for (const c of CROWNS) {
+          const m = meshes[c.key]; if (!m) continue;
+          const on = c.key === current || (overlay && c.key === 'real' && current !== 'real');
+          m.visible = on;
+          m.material.transparent = overlay && c.key === 'real' && current !== 'real';
+          m.material.opacity = m.material.transparent ? 0.45 : 1;
+        }
+        const c = CROWNS.find(x => x.key === current);
+        if (label) { label.textContent = c.label + (overlay && current !== 'real' ? ' ＋ 真牙（半透明）' : ''); label.style.color = '#' + c.color.toString(16).padStart(6, '0'); }
+        pane.querySelectorAll('.vcrown').forEach(b => b.classList.toggle('on', b.dataset.key === current));
+      }
+      function loadCase(i) {
+        crownData(cases[i]).then(({ meta, parts }) => {
+          group.clear(); meshes = {};
+          make(parts.context, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }));
+          ant = make(parts.antagonist, new THREE.MeshStandardMaterial({ color: 0xaab8d3, roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.35 }));
+          for (const c of CROWNS) meshes[c.key] = make(parts[c.key], new THREE.MeshStandardMaterial({ color: c.color, roughness: 0.55, side: THREE.DoubleSide }));
+          show();
+        });
+      }
+      // 控件：病例、牙冠、对颌、叠加真牙
+      const sel = pane.querySelector('.vcase');
+      if (sel) {
+        Promise.all(cases.map(c => fetch(c + '.json').then(r => r.json()))).then(ms => {
+          sel.innerHTML = ms.map((m, i) => `<option value="${i}">${m.title.replace('premolar', '前磨牙').replace('molar', '磨牙')}（${m.patient}）</option>`).join('');
+        });
+        sel.addEventListener('change', () => loadCase(+sel.value));
+      }
+      pane.querySelectorAll('.vcrown').forEach(b => b.addEventListener('click', () => { current = b.dataset.key; show(); }));
+      const ov = pane.querySelector('.voverlay'); if (ov) ov.addEventListener('click', () => { overlay = !overlay; ov.classList.toggle('on', overlay); show(); });
+      const opa = pane.querySelector('.vopa');
+      if (opa) opa.addEventListener('click', () => { if (!ant) return; const o = ant.material.opacity; ant.material.opacity = o < 0.2 ? 0.35 : o < 0.9 ? 1 : 0.05; ant.material.transparent = ant.material.opacity < 1; });
+      loadCase(0);
+      let last = 0, idx = 1;
+      (function loop(now) {
+        if (box.dataset.active === mode) {
+          if (mode === 'anim' && now - last > 2600) { last = now; idx = (idx + 1) % CROWNS.length; current = CROWNS[idx].key; show(); }
+          ctl.update(); renderer.render(scene, cam);
+        }
+        requestAnimationFrame(loop);
+      })(0);
+      window.addEventListener('resize', () => { const w = host.clientWidth, h = Math.round(w * 0.56); renderer.setSize(w, h); cam.aspect = w / h; cam.updateProjectionMatrix(); });
+    }).catch(e => { host.textContent = '3D 加载失败：' + e; });
   }
 
   // ---------- 3D 交互：真实牙冠 + 对颌，滑块调高低，按到对颌的距离上色 ----------

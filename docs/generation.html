@@ -37,6 +37,10 @@ td.w{white-space:normal;min-width:260px}
 .vhint{color:var(--muted);font-size:12px}
 .fig b{font-family:var(--display);font-size:17px}
 .fig span{font-size:14px;color:var(--muted);line-height:1.55}
+.vcrown,.voverlay{background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:3px 12px;font:inherit;font-size:13px;cursor:pointer}
+.vcrown.on,.voverlay.on{border-color:var(--accent);color:var(--accent)}
+.vcase{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:3px 8px;font:inherit;font-size:13px}
+.vlabel{font-weight:700}
 </style>
 </head>
 <body>
@@ -142,7 +146,15 @@ td.w{white-space:normal;min-width:260px}
       <figcaption>60 位没参加训练的患者、228 颗牙（Bite2Text），目标“刚好接触”，中位数。灰：天然牙；红：形状模型；青：形状模型 + 扩散。</figcaption>
     </figure>
     <figure>
-      <img src="images/refine_fit.png" alt="四颗牙：形状模型、形状模型+扩散、真牙，咬合面和颊侧">
+      <div class="views" data-kind="crowns" data-active="static" data-cases="assets/refine/0,assets/refine/1,assets/refine/2,assets/refine/3">
+        <div class="vbar"><button type="button" class="vbtn on" data-view="static">静态图</button><button type="button" class="vbtn" data-view="anim">动图</button><button type="button" class="vbtn" data-view="3d">3D 交互</button></div>
+        <div class="vpane" data-view="static"><img src="images/refine_fit.png" alt="四颗牙：形状模型、形状模型+扩散、真牙，咬合面和颊侧"></div>
+        <div class="vpane" data-view="anim" hidden><div class="v3d"></div><div class="vctl"><select class="vcase"></select><span class="vlabel"></span><span class="vhint">自动旋转，三种牙冠轮流显示</span></div></div>
+        <div class="vpane" data-view="3d" hidden><div class="v3d"></div><div class="vctl"><select class="vcase"></select>
+              <button type="button" class="vcrown" data-key="shape">形状模型</button><button type="button" class="vcrown on" data-key="shape_diffusion">形状模型 + 扩散</button><button type="button" class="vcrown" data-key="real">真牙</button>
+              <button type="button" class="voverlay">叠加真牙对比</button><button type="button" class="vopa">对颌：半透明 / 不透明 / 隐藏</button>
+              <span class="vlabel"></span><span class="vhint">拖动旋转 · 滚轮缩放 · 右键平移</span></div></div>
+      </div>
       <figcaption>磨牙、前磨牙各取形状模型形状误差 30%、70% 分位的两颗（不挑）。咬合面按到对颌的距离上色（黄 = 接触）：形状模型的黄色接触区成片，形状模型+扩散变成几个点，更像真牙。颊侧外形基本跟着形状模型。
       还不够的：窝沟仍比真牙浅、浅；34 的远中边缘多出一个小缺口（扩散模型在图边缘不稳定）。</figcaption>
     </figure>

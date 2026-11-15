@@ -25,16 +25,49 @@ FAR_SCALE = 8.0  # 上下文 / 对颌：r / 8 − 1（最远 16 mm → 1）；�
 STEPS = 1000
 
 
-def load_dir(dirs: list[Path]):
+def d_dir_for(data_dir: Path) -> Path:
+    """data/radial/<split> 对应的 D 深度图目录 data/radial_d/<split>（radial_dmaps.py 生成）。"""
+    data_dir = Path(data_dir)
+    return data_dir.parent.parent / "radial_d" / data_dir.name
+
+
+def load_dir(dirs: list[Path], with_d: bool = False):
+    """with_d：同时读 D（学习模型）在每颗牙上的输出深度图，只留 D 生成成功的牙。返回的元组末尾多一个 d。"""
     from .learned import target_class
 
-    tooth, ctx, ant, has, cls = [], [], [], [], []
+    tooth, ctx, ant, has, cls, dmap = [], [], [], [], [], []
     for d in dirs:
         for f in sorted(Path(d).glob("*.npz")):
+            if with_d:
+                g = d_dir_for(d) / f.name
+                if not g.exists():
+                    continue
             with np.load(f) as z:
-                tooth.append(z["tooth"]), ctx.append(z["ctx"]), ant.append(z["ant"]), has.append(z["has_ant"])
-                cls.append(np.array([target_class(int(v)) for v in z["fdi"]], np.int64))
-    return np.concatenate(tooth), np.concatenate(ctx), np.concatenate(ant), np.concatenate(has), np.concatenate(cls)
+                keep = np.ones(len(z["fdi"]), bool)
+                if with_d:
+                    with np.load(g) as zd:
+                        assert (zd["fdi"] == z["fdi"]).all(), f
+                        keep = zd["has_d"].astype(bool)
+                        dmap.append(zd["d"][keep])
+                tooth.append(z["tooth"][keep]), ctx.append(z["ctx"][keep]), ant.append(z["ant"][keep]), has.append(z["has_ant"][keep])
+                cls.append(np.array([target_class(int(v)) for v in z["fdi"][keep]], np.int64))
+    out = (np.concatenate(tooth), np.concatenate(ctx), np.concatenate(ant), np.concatenate(has), np.concatenate(cls))
+    return out + (np.concatenate(dmap),) if with_d else out
+
+
+def jitter_d(d, generator=None):
+    """训练时给 D 的深度图加扰动：训练牙上 D 见过答案，输出比没见过的牙好，不加扰动模型会学成“照抄 D”。
+    整体缩放 ±4%、整体平移 ±0.2 mm、再加一层平滑的起伏（约 ±0.15 mm）。d：(B, S, S) mm，0 = 没有。"""
+    import torch
+    import torch.nn.functional as F
+
+    b = len(d)
+    m = d > 0
+    scale = 1 + 0.04 * torch.randn(b, 1, 1, device=d.device, generator=generator)
+    shift = 0.2 * torch.randn(b, 1, 1, device=d.device, generator=generator)
+    coarse = torch.randn(b, 1, 10, 10, device=d.device, generator=generator) * 0.15
+    wave = F.interpolate(coarse, size=d.shape[-2:], mode="bicubic", align_corners=False)[:, 0]
+    return torch.where(m, (d * scale + shift + wave).clamp(min=0.31), d)
 
 
 def encode_tooth(t):  # (..., S, S) mm，0 = 没有 → (..., 2, S, S)
@@ -66,7 +99,8 @@ def build_condition(ctx, ant, has_ant):
     return torch.cat([encode_far(ctx), a, disk.expand(len(ctx), 1, SIZE, SIZE)], dim=1)
 
 
-def build_unet(ch: int = 64, mult=(1, 2, 4, 4), n_classes: int = 16):
+def build_unet(ch: int = 64, mult=(1, 2, 4, 4), n_classes: int = 16, cond_ch: int = 5):
+    """cond_ch：条件图的通道数。5 = 其余牙齿 + 对颌 + 圆盘；7 = 再加 D 输出的牙冠图（深度 + 有无），即“在 D 上补细节”的模型。"""
     import torch
     import torch.nn.functional as F
 
@@ -100,7 +134,8 @@ def build_unet(ch: int = 64, mult=(1, 2, 4, 4), n_classes: int = 16):
             emb = ch * 4
             self.time = nn.Sequential(nn.Linear(ch, emb), nn.SiLU(), nn.Linear(emb, emb))
             self.cls = nn.Embedding(n_classes, emb)
-            self.inp = nn.Conv2d(2 + 5, ch, 3, padding=1)
+            self.cond_ch = cond_ch
+            self.inp = nn.Conv2d(2 + cond_ch, ch, 3, padding=1)
             self.down, self.up = nn.ModuleList(), nn.ModuleList()
             chans, c = [ch], ch
             for i, m in enumerate(mult):
@@ -170,29 +205,42 @@ def lowpass(depth, mask, sigma: float):
     return blur(depth * m) / blur(m).clamp(min=1e-3)
 
 
+RES_SCALE = (4.0, 0.5)  # 残差模型：扩散的是 (牙冠图 − D 的图) × 这个系数。深度差通常 ±0.1（编码后），放大到和噪声同一量级；有无的差是 0 / ±2，缩小
+
+
+def res_scale(device):
+    import torch
+
+    return torch.tensor(RES_SCALE, device=device).view(1, 2, 1, 1)
+
+
 def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearance: float | None = None,
-           init=None, strength: float = 1.0, keep_sigma: float | None = None):
+           init=None, strength: float = 1.0, keep_sigma: float | None = None, base=None):
     """DDIM 采样。给了 ant（mm，0 = 没有）和 clearance 时，每一步都把预测的牙冠限制在“离对颌至少 clearance”以内。
 
     init（编码后的牙冠图，(B, 2, S, S)）：从它加噪到 strength（0–1）那一步开始去噪（SDEdit），整体形状跟着 init。
-    keep_sigma（像素）：每一步把预测的低频部分换回 init 的（保留 init 的整体形状和外轮廓），只取扩散模型的细节。"""
+    keep_sigma（像素）：每一步把预测的低频部分换回 init 的（保留 init 的整体形状和外轮廓），只取扩散模型的细节。
+    base（编码后的 D 的图）：残差模型用。模型去噪的是 (x − base) × RES_SCALE；返回的仍是牙冠图本身。"""
     import torch
 
     ac = alphas(cond.device)
-    x = torch.randn(len(cond), 2, SIZE, SIZE, device=cond.device, generator=generator)
+    s = res_scale(cond.device)
+    to_y = (lambda x: (x - base) * s) if base is not None else (lambda x: x)
+    to_x = (lambda y: base + y / s) if base is not None else (lambda y: y)
+    y = torch.randn(len(cond), 2, SIZE, SIZE, device=cond.device, generator=generator)
     t_top = STEPS - 1 if init is None else max(1, int(round(strength * (STEPS - 1))))
     ts = torch.linspace(t_top, 0, max(2, int(round(steps * t_top / (STEPS - 1)))), device=cond.device).long()
     if init is not None:
         a = ac[ts[0]]
-        x = a.sqrt() * init + (1 - a).sqrt() * x
+        y = a.sqrt() * to_y(init) + (1 - a).sqrt() * y
         if keep_sigma:
             init_mask = init[:, 1] > 0
             init_low = lowpass(init[:, 0], init_mask, keep_sigma)
     for i, t in enumerate(ts):
         a = ac[t]
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=cond.is_cuda):
-            v = model(x, cond, t.expand(len(x)), cls).float()
-        x0 = (a.sqrt() * x - (1 - a).sqrt() * v).clamp(-1.2, 1.2)
+            v = model(y, cond, t.expand(len(y)), cls).float()
+        x0 = to_x(a.sqrt() * y - (1 - a).sqrt() * v).clamp(-1.2, 1.2)
         if init is not None and keep_sigma:
             d = x0[:, 0]
             d = torch.where(init_mask, init_low + (d - lowpass(d, init_mask, keep_sigma)), d)
@@ -200,10 +248,11 @@ def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearanc
         if ant is not None and clearance is not None:
             limit = torch.where(ant > 0, (ant - clearance) / TOOTH_SCALE - 1, torch.full_like(ant, 9.0))
             x0 = torch.stack([torch.minimum(x0[:, 0], limit), x0[:, 1]], dim=1)
-        eps = (x - a.sqrt() * x0) / (1 - a).sqrt()
-        a_next = ac[ts[i + 1]] if i + 1 < len(ts) else torch.tensor(1.0, device=x.device)
-        x = a_next.sqrt() * x0 + (1 - a_next).sqrt() * eps
-    return x
+        y0 = to_y(x0)
+        eps = (y - a.sqrt() * y0) / (1 - a).sqrt()
+        a_next = ac[ts[i + 1]] if i + 1 < len(ts) else torch.tensor(1.0, device=y.device)
+        y = a_next.sqrt() * y0 + (1 - a_next).sqrt() * eps
+    return to_x(y)
 
 
 def metrics(pred, tooth, ant, has_ant) -> dict:
@@ -230,7 +279,8 @@ def metrics(pred, tooth, ant, has_ant) -> dict:
 def run_eval(model, data, device, n: int = 128, steps: int = 50, seed: int = 0, clearance: float | None = None) -> dict:
     import torch
 
-    tooth, ctx, ant, has, cls = data
+    tooth, ctx, ant, has, cls = data[:5]
+    dmap = data[5] if len(data) > 5 else None
     pick = np.random.default_rng(seed).choice(len(tooth), min(n, len(tooth)), replace=False)
     g = torch.Generator(device=device).manual_seed(seed)
     preds = []
@@ -239,27 +289,58 @@ def run_eval(model, data, device, n: int = 128, steps: int = 50, seed: int = 0, 
         for i in range(0, len(pick), 32):
             j = pick[i:i + 32]
             c, a, h = (torch.tensor(v[j].astype(np.float32), device=device) for v in (ctx, ant, has))
-            preds.append(decode_tooth(sample(model, build_condition(c, a, h), torch.tensor(cls[j], device=device), steps, g,
-                                             ant=a if clearance is not None else None, clearance=clearance)))
+            cond, d_enc = build_condition(c, a, h), None
+            if dmap is not None:
+                d_enc = encode_tooth(torch.tensor(dmap[j].astype(np.float32), device=device))
+                cond = torch.cat([cond, d_enc], dim=1)
+            preds.append(decode_tooth(sample(model, cond, torch.tensor(cls[j], device=device), steps, g,
+                                             ant=a if clearance is not None else None, clearance=clearance,
+                                             base=d_enc if getattr(model, "residual", False) else None)))
     pred = torch.cat(preds)
-    return metrics(pred, torch.tensor(tooth[pick].astype(np.float32), device=device), torch.tensor(ant[pick].astype(np.float32), device=device),
-                   torch.tensor(has[pick].astype(np.float32), device=device))
+    out = metrics(pred, torch.tensor(tooth[pick].astype(np.float32), device=device), torch.tensor(ant[pick].astype(np.float32), device=device),
+                  torch.tensor(has[pick].astype(np.float32), device=device))
+    if dmap is not None:  # 对照：D 自己的逐像素误差（扩散模型补完要比它小才算有用）
+        dm = metrics(torch.tensor(dmap[pick].astype(np.float32), device=device), torch.tensor(tooth[pick].astype(np.float32), device=device),
+                     torch.tensor(ant[pick].astype(np.float32), device=device), torch.tensor(has[pick].astype(np.float32), device=device))
+        out.update({"D_depth_mae_mm": dm["depth_mae_mm"], "D_mask_iou": dm["mask_iou"]})
+    return out
 
 
-def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None) -> None:
+def _load_init(model, path, device):
+    """从已有权重开始。条件通道变多时（5 → 7，加 D 的图），输入卷积多出来的通道权重置 0：一开始的输出和原模型完全一样。"""
+    import torch
+
+    state = {k: v.float() for k, v in torch.load(path, map_location=device)["state"].items()}
+    w = state["inp.weight"]
+    own = model.inp.weight
+    if w.shape != own.shape:
+        grown = torch.zeros_like(own)
+        grown[:, : w.shape[1]] = w
+        state["inp.weight"] = grown
+    model.load_state_dict(state)
+
+
+def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None,
+          with_d: bool = False, residual: bool = False) -> None:
+    """residual（要 with_d）：扩散的对象是“真牙 − D”（× RES_SCALE），模型天然从 D 出发，只学要改的部分。"""
+    assert with_d or not residual, "--residual 要和 --with-d 一起用"
     import copy
 
     import torch
 
     torch.manual_seed(0)
     device = "cuda"
-    tooth, ctx, ant, has, cls = load_dir(data_dirs)
-    val = load_dir([val_dir])
-    print(json.dumps({"train_teeth": len(tooth), "with_antagonist": int(has.sum()), "val_teeth": len(val[0])}), flush=True)
-    model = build_unet().to(device)
+    data = load_dir(data_dirs, with_d)
+    tooth, ctx, ant, has, cls = data[:5]
+    dmap = data[5] if with_d else None
+    val = load_dir([val_dir], with_d)
+    print(json.dumps({"train_teeth": len(tooth), "with_antagonist": int(has.sum()), "val_teeth": len(val[0]), "with_d": with_d}), flush=True)
+    model = build_unet(cond_ch=7 if with_d else 5).to(device)
     if init:
-        model.load_state_dict(torch.load(init, map_location=device)["state"])
+        _load_init(model, init, device)
+    model.residual = residual
     ema = copy.deepcopy(model).requires_grad_(False)
+    s_res = res_scale(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     ac = alphas(device)
     steps_per_epoch = len(tooth) // batch
@@ -275,6 +356,11 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
             h = torch.tensor(has[j].astype(np.float32), device=device)
             h = h * (torch.rand(len(j), device=device) > ant_drop)  # 一部分样本不给对颌：没有对颌时也要能用
             cond = build_condition(torch.tensor(ctx[j].astype(np.float32), device=device), torch.tensor(ant[j].astype(np.float32), device=device), h)
+            if dmap is not None:
+                d_enc = encode_tooth(jitter_d(torch.tensor(dmap[j].astype(np.float32), device=device)))
+                cond = torch.cat([cond, d_enc], dim=1)
+                if residual:  # 扩散的对象换成“真牙 − D”
+                    x0 = (x0 - d_enc) * s_res
             t = torch.randint(0, STEPS, (len(j),), device=device)
             a = ac[t].view(-1, 1, 1, 1)
             noise = torch.randn_like(x0)
@@ -294,14 +380,17 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
         if epoch % 5 == 0 or epoch == epochs:
             row.update({k: round(v, 4) for k, v in run_eval(ema, val, device, n=96, steps=30).items()})
         print(json.dumps(row), flush=True)
-        torch.save({"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch}, out)
+        torch.save({"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch, "cond_ch": model.cond_ch, "residual": residual}, out)
 
 
 def load_model(path: Path, device: str):
     import torch
 
-    model = build_unet().to(device)
-    model.load_state_dict(torch.load(path, map_location=device)["state"])
+    ck = torch.load(path, map_location=device)
+    state = {k: v.float() for k, v in ck["state"].items()}
+    model = build_unet(cond_ch=state["inp.weight"].shape[1] - 2).to(device)
+    model.load_state_dict(state)
+    model.residual = bool(ck.get("residual", False))
     return model.eval()
 
 
@@ -384,7 +473,10 @@ class RadialDiffusionGenerator:
         cond = build_condition(torch.tensor(maps["ctx"], device=self.device)[None], a, torch.tensor([float(has)], device=self.device))
         g = torch.Generator(device=self.device).manual_seed(self.seed)
         init, base = None, None
-        if self.refine is not None and self.fallback is not None:  # 学习模型 D 出整体形状，投到同一张径向图上当起点
+        need_d = self._model.cond_ch > 5  # 专门“在 D 上补细节”训练的模型：D 的图是条件之一
+        if need_d and self.fallback is None:
+            raise ValueError("这个扩散模型要 D 的输出当条件，需要 fallback=LearnedGenerator")
+        if (self.refine is not None or need_d) and self.fallback is not None:  # 学习模型 D 出整体形状，投到同一张径向图上
             from .radial import splat
 
             base = self.fallback.generate(ctx, target)
@@ -394,11 +486,15 @@ class RadialDiffusionGenerator:
             if (d0 > 0).sum() < 1500:
                 base.info["radial_fallback"] = "D 的牙冠投不到径向图上"
                 return base
-            init = encode_tooth(torch.tensor(d0, device=self.device)[None])
+            d_enc = encode_tooth(torch.tensor(d0, device=self.device).float()[None])
+            init = d_enc if self.refine is not None else None
+            if need_d:
+                cond = torch.cat([cond, d_enc], dim=1)
         with torch.no_grad():
             x = sample(self._model, cond, torch.tensor([target_class(target.fdi)], device=self.device), self.steps, g,
                        ant=a if has and self.clearance is not None else None, clearance=self.clearance,
-                       init=init, strength=self.refine or 1.0, keep_sigma=self.keep_sigma)
+                       init=init, strength=self.refine or 1.0, keep_sigma=self.keep_sigma,
+                       base=d_enc if need_d and getattr(self._model, "residual", False) else None)
         depth = clean_depth(decode_tooth(x)[0].cpu().numpy())
         if (depth > 0).sum() < 1500:
             if base is not None:
@@ -420,7 +516,8 @@ class RadialDiffusionGenerator:
                 "occlusal_drop_mm": 0.0, "antagonist_input": has}
         if base is not None:
             info.update({k: v for k, v in base.info.items() if k not in ("source", "placement", "occlusal_drop_mm")})
-            info.update({"source": f"radial_refine:{self.model_path.name}", "refine": self.refine, "keep_sigma": self.keep_sigma})
+            kind = "radial_dcond" if need_d else "radial_refine"
+            info.update({"source": f"{kind}:{self.model_path.name}", "refine": self.refine, "keep_sigma": self.keep_sigma})
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
 
@@ -436,6 +533,8 @@ def main() -> None:
     t.add_argument("--lr", type=float, default=2e-4)
     t.add_argument("--ant-drop", type=float, default=0.2)
     t.add_argument("--init", type=Path)
+    t.add_argument("--with-d", action="store_true", help="条件里加 D 的输出（data/radial_d/<split>，radial_dmaps.py 生成）：专门在 D 上补细节")
+    t.add_argument("--residual", action="store_true", help="和 --with-d 一起：扩散“真牙 − D”，模型从 D 出发只学要改的部分")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--val", type=Path, required=True)
@@ -444,7 +543,7 @@ def main() -> None:
     e.add_argument("--clearance", type=float)
     args = p.parse_args()
     if args.cmd == "train":
-        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init)
+        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual)
     else:
         import torch
 

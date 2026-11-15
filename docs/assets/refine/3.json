@@ -1,0 +1,1 @@
+{"title": "premolar 34", "patient": "F4758", "fdi": 34, "parts": [{"name": "context", "verts": 28686, "faces": 56325, "flag": true}, {"name": "antagonist", "verts": 41240, "faces": 81694}, {"name": "shape", "verts": 2751, "faces": 5498}, {"name": "shape_diffusion", "verts": 8332, "faces": 16660}, {"name": "real", "verts": 3927, "faces": 7653}]}
