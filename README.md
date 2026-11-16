@@ -1,6 +1,8 @@
 # dental_3d_ai
 **口腔 3D 扫描模型（上下颌 STL）输入 → 牙齿实例分割 → 识别缺牙位置 → 自动生成缺失牙齿 3D 模型**
 
+**在线项目主页：[查看 GitHub Pages 效果报告](https://zhuyetuo.github.io/dental_3d_ai/)**
+
 ## 效果一览
 
 仓库自带三个训练好的模型，详细的图文说明见 **[docs/results.md](docs/results.md)**。
@@ -23,7 +25,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [docs/index.html](docs/index.html) | **效果报告页**（图为主）：每次训练有提升后更新；仓库打开 GitHub Pages（main 分支 `/docs`）后就是项目主页 |
+| [在线效果报告](https://zhuyetuo.github.io/dental_3d_ai/) | **效果报告页**（图为主）：每次训练有提升后更新，页面源码见 [docs/index.html](docs/index.html) |
 | [docs/results.md](docs/results.md) | **模型效果一览**：分割、缺失牙生成、颈缘线的效果图、指标和已知问题 |
 | [docs/resources.md](docs/resources.md) | **外部资料清单**：牙冠生成、点云补全、咬合等方向的论文、代码、数据集，以及每一项能不能用上 |
 | [docs/system-architecture.md](docs/system-architecture.md) | 系统架构：前端、后端、算法服务、3D 渲染与交互、部署 |
