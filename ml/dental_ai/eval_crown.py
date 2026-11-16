@@ -109,7 +109,11 @@ def _one(args) -> list[dict]:
                             gen = RadialDiffusionGenerator(os.environ["RADIAL_MODEL"], fallback=gen,
                                                            clearance=float(clearance) if clearance else None,
                                                            refine=float(os.environ["RADIAL_REFINE"]) if os.environ.get("RADIAL_REFINE") else None,
-                                                           keep_sigma=float(os.environ["RADIAL_KEEP_SIGMA"]) if os.environ.get("RADIAL_KEEP_SIGMA") else None, style=os.environ.get("RADIAL_STYLE", "natural"))
+                                                           keep_sigma=float(os.environ["RADIAL_KEEP_SIGMA"]) if os.environ.get("RADIAL_KEEP_SIGMA") else None, style=os.environ.get("RADIAL_STYLE", "natural"),
+                                                           style_w=float(os.environ.get("RADIAL_STYLE_W", "1")),
+                                                           detail_gain=float(os.environ.get("RADIAL_DETAIL_GAIN", "1")),
+                                                           style_tmin=int(os.environ.get("RADIAL_STYLE_TMIN", "0")),
+                                                           smooth=float(os.environ.get("RADIAL_SMOOTH", "0")))
                         report = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=antagonist, preferences=prefs)
                         done = {g["fdi"]: g for g in report["generated"]}
                         if fdi not in done:

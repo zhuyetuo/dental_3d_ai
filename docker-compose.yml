@@ -36,6 +36,9 @@ x-backend-common: &backend-common
     RADIAL_MODEL: /models/generation/radial_diffusion.pt
     # 扩散模型训过 exocad 牙库样本：design = 按技工设计的牙形风格补细节（11-16 起默认）；natural = 按天然牙
     RADIAL_STYLE: design
+    # 风格引导：把“设计风格 − 天然风格”放大 4 倍，窝沟更深；生成后抹平 0.8 像素去掉麻点（11-17 起默认）
+    RADIAL_STYLE_W: "4"
+    RADIAL_SMOOTH: "0.8"
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:

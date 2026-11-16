@@ -241,12 +241,15 @@ def res_scale(device):
 
 
 def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearance: float | None = None,
-           init=None, strength: float = 1.0, keep_sigma: float | None = None, base=None):
+           init=None, strength: float = 1.0, keep_sigma: float | None = None, base=None,
+           cls_ref=None, style_w: float = 1.0, detail_gain: float = 1.0, style_tmin: int = 0):
     """DDIM 采样。给了 ant（mm，0 = 没有）和 clearance 时，每一步都把预测的牙冠限制在“离对颌至少 clearance”以内。
 
     init（编码后的牙冠图，(B, 2, S, S)）：从它加噪到 strength（0–1）那一步开始去噪（SDEdit），整体形状跟着 init。
     keep_sigma（像素）：每一步把预测的低频部分换回 init 的（保留 init 的整体形状和外轮廓），只取扩散模型的细节。
-    base（编码后的 D 的图）：残差模型用。模型去噪的是 (x − base) × RES_SCALE；返回的仍是牙冠图本身。"""
+    base（编码后的 D 的图）：残差模型用。模型去噪的是 (x − base) × RES_SCALE；返回的仍是牙冠图本身。
+    cls_ref + style_w：风格引导。v = v(cls_ref) + style_w × (v(cls) − v(cls_ref))；cls 是设计风格、cls_ref 是天然风格时，w > 1 放大设计风格。
+    detail_gain：和 keep_sigma 一起用，细节部分（预测 − 低通）乘这个倍数。"""
     import torch
 
     ac = alphas(cond.device)
@@ -265,11 +268,16 @@ def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearanc
     for i, t in enumerate(ts):
         a = ac[t]
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=cond.is_cuda):
-            v = model(y, cond, t.expand(len(y)), cls).float()
+            if cls_ref is not None and style_w != 1.0 and int(t) >= style_tmin:
+                vv = model(torch.cat([y, y]), torch.cat([cond, cond]), t.expand(2 * len(y)), torch.cat([cls, cls_ref])).float()
+                v_s, v_r = vv.chunk(2)
+                v = v_r + style_w * (v_s - v_r)
+            else:
+                v = model(y, cond, t.expand(len(y)), cls).float()
         x0 = to_x(a.sqrt() * y - (1 - a).sqrt() * v).clamp(-1.2, 1.2)
         if init is not None and keep_sigma:
             d = x0[:, 0]
-            d = torch.where(init_mask, init_low + (d - lowpass(d, init_mask, keep_sigma)), d)
+            d = torch.where(init_mask, init_low + detail_gain * (d - lowpass(d, init_mask, keep_sigma)), d)
             x0 = torch.stack([d, init[:, 1]], dim=1).clamp(-1.2, 1.2)
         if ant is not None and clearance is not None:
             limit = torch.where(ant > 0, (ant - clearance) / TOOTH_SCALE - 1, torch.full_like(ant, 9.0))
@@ -350,7 +358,7 @@ def _load_init(model, path, device):
 
 
 def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None,
-          with_d: bool = False, residual: bool = False, library: bool = False) -> None:
+          with_d: bool = False, residual: bool = False, library: bool = False, hf_weight: float = 0.0) -> None:
     """residual（要 with_d）：扩散的对象是“真牙 − D”（× RES_SCALE），模型天然从 D 出发，只学要改的部分。"""
     assert with_d or not residual, "--residual 要和 --with-d 一起用"
     import copy
@@ -403,6 +411,15 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 v = model(a.sqrt() * x0 + (1 - a).sqrt() * noise, cond, t, torch.tensor(cls[j], device=device))
             loss = ((v.float() - (a.sqrt() * noise - (1 - a).sqrt() * x0)) ** 2).mean()
+            if hf_weight > 0 and not residual:  # 细节损失：还原的 x0 和答案的高频部分（窝沟、牙尖棱）对齐
+                xt = a.sqrt() * x0 + (1 - a).sqrt() * noise
+                x0_hat = a.sqrt() * xt - (1 - a).sqrt() * v.float()
+                m = x0[:, 1] > 0
+                hp = lambda d: torch.where(m, d - lowpass(d, m, 3.0), torch.zeros_like(d))  # noqa: E731
+                err = (hp(x0_hat[:, 0]) - hp(x0[:, 0])) ** 2
+                w_t = a.view(-1)
+                loss_hf = ((err.sum((1, 2)) / m.sum((1, 2)).clamp(min=1)) * w_t).mean()
+                loss = loss + hf_weight * loss_hf
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -455,7 +472,8 @@ class RadialDiffusionGenerator:
     name = "radial_diffusion"
 
     def __init__(self, model_path, fallback=None, device: str | None = None, steps: int = 50, clearance: float | None = None, seed: int = 0,
-                 refine: float | None = None, keep_sigma: float | None = None, style: str = "natural"):
+                 refine: float | None = None, keep_sigma: float | None = None, style: str = "natural",
+                 style_w: float = 1.0, detail_gain: float = 1.0, style_tmin: int = 0, smooth: float = 0.0):
         """refine（0–1）：先让 fallback（学习模型 D）出整体形状，扩散模型从它加噪到这一步再去噪，只补细节。keep_sigma 见 sample。"""
         import os
 
@@ -464,6 +482,8 @@ class RadialDiffusionGenerator:
         self.steps, self.clearance, self.seed = steps, clearance, seed
         self.refine, self.keep_sigma = refine, keep_sigma
         self.style = style  # "design"：模型训过牙库样本时，按技工设计的牙形风格生成（牙尖、沟更清楚）
+        self.style_w, self.detail_gain, self.style_tmin = style_w, detail_gain, style_tmin  # 见 sample
+        self.smooth = smooth  # 生成后抹平麻点的 σ（像素），0 = 不抹
         self._model = None
 
     @property
@@ -536,8 +556,13 @@ class RadialDiffusionGenerator:
             x = sample(self._model, cond, torch.tensor([cls], device=self.device), self.steps, g,
                        ant=a if has and self.clearance is not None else None, clearance=self.clearance,
                        init=init, strength=self.refine or 1.0, keep_sigma=self.keep_sigma,
-                       base=d_enc if need_d and getattr(self._model, "residual", False) else None)
-        depth = clean_depth(decode_tooth(x)[0].cpu().numpy())
+                       base=d_enc if need_d and getattr(self._model, "residual", False) else None,
+                       cls_ref=torch.tensor([target_class(target.fdi)], device=self.device) if design else None,
+                       style_w=self.style_w, detail_gain=self.detail_gain, style_tmin=self.style_tmin)
+        dec = decode_tooth(x)
+        if self.smooth > 0:
+            dec = torch.where(dec > 0, lowpass(dec, dec > 0, self.smooth), dec)
+        depth = clean_depth(dec[0].cpu().numpy())
         if (depth > 0).sum() < 1500:
             if base is not None:
                 base.info["radial_fallback"] = "生成的牙冠太小"
@@ -561,6 +586,14 @@ class RadialDiffusionGenerator:
             kind = "radial_dcond" if need_d else "radial_refine"
             info.update({"source": f"{kind}:{self.model_path.name}", "refine": self.refine, "keep_sigma": self.keep_sigma})
         info["style"] = "design" if self.style == "design" and getattr(self._model, "design", False) else "natural"
+        if info["style"] == "design" and self.style_w != 1.0:
+            info["style_w"] = self.style_w
+            if self.style_tmin:
+                info["style_tmin"] = self.style_tmin
+        if self.smooth > 0:
+            info["smooth"] = self.smooth
+        if self.detail_gain != 1.0:
+            info["detail_gain"] = self.detail_gain
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
 
@@ -578,6 +611,7 @@ def main() -> None:
     t.add_argument("--init", type=Path)
     t.add_argument("--with-d", action="store_true", help="条件里加 D 的输出（data/radial_d/<split>，radial_dmaps.py 生成）：专门在 D 上补细节")
     t.add_argument("--residual", action="store_true", help="和 --with-d 一起：扩散“真牙 − D”，模型从 D 出发只学要改的部分")
+    t.add_argument("--hf-weight", type=float, default=0.0, help="细节损失的权重（0 = 不加）")
     t.add_argument("--library", action="store_true", help="加上牙库造的设计风格样本（data/radial_lib/<split>，radial_library.py build 生成）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
@@ -587,7 +621,7 @@ def main() -> None:
     e.add_argument("--clearance", type=float)
     args = p.parse_args()
     if args.cmd == "train":
-        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library)
+        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library, args.hf_weight)
     else:
         import torch
 

@@ -888,7 +888,11 @@ def make_generator(model_path=None, template_dir=None, preferences=None):
 
             return RadialDiffusionGenerator(radial, fallback=learned, refine=float(os.environ.get("RADIAL_REFINE", "0.6")),
                                             keep_sigma=float(os.environ.get("RADIAL_KEEP_SIGMA", "6")),
-                                            style=os.environ.get("RADIAL_STYLE", "natural"))
+                                            style=os.environ.get("RADIAL_STYLE", "natural"),
+                                            style_w=float(os.environ.get("RADIAL_STYLE_W", "1")),
+                                            detail_gain=float(os.environ.get("RADIAL_DETAIL_GAIN", "1")),
+                                            style_tmin=int(os.environ.get("RADIAL_STYLE_TMIN", "0")),
+                                            smooth=float(os.environ.get("RADIAL_SMOOTH", "0")))
         return learned
     return base
 
