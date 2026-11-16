@@ -25,9 +25,31 @@ td.w{white-space:normal;min-width:240px}
   </header>
 
   <section>
+    <h2>新数据盘点（11-16，elosdent）</h2>
+    <figure>
+      <img src="images/tooth_libraries.png" alt="exocad 牙库：8 套风格的下颌第一磨牙">
+      <figcaption>exocad 牙库里 8 套不同风格的下颌第一磨牙（上：咬合面，下：侧面）。技工设计用的标准牙形，牙尖、主沟、副沟都很清楚。</figcaption>
+    </figure>
+    <div class="scroll"><table>
+      <tr><th>内容</th><th>规模</th><th>能不能读</th><th>能拿来做什么</th></tr>
+      <tr><td>exocad 牙库（teeth + pontics）</td><td>162 套，2871 颗牙冠形态、2920 个桥体</td><td>✅ .eoff 全部能解析；另有 2700 个 .drmsdfa 是加密的</td>
+        <td class="w">① 形状模型的模板换成设计级牙形；② 扩散模型补细节时学这些清楚的牙尖窝沟；③ “检索 + 拟合”对照方法；④ 新指标：生成的牙和最像的设计级牙形差多少</td></tr>
+      <tr><td>真实设计病例（exocad，26 号牙冠）</td><td>1 例：上下颌口扫 + 技工设计牙冠 + 颈缘</td><td>✅</td><td class="w">技工设计当真值的第一个评测病例（Codex 已整理成 case_001）</td></tr>
+      <tr><td>真实种植病例（3Shape，14 号）</td><td>1 例：种植体 + 基台 + 牙冠</td><td>❌ 3Shape 加密格式（CE）</td><td class="w">读不了网格，只有设计参数 XML</td></tr>
+      <tr><td>基牙库 + 牙冠库（STL）</td><td>各 32 个，编号一一对应</td><td>✅</td><td class="w">“预备体 → 牙冠”成对的标准形：测内表面贴合、粘接间隙、最小厚度这一套</td></tr>
+      <tr><td>exocad 设计导出（.obj，带元数据）</td><td>16 个</td><td>✅ 带咬合接触点、咬合轴</td><td class="w">设计级牙冠 + 咬合接触点，可以对照我们的咬合调整</td></tr>
+      <tr><td>3Shape 牙库（.dme / 编号文件）</td><td>几十个</td><td>❌ 加密 / 带密码</td><td>—</td></tr>
+      <tr><td>Bits2Bites（以前下的）</td><td>200 人上下颌 + 咬合分类标注</td><td>✅</td><td class="w">补对颌训练数据；按咬合分类分组评估</td></tr>
+    </table></div>
+    <p class="note">结论：<b>“预备体 + 技工设计牙冠”的真实病例仍然只有 1 个能用</b>，这一项还是缺数据；但牙库是很好的形态先验，能直接改善“窝沟偏浅”。</p>
+  </section>
+
+  <section>
     <h2>牙冠生成</h2>
     <div class="scroll"><table>
       <tr><th>想法</th><th>状态</th><th>为什么 / 现在到哪</th><th>代价</th></tr>
+      <tr><td><b>用 exocad 牙库改善咬合面细节</b></td><td><span class="state">待做（优先）</span></td><td class="w">162 套设计级牙形（11-16 新数据）。做法：形状模型的模板换成牙库牙形；扩散模型补细节时在牙库上训练 / 微调；
+      加一个“检索 + 拟合”的对照方法（和 exocad 自己的做法一样）；新指标“和最像的设计级牙形差多少”</td><td class="cost">牙库导出半天；训练几小时</td></tr>
       <tr><td>扩散模型接着训（v2）</td><td><span class="state mid">暂停</span></td><td class="w">v1 只训了 30 轮，损失还在降。v2 从 v1 接着训，11-15 训到第 10 轮时暂停，GPU 让给“看着形状模型补细节的扩散”。
       检查点在服务器 runs/radial_diffusion_v2/model_paused.pt，用 --init 接着训</td><td class="cost">剩 30 轮约 2.5 小时；可能要 100 小时以上才饱和</td></tr>
       <tr><td>专门训一个“看着形状模型补细节”的扩散模型</td><td><span class="state mid">进行中</span></td><td class="w">把形状模型的输出当条件、真牙当目标专门训（radial_diffusion train --with-d）。11-15：3.4 万颗训练牙的形状模型的图已生成（radial_dmaps.py，约 20 分钟），
@@ -42,7 +64,7 @@ td.w{white-space:normal;min-width:240px}
       <tr><td>评分卡做成可微的损失</td><td><span class="state">部分</span></td><td class="w">“外形 + 间隙损失”试验 直接加进损失失败了（撑大牙冠）。改成扩散采样时的引导（guidance），不改训练</td><td class="cost">中</td></tr>
       <tr><td>复现 CrownGen / ToothCraft，在我们的评分卡上比</td><td><span class="state">待做</span></td><td class="w">CrownGen 有代码和示例数据，ToothCraft 有权重。用同一套评分卡比，才知道我们到底处在什么位置</td><td class="cost">各 1–2 天</td></tr>
       <tr><td>第三磨牙生成</td><td><span class="state">待做</span></td><td class="w">现在交给几何方法兜底</td><td class="cost">小</td></tr>
-      <tr><td>用技工设计的牙冠当真值</td><td><span class="state bad">缺数据</span></td><td class="w">现在的真值是天然牙，不是修复体设计（DMC、MADCrowner 都用技工设计）。要和技工所合作拿数据</td><td class="cost">数据</td></tr>
+      <tr><td>用技工设计的牙冠当真值</td><td><span class="state bad">缺数据（有 1 例）</span></td><td class="w">现在的真值是天然牙，不是修复体设计（DMC、MADCrowner 都用技工设计）。要和技工所合作拿数据</td><td class="cost">数据</td></tr>
       <tr><td>多颗相邻缺牙一起生成</td><td><span class="state">待做</span></td><td class="w">exocad 3.3 已支持 3 颗相邻后牙；CrownGen 一次出多颗</td><td class="cost">中</td></tr>
     </table></div>
   </section>
