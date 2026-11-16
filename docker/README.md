@@ -43,6 +43,18 @@
 4. TeethSplineSeg 对比 / 微调：`docker compose -f docker-compose.gpu.yml build splineseg`（会编译 FlashAttention，30–60 分钟；
    不想等就加 `FLASH=0`，会退回 PyTorch 自带的融合注意力，结果相同、慢一些）。
 
+## 网页服务的 worker 用 GPU
+
+网页服务（`docker-compose.yml`）默认 worker 在 CPU 上算。叠加 `docker-compose.worker-gpu.yml` 就换成 GPU 版（以训练镜像为底），前端和后端接口不变：
+
+```bash
+docker compose -f docker-compose.gpu.yml build train                                     # 底层镜像，只要建一次
+docker compose -f docker-compose.yml -f docker-compose.worker-gpu.yml up -d --build worker
+docker compose up -d --build worker                                                      # 切回 CPU 版
+```
+
+分割、学习式生成、扩散模型、点到曲面的距离都会自动检测并使用 GPU。worker 约占 2–3 GB 显存，和训练共用一块卡时注意显存。
+
 ## 说明
 
 - 代码不打进镜像，仓库整个挂进容器：改代码、拉新代码都不用重建镜像，只有依赖变了才重建。

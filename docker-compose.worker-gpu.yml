@@ -1,0 +1,17 @@
+# 叠加在 docker-compose.yml 上：worker 换成 GPU 版（分割、生成、封底、评估都用显卡算）。前端、后端接口不变。
+#
+#   docker compose -f docker-compose.gpu.yml build train                                    # 底层镜像，只要建一次
+#   docker compose -f docker-compose.yml -f docker-compose.worker-gpu.yml up -d --build worker
+#
+# 切回 CPU 版：docker compose up -d --build worker（不带这个文件）
+# 前提：宿主机能跑 docker run --gpus all（装了 NVIDIA Container Toolkit），见 docker/README.md。
+# worker 加载模型约占 2–3 GB 显存；和训练共用一块卡时注意别把训练挤爆。
+
+services:
+  worker:
+    image: dental3d-worker-gpu
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker-gpu
+    gpus: all
+    ipc: host

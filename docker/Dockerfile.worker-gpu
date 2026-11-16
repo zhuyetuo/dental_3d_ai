@@ -1,0 +1,18 @@
+# 网页服务的 GPU 版 worker（处理病例：分割、生成、封底、评估都在这里算）。
+# 以训练镜像为底（PyTorch 2.7.1 + CUDA 12.8，3090 / 4090 / 5090 通用），先构建训练镜像：
+#   docker compose -f docker-compose.gpu.yml build train
+# 再用叠加文件启动：
+#   docker compose -f docker-compose.yml -f docker-compose.worker-gpu.yml up -d --build worker
+# 分割、学习式生成、扩散模型、点到曲面的距离都会自动用 GPU（检测到 CUDA 就用），代码不用改。
+ARG BASE=dental3d-train
+FROM ${BASE}
+
+ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1 PYTHONPATH= DENTAL_DATA_DIR=/data/cases
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
+COPY ml /src/ml
+RUN pip install --no-deps /src/ml
+COPY backend/app /app/app
+WORKDIR /app
+VOLUME /data
+CMD ["rq", "worker", "dental", "--url", "redis://redis:6379/0"]
