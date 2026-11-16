@@ -887,7 +887,8 @@ def make_generator(model_path=None, template_dir=None, preferences=None):
             from .radial_diffusion import RadialDiffusionGenerator
 
             return RadialDiffusionGenerator(radial, fallback=learned, refine=float(os.environ.get("RADIAL_REFINE", "0.6")),
-                                            keep_sigma=float(os.environ.get("RADIAL_KEEP_SIGMA", "6")))
+                                            keep_sigma=float(os.environ.get("RADIAL_KEEP_SIGMA", "6")),
+                                            style=os.environ.get("RADIAL_STYLE", "natural"))
         return learned
     return base
 

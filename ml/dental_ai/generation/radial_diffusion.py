@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import math
 import time
 from pathlib import Path
@@ -53,6 +54,31 @@ def load_dir(dirs: list[Path], with_d: bool = False):
                 cls.append(np.array([target_class(int(v)) for v in z["fdi"][keep]], np.int64))
     out = (np.concatenate(tooth), np.concatenate(ctx), np.concatenate(ant), np.concatenate(has), np.concatenate(cls))
     return out + (np.concatenate(dmap),) if with_d else out
+
+
+LIB_MAX_SCORE = float(os.environ.get("LIB_MAX_SCORE", "0.5"))  # mm：库牙和真牙对齐后的双向平均距离上限
+DESIGN_OFFSET = 16  # 设计风格（牙库样本）的牙位类别 = 天然牙的类别 + 16
+
+
+def load_lib_dir(dirs: list[Path]):
+    """牙库造的设计风格样本（radial_library.py build 生成，data/radial_lib/<split>）：答案换成对齐过来的库牙，条件不变，类别 + 16。"""
+    from .learned import target_class
+    from .radial_library import lib_dir_for
+
+    tooth, ctx, ant, has, cls = [], [], [], [], []
+    for d in dirs:
+        ld = lib_dir_for(Path(d))
+        for g in sorted(ld.glob("*.npz")):
+            with np.load(g) as zl, np.load(Path(d) / g.name) as z:
+                assert (zl["fdi"] == z["fdi"]).all(), g
+                keep = zl["ok"].astype(bool) & (zl["score"] <= LIB_MAX_SCORE)  # 对得不好的库牙不要
+                if not keep.any():
+                    continue
+                tooth.append(zl["lib"][keep]), ctx.append(z["ctx"][keep]), ant.append(z["ant"][keep]), has.append(z["has_ant"][keep])
+                cls.append(np.array([target_class(int(v)) + DESIGN_OFFSET for v in z["fdi"][keep]], np.int64))
+    if not tooth:
+        return None
+    return np.concatenate(tooth), np.concatenate(ctx), np.concatenate(ant), np.concatenate(has), np.concatenate(cls)
 
 
 def jitter_d(d, generator=None):
@@ -317,11 +343,14 @@ def _load_init(model, path, device):
         grown = torch.zeros_like(own)
         grown[:, : w.shape[1]] = w
         state["inp.weight"] = grown
+    c, own_c = state["cls.weight"], model.cls.weight
+    if c.shape != own_c.shape:  # 16 → 32：设计风格的类别一开始和天然牙一样，训练里再分开
+        state["cls.weight"] = c.repeat(own_c.shape[0] // c.shape[0], 1)
     model.load_state_dict(state)
 
 
 def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None,
-          with_d: bool = False, residual: bool = False) -> None:
+          with_d: bool = False, residual: bool = False, library: bool = False) -> None:
     """residual（要 with_d）：扩散的对象是“真牙 − D”（× RES_SCALE），模型天然从 D 出发，只学要改的部分。"""
     assert with_d or not residual, "--residual 要和 --with-d 一起用"
     import copy
@@ -334,8 +363,15 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
     tooth, ctx, ant, has, cls = data[:5]
     dmap = data[5] if with_d else None
     val = load_dir([val_dir], with_d)
+    val_lib = None
+    if library:  # 加上牙库造的设计风格样本（类别 + 16）
+        assert not with_d, "--library 暂时只支持不带 D 的模型"
+        lib = load_lib_dir(data_dirs)
+        tooth, ctx, ant, has, cls = (np.concatenate([a, b]) for a, b in zip((tooth, ctx, ant, has, cls), lib))
+        val_lib = load_lib_dir([val_dir])
+        print(json.dumps({"library_teeth": len(lib[0]), "library_val": 0 if val_lib is None else len(val_lib[0])}), flush=True)
     print(json.dumps({"train_teeth": len(tooth), "with_antagonist": int(has.sum()), "val_teeth": len(val[0]), "with_d": with_d}), flush=True)
-    model = build_unet(cond_ch=7 if with_d else 5).to(device)
+    model = build_unet(cond_ch=7 if with_d else 5, n_classes=2 * DESIGN_OFFSET if library else 16).to(device)
     if init:
         _load_init(model, init, device)
     model.residual = residual
@@ -379,6 +415,8 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
         row = {"epoch": epoch, "loss": round(total / steps_per_epoch, 5), "minutes": round((time.time() - t0) / 60, 1)}
         if epoch % 5 == 0 or epoch == epochs:
             row.update({k: round(v, 4) for k, v in run_eval(ema, val, device, n=96, steps=30).items()})
+            if val_lib is not None:  # 设计风格：和对齐过来的库牙比
+                row.update({"design_" + k: round(v, 4) for k, v in run_eval(ema, val_lib, device, n=96, steps=30).items()})
         print(json.dumps(row), flush=True)
         torch.save({"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch, "cond_ch": model.cond_ch, "residual": residual}, out)
 
@@ -388,8 +426,9 @@ def load_model(path: Path, device: str):
 
     ck = torch.load(path, map_location=device)
     state = {k: v.float() for k, v in ck["state"].items()}
-    model = build_unet(cond_ch=state["inp.weight"].shape[1] - 2).to(device)
+    model = build_unet(cond_ch=state["inp.weight"].shape[1] - 2, n_classes=state["cls.weight"].shape[0]).to(device)
     model.load_state_dict(state)
+    model.design = state["cls.weight"].shape[0] > DESIGN_OFFSET  # 有设计风格的类别
     model.residual = bool(ck.get("residual", False))
     return model.eval()
 
@@ -416,7 +455,7 @@ class RadialDiffusionGenerator:
     name = "radial_diffusion"
 
     def __init__(self, model_path, fallback=None, device: str | None = None, steps: int = 50, clearance: float | None = None, seed: int = 0,
-                 refine: float | None = None, keep_sigma: float | None = None):
+                 refine: float | None = None, keep_sigma: float | None = None, style: str = "natural"):
         """refine（0–1）：先让 fallback（学习模型 D）出整体形状，扩散模型从它加噪到这一步再去噪，只补细节。keep_sigma 见 sample。"""
         import os
 
@@ -424,6 +463,7 @@ class RadialDiffusionGenerator:
         self.device = device or os.environ.get("GEN_DEVICE")
         self.steps, self.clearance, self.seed = steps, clearance, seed
         self.refine, self.keep_sigma = refine, keep_sigma
+        self.style = style  # "design"：模型训过牙库样本时，按技工设计的牙形风格生成（牙尖、沟更清楚）
         self._model = None
 
     @property
@@ -491,7 +531,9 @@ class RadialDiffusionGenerator:
             if need_d:
                 cond = torch.cat([cond, d_enc], dim=1)
         with torch.no_grad():
-            x = sample(self._model, cond, torch.tensor([target_class(target.fdi)], device=self.device), self.steps, g,
+            design = self.style == "design" and getattr(self._model, "design", False)
+            cls = target_class(target.fdi) + (DESIGN_OFFSET if design else 0)
+            x = sample(self._model, cond, torch.tensor([cls], device=self.device), self.steps, g,
                        ant=a if has and self.clearance is not None else None, clearance=self.clearance,
                        init=init, strength=self.refine or 1.0, keep_sigma=self.keep_sigma,
                        base=d_enc if need_d and getattr(self._model, "residual", False) else None)
@@ -518,6 +560,7 @@ class RadialDiffusionGenerator:
             info.update({k: v for k, v in base.info.items() if k not in ("source", "placement", "occlusal_drop_mm")})
             kind = "radial_dcond" if need_d else "radial_refine"
             info.update({"source": f"{kind}:{self.model_path.name}", "refine": self.refine, "keep_sigma": self.keep_sigma})
+        info["style"] = "design" if self.style == "design" and getattr(self._model, "design", False) else "natural"
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
 
@@ -535,6 +578,7 @@ def main() -> None:
     t.add_argument("--init", type=Path)
     t.add_argument("--with-d", action="store_true", help="条件里加 D 的输出（data/radial_d/<split>，radial_dmaps.py 生成）：专门在 D 上补细节")
     t.add_argument("--residual", action="store_true", help="和 --with-d 一起：扩散“真牙 − D”，模型从 D 出发只学要改的部分")
+    t.add_argument("--library", action="store_true", help="加上牙库造的设计风格样本（data/radial_lib/<split>，radial_library.py build 生成）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--val", type=Path, required=True)
@@ -543,7 +587,7 @@ def main() -> None:
     e.add_argument("--clearance", type=float)
     args = p.parse_args()
     if args.cmd == "train":
-        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual)
+        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library)
     else:
         import torch
 
