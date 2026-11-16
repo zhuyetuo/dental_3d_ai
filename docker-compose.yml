@@ -34,6 +34,8 @@ x-backend-common: &backend-common
     GEN_MODEL: /models/generation/toothgen_open.pt
     # 径向深度图扩散模型（python -m dental_ai.generation.radial_diffusion train）：上面的模型出整体形状，它补咬合面细节；不想用就去掉这一行
     RADIAL_MODEL: /models/generation/radial_diffusion.pt
+    # 扩散模型训过 exocad 牙库样本：design = 按技工设计的牙形风格补细节（11-16 起默认）；natural = 按天然牙
+    RADIAL_STYLE: design
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:
