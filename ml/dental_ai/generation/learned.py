@@ -343,7 +343,8 @@ def dome_template(rings: int = 40, segments: int = 64, max_polar_deg: float = 12
     return np.array(verts, np.float32), np.array(faces, np.int64), boundary
 
 
-def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template: str = "sphere", antagonist: bool = False, refine: bool = False):
+def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template: str = "sphere", antagonist: bool = False, refine: bool = False,
+                lib_template: bool = False):
     """antagonist：多一个看对颌的分支（缺隙上方的对颌表面点 + 法向 → 256 维，和牙弓上下文的特征拼在一起）。
     refine：粗结果出来后，每个顶点再看离它最近的几个对颌点，预测一个小的修正量（让咬合面去适应对颌的尖窝）。"""
     import torch
@@ -413,6 +414,9 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             self.register_buffer("interior", torch.tensor(interior))
             self.register_buffer("degree", torch.tensor(degree))
             self.register_buffer("boundary", torch.tensor(boundary, dtype=torch.long))
+            self.lib_template = lib_template  # 每个牙位一个库牙模板（mm / SCALE），全 0 的类别用单位穹顶
+            if lib_template:
+                self.register_buffer("cls_template", torch.zeros(16, len(sphere.vertices), 3))
 
         def laplacian(self, pred):  # 每个顶点减去邻居平均（均匀拉普拉斯），只看非边界顶点
             e0, e1 = self.edges[:, 0], self.edges[:, 1]
@@ -454,8 +458,15 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             z = self.fc(torch.cat(feats, dim=1))
             v = self.template.shape[0]
             t = self.template.t().unsqueeze(0).expand(b, -1, -1)
-            h = torch.cat([t, z.unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
-            out = (0.3 * t + self.dec(h)).transpose(1, 2) * SCALE
+            if self.lib_template:
+                ct = self.cls_template[cls]  # (B, V, 3)
+                has = (ct.abs().sum((1, 2)) > 0).view(-1, 1, 1)
+                base = torch.where(has, ct.transpose(1, 2), 0.3 * t)
+                h = torch.cat([base, z.unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
+                out = (base + self.dec(h)).transpose(1, 2) * SCALE
+            else:
+                h = torch.cat([t, z.unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
+                out = (0.3 * t + self.dec(h)).transpose(1, 2) * SCALE
             if self.refine and ant is not None:
                 out = out + self.refine_step(out, ant, t, z, c) * has_ant.view(-1, 1, 1)
             return out
@@ -489,7 +500,8 @@ def load_model(path: Path, device: str):
     import torch
 
     ckpt = torch.load(path, map_location=device)
-    model = build_model(template=ckpt.get("template", "sphere"), antagonist=ckpt.get("antagonist", False), refine=ckpt.get("refine", False)).to(device)
+    model = build_model(template=ckpt.get("template", "sphere"), antagonist=ckpt.get("antagonist", False), refine=ckpt.get("refine", False),
+                        lib_template=ckpt.get("lib_template", False)).to(device)
     missing = model.load_state_dict(ckpt["state"], strict=False).missing_keys
     # 早期保存的模型没有这几个由模板决定的缓冲区，其余权重必须齐全
     assert set(missing) <= {"interior", "degree", "boundary"}, missing
@@ -499,7 +511,7 @@ def load_model(path: Path, device: str):
 def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr: float, workers: int, max_scans: int | None, edge_weight: float,
           template: str = "sphere", init: Path | None = None, lap_weight: float = 0.0, rim_weight: float = 1.0,
           antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0,
-          extent_weight: float = 0.0, gap_weight: float = 0.0) -> dict:
+          extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None) -> dict:
     import torch
 
     torch.manual_seed(0)
@@ -515,7 +527,9 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     print(json.dumps({"train_scans": len(scans) - n_val, "val_scans": n_val, "train_samples": len(tr), "val_samples": len(va), "device": device}), flush=True)
     dl = torch.utils.data.DataLoader(_dataset(scans, tr, True, ant_drop, antagonist), batch_size=batch_size, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=workers > 0)
     dv = torch.utils.data.DataLoader(_dataset(scans, va, False, 0.0, antagonist), batch_size=batch_size, num_workers=min(workers, 4))
-    model = build_model(template=template, antagonist=antagonist, refine=refine).to(device)
+    model = build_model(template=template, antagonist=antagonist, refine=refine, lib_template=lib_template is not None).to(device)
+    if lib_template is not None:
+        model.cls_template.copy_(torch.tensor(np.load(lib_template), device=device) / SCALE)
     if init:  # 沿用已训练的权重（模板不同时，形状对不上的缓冲区跳过）
         own = model.state_dict()
         src = torch.load(init, map_location=device)["state"]
@@ -526,6 +540,9 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
             grown[:, : w.shape[1]] = w
             old["fc.0.weight"] = grown
         model.load_state_dict(old, strict=False)
+        if lib_template is not None:  # 输出改成“模板 + 偏移”：解码器最后一层从 0 开始，一开始的输出就是模板
+            torch.nn.init.zeros_(model.dec[-1].weight)
+            torch.nn.init.zeros_(model.dec[-1].bias)
         print(json.dumps({"init": str(init), "loaded_tensors": len(old), "of": len(own)}), flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * len(dl), pct_start=0.05)
@@ -579,7 +596,8 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
                "val_rim_mm": round(val["rim_mm"], 4), "val_area_mm2": round(val["area_mm2"], 1), "minutes": round((time.time() - t0) / 60, 1)}
         row.update({f"val_{k}": round(v, 4) for k, v in {**val.get("shape", {}), **val.get("occlusion", {})}.items()})
         print(json.dumps(row), flush=True)
-        ckpt = {"state": model.state_dict(), "epoch": epoch, "val": val, "template": template, "antagonist": antagonist, "refine": refine}
+        ckpt = {"state": model.state_dict(), "epoch": epoch, "val": val, "template": template, "antagonist": antagonist, "refine": refine,
+                "lib_template": lib_template is not None}
         torch.save(ckpt, out.with_name(out.stem + ".last.pt"))  # 最后一轮总是留着（验证分数没超过起点时 out 不会被覆盖）
         if score(val) < best:
             best = score(val)
@@ -934,6 +952,7 @@ def main() -> None:
     t.add_argument("--clear-weight", type=float, default=0.0, help="到对颌的最小距离对齐真牙（0 = 不用）")
     t.add_argument("--extent-weight", type=float, default=0.0, help="外形尺寸、位置、高度（三个方向的最大 / 最小坐标）对齐真牙")
     t.add_argument("--gap-weight", type=float, default=0.0, help="到近中 / 远中邻牙的最小距离对齐真牙")
+    t.add_argument("--lib-template", type=Path, help="每个牙位的库牙模板（lib_template.py build 生成）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--cache", type=Path, required=True)
@@ -950,7 +969,7 @@ def main() -> None:
         train(args.cache, args.out, args.epochs, args.batch_size, args.lr, args.workers, args.max_scans, args.edge_weight,
               template=args.template, init=args.init, lap_weight=args.lap_weight, rim_weight=args.rim_weight,
               antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight,
-              extent_weight=args.extent_weight, gap_weight=args.gap_weight)
+              extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template)
     else:
         run_eval(args.model, args.cache, args.out, args.batch_size, args.samples, args.hide_antagonist)
 

@@ -20,12 +20,16 @@ import argparse
 import json
 from pathlib import Path
 
+import os
+
 import numpy as np
 
 SIZE = 160
 MAX_POLAR = np.deg2rad(125.0)
 R_CLIP = 16.0  # mm：上下文 / 对颌只看这么远；没有东西的像素记 0
 CENTER_DROP = 3.0  # mm：投影中心比“邻牙质心的中点”低多少。0 时还原误差平均 0.17 mm（13% 的表面被挡住），2–3.5 时 0.03–0.04 mm
+ONE_SIDE_EXTRAPOLATE = os.environ.get("RADIAL_ONE_SIDE", "0") == "1"  # 只有一侧有邻牙时沿牙弓外推原点（见 gap_origin）；模型要用末端牙样本训过才打开
+ONE_SIDE_STEP = 1.1  # 外推的步长：相邻两颗牙质心距离的倍数（磨牙往后一颗略宽）
 
 
 def pixel_directions() -> tuple[np.ndarray, np.ndarray]:
@@ -139,6 +143,11 @@ def gap_origin(centroids: dict[int, np.ndarray], target: int) -> np.ndarray | No
         anchors.append(centroids[max(before, key=lambda f: idx[f])])
     if not anchors:
         return None
+    if ONE_SIDE_EXTRAPOLATE and len(anchors) == 1:  # 只有一侧：往外推一个牙位（11-17 起；以前原点落在邻牙下面，末端牙投不出来）
+        side = sorted(after, key=lambda f: idx[f]) if after else sorted(before, key=lambda f: -idx[f])
+        if len(side) >= 2:
+            c1, c2 = centroids[side[0]], centroids[side[1]]
+            anchors = [c1 + (c1 - c2) * ONE_SIDE_STEP]
     # 往牙龈方向降一点：从牙冠靠下的位置往外看，咬合面和轴面都在视野里，被挡住的部分最少（roundtrip 上试出来的）
     return np.mean(anchors, axis=0) - np.array([0.0, 0.0, CENTER_DROP])
 

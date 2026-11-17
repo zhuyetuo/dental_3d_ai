@@ -147,13 +147,15 @@ def _teeth(dirs, limit_jaws: int | None = None):
     return rows
 
 
-def pilot(bank_path, data_dirs, n_teeth: int, device: str = "cuda"):
+def pilot(bank_path, data_dirs, n_teeth: int, device: str = "cuda", only_pos: int | None = None):
     """看牙库的坐标约定：每个牙位用全套初始朝向（12 个 yaw × 咬合方向正反 × 左右镜像）试，统计哪种赢。"""
     import torch
 
     bank = load_bank(bank_path, device)
     rng = np.random.default_rng(0)
     rows = _teeth(data_dirs)
+    if only_pos:
+        rows = [r for r in rows if r[2] % 10 == only_pos]
     rows = [rows[i] for i in rng.choice(len(rows), min(n_teeth, len(rows)), replace=False)]
     yaws = np.arange(12) * (2 * math.pi / 12)
     stats = {}
@@ -194,7 +196,7 @@ def pilot(bank_path, data_dirs, n_teeth: int, device: str = "cuda"):
 
 
 def build(bank_path, data_dirs, conv: dict, n_cand: int = 6, max_score: float = 0.35, min_cover: float = 0.92,
-          device: str = "cuda", chunk: int = 384, seed: int = 0):
+          device: str = "cuda", chunk: int = 384, seed: int = 0, only_pos: int | None = None):
     """每颗真牙：同牙位随机 n_cand 颗库牙 × 3 个 yaw 初值（约定里的 yaw ± 30°），挑分最低的；
     分数 ≤ max_score 且覆盖真牙 ≥ min_cover 的才要。存 data/radial_lib/<split>/<同名>.npz：fdi、lib（深度图）、ok、score、name。"""
     import torch
@@ -216,6 +218,8 @@ def build(bank_path, data_dirs, conv: dict, n_cand: int = 6, max_score: float = 
                 for k, v in enumerate(z["fdi"]):
                     fdi = int(v)
                     jaw, pos = jaw_pos(fdi)
+                    if only_pos and pos != only_pos:
+                        continue
                     key = f"{'upper' if jaw == 0 else 'lower'}{pos}"
                     cand = np.flatnonzero((bank["jaw"] == jaw) & (bank["pos"] == pos))
                     if key not in conv or not len(cand):
@@ -264,6 +268,12 @@ def build(bank_path, data_dirs, conv: dict, n_cand: int = 6, max_score: float = 
             ok = np.zeros(T, bool)
             score = np.full(T, np.nan, np.float32)
             names = np.array([""] * T, dtype=object)
+            redo = np.ones(T, bool)
+            if only_pos and (out_dir / f.name).exists():  # 合并：别的牙位保留原来的结果
+                with np.load(out_dir / f.name) as old:
+                    lib, ok, score, names = old["lib"].copy(), old["ok"].copy(), old["score"].copy(), old["name"].astype(object)
+                redo = np.array([int(v) % 10 == only_pos for v in fdis])
+                lib[redo], ok[redo], score[redo], names[redo] = 0, False, np.nan, ""
             items = by_file.get(fi, [])
             if items:
                 pts, bs = [], []
@@ -304,18 +314,20 @@ def main() -> None:
     a.add_argument("--data", type=Path, nargs="+", required=True)
     a.add_argument("--n", type=int, default=400)
     a.add_argument("--out", type=Path, default=None)
+    a.add_argument("--only-pos", type=int)
     b = sub.add_parser("build")
     b.add_argument("--bank", type=Path, required=True)
     b.add_argument("--data", type=Path, nargs="+", required=True)
     b.add_argument("--conv", type=Path, required=True, help="pilot 得出的约定（每个牙位的 mir、zf、yaw）")
     b.add_argument("--max-score", type=float, default=0.35)
+    b.add_argument("--only-pos", type=int)
     args = p.parse_args()
     if args.cmd == "pilot":
-        out = pilot(args.bank, args.data, args.n)
+        out = pilot(args.bank, args.data, args.n, only_pos=args.only_pos)
         if args.out:
             args.out.write_text(json.dumps(out, ensure_ascii=False, indent=1))
     else:
-        build(args.bank, args.data, conventions(json.loads(args.conv.read_text())), max_score=args.max_score)
+        build(args.bank, args.data, conventions(json.loads(args.conv.read_text())), max_score=args.max_score, only_pos=args.only_pos)
 
 
 def conventions(pilot_out: dict) -> dict:

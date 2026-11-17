@@ -15,6 +15,8 @@ import numpy as np
 
 from .radial import CENTER_DROP, MAX_POLAR, R_CLIP, SIZE  # noqa: F401
 
+MIN_TEETH = 4  # 一个颌至少要有几颗牙的样本才存（只补末端牙时设 1）
+
 
 def sample_surface(verts, faces, n: int, generator=None):
     """按面积均匀采样三角网格表面。verts (V, 3)、faces (F, 3) 都是 GPU 张量；返回 (n, 3)。"""
@@ -177,7 +179,7 @@ def scan_maps_gpu(verts, faces, labels, antagonist=None, seed: int = 0, device: 
         if o is not None:
             fdis.append(fdi)
             origins.append(o)
-    if len(fdis) < 4:
+    if len(fdis) < MIN_TEETH:
         return None
     V = torch.as_tensor(verts, dtype=torch.float32, device=device)
     F = torch.as_tensor(faces, dtype=torch.long, device=device)
@@ -187,7 +189,7 @@ def scan_maps_gpu(verts, faces, labels, antagonist=None, seed: int = 0, device: 
         ant = (torch.as_tensor(antagonist[0], dtype=torch.float32, device=device), torch.as_tensor(antagonist[1], dtype=torch.long, device=device))
     m = tooth_maps_batch(V, F, L3, fdis, origins, [f // 10 in (2, 3) for f in fdis], ant, seed=seed)
     keep = ((m["tooth"] > 0).flatten(1).sum(1) >= 2000).cpu().numpy()  # 原点不在牙冠里面（牙列很乱）或者牙太小
-    if keep.sum() < 4:
+    if keep.sum() < MIN_TEETH:
         return None
     sel = lambda x: x.cpu().numpy()[keep]  # noqa: E731
     return {"fdi": np.array(fdis, np.int16)[keep], "origin": np.array(origins, np.float32)[keep], "has_ant": sel(m["has_ant"]),

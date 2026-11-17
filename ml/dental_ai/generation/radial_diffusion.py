@@ -358,7 +358,8 @@ def _load_init(model, path, device):
 
 
 def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None,
-          with_d: bool = False, residual: bool = False, library: bool = False, hf_weight: float = 0.0) -> None:
+          with_d: bool = False, residual: bool = False, library: bool = False, hf_weight: float = 0.0,
+          distill: Path | None = None, distill_w: float = 4.0) -> None:
     """residual（要 with_d）：扩散的对象是“真牙 − D”（× RES_SCALE），模型天然从 D 出发，只学要改的部分。"""
     assert with_d or not residual, "--residual 要和 --with-d 一起用"
     import copy
@@ -384,6 +385,10 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
         _load_init(model, init, device)
     model.residual = residual
     ema = copy.deepcopy(model).requires_grad_(False)
+    teacher = None
+    if distill:  # 老师：带设计风格类别的模型；学生的设计风格类别学“引导 distill_w 倍”以后的输出
+        teacher = load_model(distill, device).requires_grad_(False)
+        assert getattr(teacher, "design", False), "老师模型要有设计风格类别"
     s_res = res_scale(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     ac = alphas(device)
@@ -408,9 +413,26 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
             t = torch.randint(0, STEPS, (len(j),), device=device)
             a = ac[t].view(-1, 1, 1, 1)
             noise = torch.randn_like(x0)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                v = model(a.sqrt() * x0 + (1 - a).sqrt() * noise, cond, t, torch.tensor(cls[j], device=device))
-            loss = ((v.float() - (a.sqrt() * noise - (1 - a).sqrt() * x0)) ** 2).mean()
+            c_j = torch.tensor(cls[j], device=device)
+            if teacher is not None:
+                xt = a.sqrt() * x0 + (1 - a).sqrt() * noise
+                nat = c_j < DESIGN_OFFSET
+                c_nat, c_des = c_j % DESIGN_OFFSET, c_j % DESIGN_OFFSET + DESIGN_OFFSET
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                    vv = teacher(torch.cat([xt, xt]), torch.cat([cond, cond]), torch.cat([t, t]), torch.cat([c_des, c_nat])).float()
+                v_s, v_r = vv.chunk(2)
+                v_guided = v_r + distill_w * (v_s - v_r)
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    v2 = model(torch.cat([xt, xt]), torch.cat([cond, cond]), torch.cat([t, t]), torch.cat([c_nat, c_des])).float()
+                v_n, v_d = v2.chunk(2)
+                target = a.sqrt() * noise - (1 - a).sqrt() * x0
+                l_nat = (((v_n - target) ** 2).mean((1, 2, 3)) * nat.float()).sum() / nat.float().sum().clamp(min=1)
+                loss = l_nat + ((v_d - v_guided) ** 2).mean()
+                v = v_d
+            else:
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    v = model(a.sqrt() * x0 + (1 - a).sqrt() * noise, cond, t, c_j)
+                loss = ((v.float() - (a.sqrt() * noise - (1 - a).sqrt() * x0)) ** 2).mean()
             if hf_weight > 0 and not residual:  # 细节损失：还原的 x0 和答案的高频部分（窝沟、牙尖棱）对齐
                 xt = a.sqrt() * x0 + (1 - a).sqrt() * noise
                 x0_hat = a.sqrt() * xt - (1 - a).sqrt() * v.float()
@@ -612,6 +634,8 @@ def main() -> None:
     t.add_argument("--with-d", action="store_true", help="条件里加 D 的输出（data/radial_d/<split>，radial_dmaps.py 生成）：专门在 D 上补细节")
     t.add_argument("--residual", action="store_true", help="和 --with-d 一起：扩散“真牙 − D”，模型从 D 出发只学要改的部分")
     t.add_argument("--hf-weight", type=float, default=0.0, help="细节损失的权重（0 = 不加）")
+    t.add_argument("--distill", type=Path, help="引导蒸馏：老师模型（有设计风格类别）")
+    t.add_argument("--distill-w", type=float, default=4.0, help="蒸馏的引导倍数")
     t.add_argument("--library", action="store_true", help="加上牙库造的设计风格样本（data/radial_lib/<split>，radial_library.py build 生成）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
@@ -621,7 +645,8 @@ def main() -> None:
     e.add_argument("--clearance", type=float)
     args = p.parse_args()
     if args.cmd == "train":
-        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library, args.hf_weight)
+        train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library, args.hf_weight,
+              args.distill, args.distill_w)
     else:
         import torch
 
