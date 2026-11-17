@@ -128,7 +128,16 @@ def tooth_maps(mesh, labels: np.ndarray, target: int, origin: np.ndarray, antago
     return out
 
 
-def gap_origin(centroids: dict[int, np.ndarray], target: int) -> np.ndarray | None:
+def is_one_sided(centroids: dict[int, np.ndarray], target: int) -> bool:
+    """目标牙只有一侧有同颌的牙（末端牙：常见的是缺第二磨牙、后面没有智齿）。"""
+    from .learned import arch_index
+
+    ti = arch_index(target, target)
+    idx = [arch_index(f, target) for f in centroids if f != target and (f // 10 in (1, 2)) == (target // 10 in (1, 2))]
+    return bool(idx) and not (any(i > ti for i in idx) and any(i < ti for i in idx))
+
+
+def gap_origin(centroids: dict[int, np.ndarray], target: int, extrapolate: bool | None = None) -> np.ndarray | None:
     """和 learned.build_context 一样：目标牙两侧最近的现存牙质心的中点。"""
     from .learned import arch_index
 
@@ -143,7 +152,7 @@ def gap_origin(centroids: dict[int, np.ndarray], target: int) -> np.ndarray | No
         anchors.append(centroids[max(before, key=lambda f: idx[f])])
     if not anchors:
         return None
-    if ONE_SIDE_EXTRAPOLATE and len(anchors) == 1:  # 只有一侧：往外推一个牙位（11-17 起；以前原点落在邻牙下面，末端牙投不出来）
+    if (ONE_SIDE_EXTRAPOLATE if extrapolate is None else extrapolate) and len(anchors) == 1:  # 只有一侧：往外推一个牙位（11-17 起；以前原点落在邻牙下面，末端牙投不出来）
         side = sorted(after, key=lambda f: idx[f]) if after else sorted(before, key=lambda f: -idx[f])
         if len(side) >= 2:
             c1, c2 = centroids[side[0]], centroids[side[1]]

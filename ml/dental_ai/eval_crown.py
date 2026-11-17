@@ -85,7 +85,10 @@ def _one(args) -> list[dict]:
     for jaw, other in (("upper", "lower"), ("lower", "upper")):
         mesh, lab = meshes[jaw], labels[jaw]
         present = {int(f) for f in np.unique(lab) if f}
-        cand = sorted(f for f in present if f % 10 in (4, 5, 6) and f - 1 in present and f + 1 in present)
+        if os.environ.get("EVAL_TERMINAL") == "1":  # 末端牙：7 号在、近中 6 号在、远中没有 8 号
+            cand = sorted(f for f in present if f % 10 == 7 and f - 1 in present and f + 1 not in present)
+        else:
+            cand = sorted(f for f in present if f % 10 in (4, 5, 6) and f - 1 in present and f + 1 in present)
         try:
             up = estimate_arch_frame(mesh, lab, jaw).occlusal
         except ValueError:
@@ -94,7 +97,8 @@ def _one(args) -> list[dict]:
             base = {"patient": pid, "jaw": jaw, "fdi": fdi}
             try:
                 real = tooth_mesh(mesh, lab, fdi)
-                mesial, distal = tooth_mesh(mesh, lab, fdi - 1), tooth_mesh(mesh, lab, fdi + 1)
+                mesial = tooth_mesh(mesh, lab, fdi - 1)
+                distal = tooth_mesh(mesh, lab, fdi + 1) if fdi + 1 in present else None
                 ant = _crop(meshes[other], np.asarray(real.vertices), 12.0)
                 rows.append({**base, "kind": "natural", **score_crown(real, up, mesial, distal, ant)})
                 mesh2, lab2 = simulate_missing(mesh, lab, jaw, (fdi,))
@@ -113,7 +117,8 @@ def _one(args) -> list[dict]:
                                                            style_w=float(os.environ.get("RADIAL_STYLE_W", "1")),
                                                            detail_gain=float(os.environ.get("RADIAL_DETAIL_GAIN", "1")),
                                                            style_tmin=int(os.environ.get("RADIAL_STYLE_TMIN", "0")),
-                                                           smooth=float(os.environ.get("RADIAL_SMOOTH", "0")))
+                                                           smooth=float(os.environ.get("RADIAL_SMOOTH", "0")),
+                                                           terminal_model=os.environ.get("RADIAL_MODEL_TERMINAL") or None)
                         report = run(mesh2, jaw, _Fixed(lab2), tmp, generator=gen, antagonist=antagonist, preferences=prefs)
                         done = {g["fdi"]: g for g in report["generated"]}
                         if fdi not in done:

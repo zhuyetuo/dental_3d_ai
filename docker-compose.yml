@@ -39,6 +39,8 @@ x-backend-common: &backend-common
     # 风格引导倍数：模型已经把“放大 4 倍的引导”蒸馏进设计风格（11-17），所以这里是 1（只算一遍）；生成后抹平 0.8 像素去掉麻点
     RADIAL_STYLE_W: "1"
     RADIAL_SMOOTH: "0.8"
+    # 末端牙（只有一侧有邻牙，比如缺第二磨牙、后面没有智齿）单独的扩散模型：用末端牙样本训过，配沿牙弓外推的投影中心（11-17）
+    RADIAL_MODEL_TERMINAL: /models/generation/radial_diffusion_terminal.pt
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:

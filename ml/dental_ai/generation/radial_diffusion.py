@@ -495,7 +495,7 @@ class RadialDiffusionGenerator:
 
     def __init__(self, model_path, fallback=None, device: str | None = None, steps: int = 50, clearance: float | None = None, seed: int = 0,
                  refine: float | None = None, keep_sigma: float | None = None, style: str = "natural",
-                 style_w: float = 1.0, detail_gain: float = 1.0, style_tmin: int = 0, smooth: float = 0.0):
+                 style_w: float = 1.0, detail_gain: float = 1.0, style_tmin: int = 0, smooth: float = 0.0, terminal_model=None):
         """refine（0–1）：先让 fallback（学习模型 D）出整体形状，扩散模型从它加噪到这一步再去噪，只补细节。keep_sigma 见 sample。"""
         import os
 
@@ -506,6 +506,8 @@ class RadialDiffusionGenerator:
         self.style = style  # "design"：模型训过牙库样本时，按技工设计的牙形风格生成（牙尖、沟更清楚）
         self.style_w, self.detail_gain, self.style_tmin = style_w, detail_gain, style_tmin  # 见 sample
         self.smooth = smooth  # 生成后抹平麻点的 σ（像素），0 = 不抹
+        # 末端牙（只有一侧有邻牙）单独的模型：用末端牙样本训过，配外推原点；没给就和其余牙一样
+        self.terminal_path, self._terminal = (Path(terminal_model) if terminal_model else None), None
         self._model = None
 
     @property
@@ -527,7 +529,7 @@ class RadialDiffusionGenerator:
         from ..margin.cervical import boundary_loops
         from .base import GeneratedTooth
         from .learned import canonical_rotation, target_class
-        from .radial import gap_origin, map_to_mesh, tooth_maps
+        from .radial import gap_origin, is_one_sided, map_to_mesh, tooth_maps
 
         if target.kind == "closed":
             raise ValueError(f"{target.fdi} 的间隙已关闭，不生成")
@@ -539,7 +541,9 @@ class RadialDiffusionGenerator:
         canon = trimesh.Trimesh(np.asarray(ctx.mesh.vertices) @ rot.T, ctx.mesh.faces, process=False)
         verts = np.asarray(canon.vertices)
         centroids = {int(f): verts[labels == f].mean(axis=0) for f in np.unique(labels) if f > 0 and (labels == f).sum() >= 200}
-        origin = gap_origin(centroids, target.fdi)
+        terminal = self.terminal_path is not None and is_one_sided(centroids, target.fdi)
+        origin = gap_origin(centroids, target.fdi, extrapolate=True) if terminal else gap_origin(
+            centroids, target.fdi, extrapolate=False if self.terminal_path is not None else None)
         if origin is None:
             return self._fall(ctx, target, "两侧都没有现存牙")
         flip = target.fdi // 10 in (2, 3)
@@ -550,12 +554,15 @@ class RadialDiffusionGenerator:
         if self._model is None:
             self.device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
             self._model = load_model(self.model_path, self.device)
+        if terminal and self._terminal is None:
+            self._terminal = load_model(self.terminal_path, self.device)
+        model = self._terminal if terminal else self._model
         has = "ant" in maps
         a = torch.tensor(maps.get("ant", np.zeros((SIZE, SIZE), np.float32)), device=self.device)[None]
         cond = build_condition(torch.tensor(maps["ctx"], device=self.device)[None], a, torch.tensor([float(has)], device=self.device))
         g = torch.Generator(device=self.device).manual_seed(self.seed)
         init, base = None, None
-        need_d = self._model.cond_ch > 5  # 专门“在 D 上补细节”训练的模型：D 的图是条件之一
+        need_d = model.cond_ch > 5  # 专门“在 D 上补细节”训练的模型：D 的图是条件之一
         if need_d and self.fallback is None:
             raise ValueError("这个扩散模型要 D 的输出当条件，需要 fallback=LearnedGenerator")
         if (self.refine is not None or need_d) and self.fallback is not None:  # 学习模型 D 出整体形状，投到同一张径向图上
@@ -573,12 +580,12 @@ class RadialDiffusionGenerator:
             if need_d:
                 cond = torch.cat([cond, d_enc], dim=1)
         with torch.no_grad():
-            design = self.style == "design" and getattr(self._model, "design", False)
+            design = self.style == "design" and getattr(model, "design", False)
             cls = target_class(target.fdi) + (DESIGN_OFFSET if design else 0)
-            x = sample(self._model, cond, torch.tensor([cls], device=self.device), self.steps, g,
+            x = sample(model, cond, torch.tensor([cls], device=self.device), self.steps, g,
                        ant=a if has and self.clearance is not None else None, clearance=self.clearance,
                        init=init, strength=self.refine or 1.0, keep_sigma=self.keep_sigma,
-                       base=d_enc if need_d and getattr(self._model, "residual", False) else None,
+                       base=d_enc if need_d and getattr(model, "residual", False) else None,
                        cls_ref=torch.tensor([target_class(target.fdi)], device=self.device) if design else None,
                        style_w=self.style_w, detail_gain=self.detail_gain, style_tmin=self.style_tmin)
         dec = decode_tooth(x)
@@ -601,13 +608,13 @@ class RadialDiffusionGenerator:
                 base.info["radial_fallback"] = "生成的牙冠边界不是一圈"
                 return base
             return self._fall(ctx, target, "生成的牙冠边界不是一圈")
-        info = {"source": f"radial_diffusion:{self.model_path.name}", "placement": "radial_diffusion", "gap_mm": target.gap_mm,
+        info = {"source": f"radial_diffusion:{(self.terminal_path if terminal else self.model_path).name}", "terminal": terminal, "placement": "radial_diffusion", "gap_mm": target.gap_mm,
                 "occlusal_drop_mm": 0.0, "antagonist_input": has}
         if base is not None:
             info.update({k: v for k, v in base.info.items() if k not in ("source", "placement", "occlusal_drop_mm")})
             kind = "radial_dcond" if need_d else "radial_refine"
             info.update({"source": f"{kind}:{self.model_path.name}", "refine": self.refine, "keep_sigma": self.keep_sigma})
-        info["style"] = "design" if self.style == "design" and getattr(self._model, "design", False) else "natural"
+        info["style"] = "design" if self.style == "design" and getattr(model, "design", False) else "natural"
         if info["style"] == "design" and self.style_w != 1.0:
             info["style_w"] = self.style_w
             if self.style_tmin:
