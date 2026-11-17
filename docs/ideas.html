@@ -50,9 +50,12 @@ td.w{white-space:normal;min-width:240px}
       <tr><th>想法</th><th>状态</th><th>为什么 / 现在到哪</th><th>代价</th></tr>
       <tr><td><b>用 exocad 牙库改善咬合面细节</b></td><td><span class="state">做了一半</span></td><td class="w">162 套设计级牙形（11-16 新数据）。做法：形状模型的模板换成牙库牙形；扩散模型补细节时在牙库上训练 / 微调；
       加一个“检索 + 拟合”的对照方法（和 exocad 自己的做法一样）；新指标“和最像的设计级牙形差多少”。<br>11-16 已做：库牙对齐到真牙造“设计风格”样本、扩散模型加风格类别，指标小幅变好但沟没明显变深。11-17：风格引导 w=4 + 抹平 0.8、训练加细节损失，窝沟深度 1.92 → 1.97（真牙 2.00），已换成网页默认。检索 + 移植库牙试过，对不上位置，不做。11-17：引导已蒸馏进模型（一遍出效果）；形状模型换库牙模板试过，明显变差，不做</td><td class="cost">牙库导出半天；训练几小时</td></tr>
-      <tr><td><b>末端牙咬合调整后仍穿入对颌</b></td><td><span class="state">待做</span></td><td class="w">末端牙模型上线后，咬合调整后仍穿入对颌 &gt;0.1 mm 的从 5.9% 升到 13.7%（形状模型时代的末端牙更矮）。
+      <tr><td><b>末端牙咬合调整后仍穿入对颌</b></td><td><span class="state ok">已解决（11-17）</span></td><td class="w">末端牙模型上线后，咬合调整后仍穿入对颌 &gt;0.1 mm 的从 5.9% 升到 13.7%（形状模型时代的末端牙更矮）。
       要看是咬合调整对只有一侧邻牙的牙处理不好，还是末端牙模型整体偏高（纯扩散时设计风格的末端牙明显偏高）</td><td class="cost">半天</td></tr>
       <tr><td>末端牙的库牙对齐率低</td><td><span class="state">待做</span></td><td class="w">7 号牙的库牙只有 36% 对得上（其他牙位约 60%），第二磨牙的天然形态和库牙差得多；可以放宽缩放范围、或换各向异性缩放</td><td class="cost">2 小时</td></tr>
+      <tr><td>基牙库 / 牙冠库（elosdent 07、09）</td><td><span class="state">只能当参考</span></td><td class="w">11-17 解开看了：32 个基牙和 32 个牙冠是两套各自的标准形，不在同一坐标系（相距 10–27 mm），基牙左右对称重复，
+      不是“预备体 + 技工设计牙冠”的配对，不能当贴合度真值。可以拿基牙形状造模拟预备体</td><td class="cost">—</td></tr>
+      <tr><td><b>分割二选一更进一步</b></td><td><span class="state">待做</span></td><td class="w">并集（任一模型报缺就算）检出 66.8%，但网页要一张分割图；可以试逐牙融合：TeethSplineSeg 报缺的牙位，在我们的分割图里把那颗牙的标签去掉（两模型的点一一对应）</td><td class="cost">半天</td></tr>
       <tr><td>扩散模型接着训（v2）</td><td><span class="state mid">暂停</span></td><td class="w">v1 只训了 30 轮，损失还在降。v2 从 v1 接着训，11-15 训到第 10 轮时暂停，GPU 让给“看着形状模型补细节的扩散”。
       检查点在服务器 runs/radial_diffusion_v2/model_paused.pt，用 --init 接着训</td><td class="cost">剩 30 轮约 2.5 小时；可能要 100 小时以上才饱和</td></tr>
       <tr><td>专门训一个“看着形状模型补细节”的扩散模型</td><td><span class="state mid">进行中</span></td><td class="w">把形状模型的输出当条件、真牙当目标专门训（radial_diffusion train --with-d）。11-15：3.4 万颗训练牙的形状模型的图已生成（radial_dmaps.py，约 20 分钟），

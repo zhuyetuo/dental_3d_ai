@@ -34,7 +34,7 @@
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
-    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-17</div>
+    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-18</div>
     <h1>来时路：每一轮试了什么、结果怎样</h1>
     <p class="lead">成功的、失败的都记。卡住的时候回头看：哪类改法有效、哪类总是白费，往往比再想一个新点子更有用。
     <span class="state ok">● 采用</span> <span class="state bad">● 没采用</span> <span class="state mid">● 部分 / 默认关闭</span></p>
@@ -63,6 +63,20 @@
       <button data-k="margin">颈缘线</button><button data-k="eval">评估</button><button data-k="web">网页 / 工程</button>
     </div>
     <div class="tl" id="tl">
+
+      <div class="ev ok" data-k="seg"><div class="d">2026-11-17</div>
+        <h3>分割二选一：我们的模型 + 微调过的 TeethSplineSeg<span class="tag">分割</span></h3>
+        <p>两个模型各有长处：TeethSplineSeg（我们用模拟缺牙数据微调过）前牙、磨牙强，我们的模型前磨牙强。每个颌两个都分一遍，
+        各自数“缺了几颗”，用报缺多的那个。TeethSplineSeg 做成了单独的分割服务（模型常驻，一个颌约 17 秒），网页 worker 自动调用；服务没起时只用我们的。
+        这里的数字是<b>按网页实际调用的路径</b>（先摆正朝向、发给服务）在 190 个真实缺牙颌上重新跑的。</p>
+        <img src="images/seg_fusion.png" alt="真实缺牙检出率：我们的模型、TeethSplineSeg、二选一">
+        <p class="num">真实缺牙检出 54.9% → <b>62.2%</b> · 对照颌（报告没提缺牙）误报 20/79 颌（原来 20/79）</p></div>
+
+      <div class="ev ok" data-k="gen"><div class="d">2026-11-17</div>
+        <h3>末端牙穿入对颌 13% → 0%：问题在封底，不在牙冠<span class="tag">牙冠生成</span></h3>
+        <p>先以为是扎得太深、咬合调整没看到（把精确距离的范围放大到 4 mm，只降了 0.6 个点）。拿穿入的病例逐点看：穿入的点<b>全在封底那部分</b>。
+        末端牙后面没有邻牙，牙龈往后升高（磨牙后垫），贴着牙龈封的底跟着升高、顶进对颌；而最后一轮咬合调整只动牙冠部分。改成封底也能沿咬合方向往下退。</p>
+        <p class="num">末端牙：穿入 13.1% → <b>0%</b>，其余持平 · 普通牙：穿入 0%，形状误差 0.262（不变），都封闭</p></div>
 
       <div class="ev ok" data-k="gen"><div class="d">2026-11-17</div>
         <h3>末端牙（缺第二磨牙、后面没有牙）终于能补细节了<span class="tag">牙冠生成</span></h3>
