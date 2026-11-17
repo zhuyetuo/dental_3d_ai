@@ -173,7 +173,8 @@ def run(
             part[: solid.metadata["crown_vertices"]] = True
             contacts, contact_warnings = adjust_contacts(solid, neighbors, prefs.contacts_distance, part)
             if fit_occlusion:
-                again, _ = adjust_occlusion(solid, antagonist, up, prefs.occlusion_distance, part, lift=False)
+                # 封底部分也能往下退：末端牙远中的牙龈升高（磨牙后垫），封底跟着升高会顶进对颌（末端牙评分卡上 13% 的穿入都在这里）
+                again, _ = adjust_occlusion(solid, antagonist, up, prefs.occlusion_distance, None, lift=False)
                 tooth.info["occlusal_clearance_mm"] = again["occlusal_clearance_mm"]
                 tooth.info["occlusal_reduction_mm"] = round(tooth.info.get("occlusal_reduction_mm", 0.0) + again["occlusal_reduction_mm"], 3)
             tooth.info["contacts_mm"] = {str(k): v for k, v in contacts.items()}

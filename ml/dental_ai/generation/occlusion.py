@@ -19,6 +19,8 @@ from scipy.spatial import cKDTree
 from ..margin.cervical import boundary_loops
 from .contacts import signed_distance_to_surface
 
+DEEP_REACH = 4.0  # mm：至少在这个范围内求精确的有符号距离
+
 
 # 三角形内部的检查点（重心坐标）：中心、三条边的中点、靠近三个角的点。学习模型的牙冠三角形边长有 0.5 mm 左右，只查中心会漏
 _BARY = np.array([[1 / 3, 1 / 3, 1 / 3], [0.5, 0.5, 0.0], [0.0, 0.5, 0.5], [0.5, 0.0, 0.5], [2 / 3, 1 / 6, 1 / 6], [1 / 6, 2 / 3, 1 / 6], [1 / 6, 1 / 6, 2 / 3]])
@@ -70,7 +72,8 @@ def adjust_occlusion(
 
     # 只有离对颌近的点才求精确距离：更远的点既不用磨（距离够），也不决定抬高多少（超过 max_lift 就不抬）。
     # 牙冠的轴面离对颌有好几毫米，都求精确距离的话时间几乎全花在它们身上
-    reach = target + max_lift + 0.5
+    # 扎进对颌很深的点（末端牙、生成得偏高时会有 2–3 mm）离对颌表面顶点也远：范围太小会把它们当成“在外面”，既不磨还可能被抬高
+    reach = max(target + max_lift + 0.5, DEEP_REACH)
 
     def distance():
         d, _ = signed_distance_to_surface(crown.vertices[idx], near, cutoff=reach)

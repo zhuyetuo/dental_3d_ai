@@ -39,6 +39,12 @@ def build_segmenter(case: dict) -> Segmenter:
         # 自己训练的深度分割模型（dental_ai/segmentation/deep.py），有 GPU 时用 GPU，否则 CPU
         from dental_ai.segmentation.deep import DeepSegmenter
 
+        fusion = os.environ.get("SEGMENTER_FUSION_URL")
+        if fusion:  # 再用 TeethSplineSeg（services/splineseg）分一遍，每个颌选报缺多的那个（真实缺牙检出 54.9% → 61.9%）
+            from dental_ai.segmentation.fusion import FusionSegmenter
+
+            second = OrientedSegmenter(RemoteSegmenter(fusion, name="teethsplineseg"))
+            return FusionSegmenter(DeepSegmenter(deep), second, name="deep+teethsplineseg")
         return DeepSegmenter(deep)
     baseline = os.environ.get("BASELINE_MODEL")
     if baseline and os.path.exists(baseline):

@@ -61,3 +61,14 @@ docker compose up -d --build worker                                             
 - 路径和直接装环境时一样（容器里也是 `~/zyt/dental_3d_ai`、`~/zyt/dental_data`），`scripts/gpu/` 下的脚本不用改。
   脚本里的 `. .venv/bin/activate` 由 `docker/venv-shim` 接住（什么都不做，直接用镜像里的 Python）。
 - 模型权重在仓库 `models/` 下，跟着代码走；训练中间结果在 `runs/`（不提交）。
+
+## TeethSplineSeg 分割服务（和自己的分割模型二选一）
+
+在宿主机上用 TeethSplineSeg 自己的环境（`.venv-splineseg`，见 `scripts/gpu/splineseg_eval.sh`）起服务，只监听 docker 网络的网关（worker 容器能访问，局域网访问不到）：
+
+```bash
+bash scripts/gpu/start_splineseg_service.sh
+```
+
+worker 的 `SEGMENTER_FUSION_URL` 指向它；服务没起时 worker 自动只用自己的分割模型。一个颌约 30 秒（每次都重新加载模型，后续可以改成常驻）。
+重启机器后要重新起一次。
