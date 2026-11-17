@@ -64,6 +64,18 @@
     </div>
     <div class="tl" id="tl">
 
+      <div class="ev no" data-k="gen"><div class="d">2026-11-18</div>
+        <h3>末端牙模型改进版：第二磨牙库牙多试候选、接着训、蒸馏<span class="tag">牙冠生成</span></h3>
+        <p>第二磨牙的库牙每颗试 16 颗候选（原来 6 颗）重新对齐，末端牙模型接着训 6 轮再蒸馏。末端牙评分卡上 4 项里只有 2 项变好，没达到“至少 3 项更好”的上线条件，网页继续用原来的。</p>
+        <p class="num">位置 0.826 → 0.826 · 牙尖 1.818 → 1.842 · 中央窝 1.959 → 1.873 · 均方根 0.667 → 0.659（mm，末端牙 154 颗）</p></div>
+
+      <div class="ev ok" data-k="seg"><div class="d">2026-11-18</div>
+        <h3>TeethSplineSeg 再微调：固定学习率 1e-4<span class="tag">分割</span></h3>
+        <p>上次 30 轮微调里第 0 轮最好——那一轮还在预热，学习率只有 1e-4，之后升到 1e-3 就越训越差。这次从第 0 轮的权重出发，学习率固定 1e-4 训 6 轮。
+        比现在的好，已换上分割服务。</p>
+        <p class="num">TeethSplineSeg 单独检出 58.0% → 60.1% · 缺牙数对 67.1% → 71.3% ·
+        二选一估计 61.9% → 63.3% · 对照误报 22 → 21 颌</p></div>
+
       <div class="ev ok" data-k="seg"><div class="d">2026-11-17</div>
         <h3>分割二选一：我们的模型 + 微调过的 TeethSplineSeg<span class="tag">分割</span></h3>
         <p>两个模型各有长处：TeethSplineSeg（我们用模拟缺牙数据微调过）前牙、磨牙强，我们的模型前磨牙强。每个颌两个都分一遍，
