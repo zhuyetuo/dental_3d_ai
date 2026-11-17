@@ -47,7 +47,80 @@ def count_vertices(obj: bytes) -> int:
     return sum(1 for line in obj.decode(errors="replace").splitlines() if line.startswith("v "))
 
 
+_RES: dict = {}
+
+
+def _resident():
+    """常驻：模型只加载一次（作者的 inference.py 每次都要重新加载，单个病例一大半时间花在这）。"""
+    if "model" not in _RES:
+        sys.path.insert(0, str(SS))
+        os.chdir(SS)
+        import torch
+        from inference import reset_global_seed  # noqa: F401
+        from models.ptv3.ptv3_tooth_seg_network_arch_cac_final import LitPTV3ToothSegmentationNetwork_Arch_CAC_Final
+
+        torch.set_float32_matmul_precision("medium")
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        model = LitPTV3ToothSegmentationNetwork_Arch_CAC_Final.load_from_checkpoint(CKPT)
+        dev = torch.device("cpu" if DEVICE == "cpu" else f"cuda:{int(DEVICE)}")
+        model.to(dev).eval()
+        _RES.update(model=model, device=dev)
+    return _RES
+
+
+def segment_resident(obj: bytes, jaw: str) -> np.ndarray:
+    import types
+
+    r = _resident()  # 先加载（也把作者的代码目录加进 sys.path），再导入它的模块
+    from dataset.point_dataset import Teeth3DSDataset
+    from inference import reset_global_seed, run_original_inference_single_sample, run_postprocessing, run_upsampling
+
+    with LOCK, tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        case = f"case_{jaw}"
+        raw = tmp / "root" / "raw"
+        (raw / jaw / "case").mkdir(parents=True)
+        (raw / ("upper" if jaw == "lower" else "lower")).mkdir()
+        (raw / jaw / "case" / f"{case}.obj").write_bytes(obj)
+        n = count_vertices(obj)
+        (raw / jaw / "case" / f"{case}.json").write_text(json.dumps({"jaw": jaw, "labels": [0] * n, "instances": [0] * n}))
+        for j in ("upper", "lower"):
+            (raw / f"testing_{j}.txt").write_text(f"{case}\n" if j == jaw else "")
+            (raw / f"training_{j}.txt").write_text("")
+        t0 = time.time()
+        ds = Teeth3DSDataset(root=str(tmp / "root"), processed_folder="processed_32000_points_7dim_arch_gsn_jawtype", feature_dim=7,
+                             append_jaw_feature=True, verbose=False, in_memory=False, target_point_count=32000, force_process=False,
+                             is_train=False, train_test_split=1, use_global_scale_normalization=True, selected_sample_names=[case])
+        out = {k: tmp / "out" / k for k in ("original", "upsampled", "postprocessed")}
+        for d in out.values():
+            d.mkdir(parents=True)
+        args = types.SimpleNamespace(upsample_workers=4, postprocess_workers=1, root_folder=str(tmp / "root"), keep_secondary_components=True)
+        reset_global_seed(42)
+        t1 = time.time()
+        run_original_inference_single_sample(r["model"], ds, out["original"], r["device"])
+        t2 = time.time()
+        run_upsampling(ds, out["original"], out["upsampled"], args)
+        run_postprocessing(out["upsampled"], out["postprocessed"], args)
+        classes = np.loadtxt(out["postprocessed"] / f"{case}.txt", dtype=np.int64).reshape(-1)
+        print(f"segment {jaw}: {len(classes)} 个顶点，预处理 {t1 - t0:.1f} 秒 推理 {t2 - t1:.1f} 秒 合计 {time.time() - t0:.1f} 秒", flush=True)
+    if len(classes) != n:
+        raise RuntimeError(f"预测 {len(classes)} 个顶点，OBJ 有 {n} 个")
+    table = np.array([0] + _scheme()[jaw])
+    valid = (classes >= 1) & (classes <= 16)
+    return np.where(valid, table[np.clip(classes, 0, 16)], 0)
+
+
 def segment(obj: bytes, jaw: str) -> np.ndarray:
+    if os.environ.get("SPLINESEG_RESIDENT", "1") == "1":
+        try:
+            return segment_resident(obj, jaw)
+        except Exception as exc:  # noqa: BLE001
+            print(f"常驻模式失败，退回每次调脚本：{type(exc).__name__}: {exc}", flush=True)
+    return segment_subprocess(obj, jaw)
+
+
+def segment_subprocess(obj: bytes, jaw: str) -> np.ndarray:
     """OBJ 文本 → 逐顶点 FDI（0 = 牙龈），顶点顺序和 OBJ 的 v 行一致。"""
     assert jaw in ("upper", "lower")
     with LOCK, tempfile.TemporaryDirectory() as tmp:
@@ -129,6 +202,8 @@ def main() -> None:
             raise
         print("牙号：", sorted(int(v) for v in np.unique(labels) if v))
         return
+    if os.environ.get("SPLINESEG_RESIDENT", "1") == "1":
+        _resident()  # 启动时就把模型加载好
     print(f"TeethSplineSeg 服务：{args.host}:{args.port}，权重 {CKPT}，设备 {DEVICE}", flush=True)
     ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
 

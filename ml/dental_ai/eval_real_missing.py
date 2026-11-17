@@ -91,7 +91,20 @@ def jaw_of(fdi: int) -> str:
 _SEG = None
 
 
+_CACHE: dict = {}
+
+
 def _segmenter(model: str, orient: bool):
+    if model.startswith("fusion:"):  # 网页的二选一：自己的深度模型 + TeethSplineSeg 服务（先摆成标准朝向再发过去）
+        from .orientation import OrientedSegmenter
+        from .segmentation.deep import DeepSegmenter
+        from .segmentation.fusion import FusionSegmenter
+        from .segmentation.remote import RemoteSegmenter
+
+        deep, url = model[len("fusion:"):].split("|")
+        if "seg_fusion" not in _CACHE:
+            _CACHE["seg_fusion"] = FusionSegmenter(DeepSegmenter(deep), OrientedSegmenter(RemoteSegmenter(url, name="teethsplineseg")), name="fusion")
+        return _CACHE["seg_fusion"]
     global _SEG
     if _SEG is None:
         from .orientation import OrientedSegmenter
