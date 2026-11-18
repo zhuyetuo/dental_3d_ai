@@ -20,6 +20,6 @@ z = zipfile.ZipFile("/home/zyt/zyt/dental_data/Bite2Text.zip")
 mesh = trimesh.load(io.BytesIO(z.read("F1991/ios/ios_lower.stl")), file_type="stl")
 f = FusionSegmenter(DeepSegmenter("models/segmentation/deep.pt"), OrientedSegmenter(RemoteSegmenter(f"http://{sys.argv[1]}:8002", name="teethsplineseg")), name="fusion")
 lab = f.predict(mesh, "lower")
-print("选择：", f.last, "牙号：", sorted(int(v) for v in np.unique(lab) if v))
+print("选择：", f.choice, "牙号：", sorted(int(v) for v in np.unique(lab) if v))
 EOF
 tail -2 runs/splineseg_server.log
