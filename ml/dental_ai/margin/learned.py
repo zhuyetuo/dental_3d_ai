@@ -237,11 +237,54 @@ def zero_contour(mesh: trimesh.Trimesh, field: np.ndarray, smooth_iters: int = 2
     return pts[best[1]]
 
 
+def zero_contour_angular(mesh: trimesh.Trimesh, field: np.ndarray, bins: int = 120) -> np.ndarray:
+    """不要求闭合：预备体一侧（场 > 0）最大连通块边上的零点，按绕牙轴的角度分 bins 份、每份取中位点，按角度连成一圈。"""
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import connected_components
+
+    f = field.astype(float)
+    v = np.asarray(mesh.vertices)
+    e = mesh.edges_unique
+    pos = f > 0
+    ee = e[pos[e[:, 0]] & pos[e[:, 1]]]
+    n = len(v)
+    _, lab = connected_components(sp.coo_matrix((np.ones(len(ee)), (ee[:, 0], ee[:, 1])), shape=(n, n)), directed=False)
+    sizes = np.bincount(lab[pos], minlength=lab.max() + 1)
+    main = pos & (lab == np.argmax(sizes))
+    cross = e[(main[e[:, 0]] & (f[e[:, 1]] <= 0)) | (main[e[:, 1]] & (f[e[:, 0]] <= 0))]
+    if len(cross) < 20:
+        raise ValueError("预备体一侧的边上零点太少")
+    a, b = cross[:, 0], cross[:, 1]
+    t = f[a] / (f[a] - f[b] + 1e-30)
+    pts = v[a] + t[:, None] * (v[b] - v[a])
+    faces = mesh.faces[main[mesh.faces].all(axis=1)]
+    up = (mesh.face_normals[main[mesh.faces].all(axis=1)] * mesh.area_faces[main[mesh.faces].all(axis=1), None]).sum(axis=0) if len(faces) else np.array([0, 0, 1.0])
+    up = up / (np.linalg.norm(up) + 1e-12)
+    c = pts.mean(axis=0)
+    ax = np.cross(up, [1.0, 0, 0]) if abs(up[0]) < 0.9 else np.cross(up, [0, 1.0, 0])
+    ax /= np.linalg.norm(ax)
+    ay = np.cross(up, ax)
+    ang = np.arctan2((pts - c) @ ay, (pts - c) @ ax)
+    k = np.floor((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+    out = [np.median(pts[k == i], axis=0) for i in range(bins) if (k == i).any()]
+    if len(out) < bins * 0.6:
+        raise ValueError("零点只覆盖了一部分角度")
+    return np.asarray(out)
+
+
+def zero_line(mesh: trimesh.Trimesh, field: np.ndarray) -> np.ndarray:
+    """先按角度取（不要求闭合，口扫裁剪块也行），取不到再用闭合零等值线。"""
+    try:
+        return zero_contour_angular(mesh, field)
+    except ValueError:
+        return zero_contour(mesh, field)
+
+
 def detect(model, mesh: trimesh.Trimesh, device: str, feats: np.ndarray | None = None, n: int = 200):
     from .detect import resample_loop
 
     field = predict_field(model, features_of(mesh) if feats is None else feats, device)
-    return resample_loop(zero_contour(mesh, field), n), field
+    return resample_loop(zero_line(mesh, field), n), field
 
 
 _LOADED: dict = {}
@@ -280,7 +323,7 @@ def detect_in_scan(model_path, mesh: trimesh.Trimesh, labels: np.ndarray, fdi: i
         crop = max(parts, key=lambda m: len(m.faces))
     model, device = load_for_inference(model_path, device)
     field = predict_field(model, features_of(crop), device)
-    line = resample_loop(zero_contour(crop, field), n)
+    line = resample_loop(zero_line(crop, field), n)
     # 合理性：周长至少 12 mm（最小的切牙也有十几毫米），线上的点离预备体的点不超过 1.5 mm
     length = float(np.linalg.norm(np.diff(np.vstack([line, line[:1]]), axis=0), axis=1).sum())
     if length < 12.0:
@@ -317,7 +360,7 @@ def train(data_dir, out: Path, epochs: int, batch_size: int, lr: float, repeats:
         for mesh, feats, _, line in val:
             try:
                 pts, _ = detect(model, mesh, device, feats)
-                errs.append(float(cKDTree(line).query(pts)[0].mean()))
+                errs.append(float((cKDTree(line).query(pts)[0].mean() + cKDTree(pts).query(line)[0].mean()) / 2))
             except ValueError:
                 errs.append(5.0)
         return float(np.mean(errs))
