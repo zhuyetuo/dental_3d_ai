@@ -56,7 +56,9 @@ def _one(args) -> list[dict]:
                 real = tooth_mesh(mesh, lab, fdi)
                 mesial, distal = tooth_mesh(mesh, lab, fdi - 1), tooth_mesh(mesh, lab, fdi + 1)
                 ant = _crop(meshes[other], np.asarray(real.vertices), 12.0)
-                prep, truth = simulate_preparation(mesh, lab, jaw, fdi)
+                from .cache import cached_preparation
+
+                prep, truth, _ = cached_preparation(mesh, lab, jaw, fdi)  # 按输入内容缓存，评分卡反复跑时直接读
                 # 真值颈缘线是一堆没排序的顶点（肩台外缘 + 邻面刃状边缘），生成牙冠要的是首尾相连的一圈：按绕牙轴的角度排好
                 c = truth.mean(axis=0)
                 ax = np.cross(up, [1.0, 0.0, 0.0])

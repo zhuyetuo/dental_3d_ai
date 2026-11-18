@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import tempfile
 import zipfile
@@ -101,16 +102,23 @@ def _segmenter(model: str, orient: bool):
         from .segmentation.fusion import FusionSegmenter
         from .segmentation.remote import RemoteSegmenter
 
+        from .cache import CachingSegmenter, file_version
+
         deep, url = model[len("fusion:"):].split("|")
-        if "seg_fusion" not in _CACHE:
-            _CACHE["seg_fusion"] = FusionSegmenter(DeepSegmenter(deep), OrientedSegmenter(RemoteSegmenter(url, name="teethsplineseg")), name="fusion")
+        if "seg_fusion" not in _CACHE:  # 两个模型的分割结果都按“网格 + 模型版本”缓存：再评估新的合并规则只要几秒
+            tss_version = os.environ.get("SPLINESEG_CKPT_VERSION") or file_version(Path(__file__).resolve().parents[2] / "models/teethsplineseg/finetuned_aug.ckpt")
+            _CACHE["seg_fusion"] = FusionSegmenter(CachingSegmenter(DeepSegmenter(deep), file_version(deep)),
+                                                   OrientedSegmenter(CachingSegmenter(RemoteSegmenter(url, name="teethsplineseg"), "tss:" + tss_version)),
+                                                   name="fusion")
         return _CACHE["seg_fusion"]
     global _SEG
     if _SEG is None:
         from .orientation import OrientedSegmenter
         from .segmentation.deep import DeepSegmenter
 
-        seg = DeepSegmenter(model)
+        from .cache import CachingSegmenter, file_version
+
+        seg = CachingSegmenter(DeepSegmenter(model), file_version(model))  # 同一个网格同一个模型只分割一次
         _SEG = OrientedSegmenter(seg) if orient else seg
     return _SEG
 
