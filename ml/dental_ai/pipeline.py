@@ -35,6 +35,18 @@ from .segmentation.postprocess import check_arch_order, merge_split_teeth, remov
 from .segmentation.remote import RemoteSegmenter
 
 
+def _prep_outer_generator(generator):
+    """预备体牙冠外表面用的生成器：和缺失牙同一个，风格换成 PREP_OUTER_STYLE（默认天然风格，预备体评分卡上不碰对颌）。"""
+    import copy
+
+    style = os.environ.get("PREP_OUTER_STYLE", "natural")
+    if getattr(generator, "style", None) in (None, style):
+        return generator
+    g = copy.copy(generator)  # 浅拷贝：共用已经加载的模型，只改风格
+    g.style = style
+    return g
+
+
 def run(
     mesh: trimesh.Trimesh,
     jaw: Jaw,
@@ -143,7 +155,7 @@ def run(
                 excluded_donors=set(prepared_teeth or []),
                 library=getattr(generator, "library", None),
                 # PREP_OUTER=learned：外表面也用流程的生成器（形状模型 + 扩散），默认还是镜像模板
-                outer_generator=generator if os.environ.get("PREP_OUTER", "mirror") == "learned" else None,
+                outer_generator=_prep_outer_generator(generator) if os.environ.get("PREP_OUTER", "mirror") == "learned" else None,
             )
         except (LookupError, ValueError) as exc:
             report["warnings"].append(f"{fdi} 预备体牙冠生成失败: {exc}")

@@ -44,6 +44,9 @@ x-backend-common: &backend-common
     RADIAL_SMOOTH: "0.8"
     # 末端牙（只有一侧有邻牙，比如缺第二磨牙、后面没有智齿）单独的扩散模型：用末端牙样本训过，配沿牙弓外推的投影中心（11-17）
     RADIAL_MODEL_TERMINAL: /models/generation/radial_diffusion_terminal.pt
+    # 预备体牙冠的外表面：learned = 和缺失牙一样用形状模型 + 扩散补细节（天然风格，11-18 预备体评分卡：整体形状好 15%、高度更准，牙尖位置比镜像对侧牙差）；mirror = 镜像对侧牙
+    PREP_OUTER: learned
+    PREP_OUTER_STYLE: natural
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:

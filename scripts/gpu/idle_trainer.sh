@@ -36,7 +36,14 @@ trainer_alive() { [ -f $PIDF ] && kill -0 "$(cat $PIDF)" 2>/dev/null; }
 free_since=0
 while true; do
   job=$(current_job)
-  if [ -z "$job" ] || ls runs/.idle_pause* > /dev/null 2>&1; then  # with_gpu.sh 要用 GPU 时会放 runs/.idle_pause.<pid>
+  # with_gpu.sh 要用 GPU 时会放 runs/.idle_pause.<pid>：只认那个 pid 还活着的（异常退出留下的过期标记删掉）；runs/.idle_pause 是手动全暂停
+  live_pause=0
+  for f in runs/.idle_pause.*; do
+    [ -e "$f" ] || continue
+    if kill -0 "${f##*.}" 2>/dev/null; then live_pause=1; else rm -f "$f"; fi
+  done
+  [ -e runs/.idle_pause ] && live_pause=1
+  if [ -z "$job" ] || [ $live_pause = 1 ]; then
     if trainer_alive; then
       log "暂停（有任务要用 GPU）/ 没有训练任务：让训练存好检查点退出"
       kill -TERM "$(cat $PIDF)"
