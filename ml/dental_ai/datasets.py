@@ -80,6 +80,14 @@ class ZipScan:
     def load(self) -> tuple[trimesh.Trimesh, np.ndarray]:
         from .io import parse_obj
 
+        # 解析好存在硬盘上的（cache_teeth3ds：data/teeth3ds_mesh/<扫描>.npz），比每次解压 OBJ 再解析快几十倍；没有就读 zip
+        cached = Path(__file__).resolve().parents[2] / "data/teeth3ds_mesh" / f"{self.name}.npz"
+        if cached.exists():
+            try:
+                z = np.load(cached)
+                return trimesh.Trimesh(z["verts"], z["faces"], process=False), z["labels"].astype(np.int64)
+            except Exception:  # noqa: BLE001
+                pass
         with zipfile.ZipFile(self.obj[0]) as zf:
             mesh = parse_obj(zf.read(self.obj[1]).decode("utf-8", errors="replace").splitlines())
         with zipfile.ZipFile(self.labels[0]) as zf:
@@ -223,3 +231,30 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def _cache_one(args):
+    scan, out = args
+    dst = Path(out) / f"{scan.name}.npz"
+    if dst.exists():
+        return 0
+    try:
+        mesh, labels = scan.load()
+        tmp = dst.with_name(dst.stem + ".tmp.npz")
+        np.savez(tmp, verts=np.asarray(mesh.vertices), faces=np.asarray(mesh.faces, np.int32), labels=labels.astype(np.int16))
+        tmp.rename(dst)
+        return 1
+    except Exception:  # noqa: BLE001
+        return -1
+
+
+def cache_teeth3ds(zip_dir: Path, workers: int = 24) -> dict:
+    """Teeth3DS 全部扫描一次性解析好存到 data/teeth3ds_mesh/（之后 ZipScan.load 直接读）。"""
+    import multiprocessing as mp
+
+    out = Path(__file__).resolve().parents[2] / "data/teeth3ds_mesh"
+    out.mkdir(parents=True, exist_ok=True)
+    scans = teeth3ds_zip_scans(zip_dir)
+    with mp.get_context("spawn").Pool(workers) as pool:
+        res = list(pool.imap_unordered(_cache_one, [(s, str(out)) for s in scans], chunksize=4))
+    return {"new": res.count(1), "failed": res.count(-1), "total": len(scans)}

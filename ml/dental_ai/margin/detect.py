@@ -78,7 +78,7 @@ def detect_margin(
     stations: int = 120,
     search_radius: float = 1.5,
     candidates: int = 40,
-    smooth_weight: float = 2.0,
+    smooth_weight: float = 4.0,  # 11-18：真实代型和模拟预备体上都持平或略好（2.0 → 4.0）
     slide_weight: float = 1.0,
     prior_weight: float = 0.0,
     max_height_diff: float = 1.2,

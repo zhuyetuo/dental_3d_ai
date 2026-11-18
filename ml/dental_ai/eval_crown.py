@@ -42,6 +42,13 @@ _STATE: dict = {}
 
 
 def _load(zip_path: str, pid: str, jaw: str) -> trimesh.Trimesh:
+    cached = Path(__file__).resolve().parents[2] / "data/bite2text_mesh" / f"{pid}_{jaw}.npz"  # 解析好存在硬盘上的（scripts/data/shm_cache.py），没有就读 zip
+    if cached.exists():
+        try:
+            z = np.load(cached)
+            return trimesh.Trimesh(z["verts"], z["faces"], process=False)
+        except Exception:  # noqa: BLE001
+            pass
     mesh = trimesh.load(io.BytesIO(zipfile.ZipFile(zip_path).read(f"{pid}/ios/ios_{jaw}.stl")), file_type="stl")
     mesh.remove_unreferenced_vertices()  # 个别口扫有没被三角形引用的顶点，模拟缺牙时顶点数会对不上
     return mesh

@@ -109,13 +109,25 @@ def run(
         else:
             if sharpness is None:
                 sharpness = edge_sharpness(mesh)
-            try:
-                result = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness)
-            except ValueError as exc:
-                report["warnings"].append(f"{fdi} 颈缘线检测失败: {exc}")
-                continue
-            margins[str(fdi)] = result.to_dict()
-            report["warnings"] += result.warnings
+            learned = None
+            if os.environ.get("MARGIN_METHOD", "geometric") == "learned":  # 学习式颈缘线（代型上训的模型），不行再用几何方法
+                try:
+                    from .margin.learned import detect_in_scan
+
+                    model_path = os.environ.get("MARGIN_MODEL", str(Path(__file__).resolve().parents[2] / "models/margin/margin.pt"))
+                    learned = detect_in_scan(model_path, mesh, labels, fdi)
+                except (ValueError, FileNotFoundError, RuntimeError) as exc:
+                    report["warnings"].append(f"{fdi} 学习式颈缘线没用上（{exc}），改用几何方法")
+            if learned is not None:
+                margins[str(fdi)] = {"points": learned.tolist(), "source": "auto", "method": "learned", "confidence": None}
+            else:
+                try:
+                    result = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness)
+                except ValueError as exc:
+                    report["warnings"].append(f"{fdi} 颈缘线检测失败: {exc}")
+                    continue
+                margins[str(fdi)] = result.to_dict()
+                report["warnings"] += result.warnings
         m = margins[str(fdi)]
         report["margins"][str(fdi)] = {"source": m["source"], "confidence": m.get("confidence"), "method": m.get("method")}
     (out / "margins.json").write_text(json.dumps(margins))

@@ -37,7 +37,7 @@ def case_files(dirs) -> list[Path]:
     """目录（一个或多个）里的全部病例：*.vtp 和 *__die.ply。"""
     out: list[Path] = []
     for d in [dirs] if isinstance(dirs, (str, Path)) else dirs:
-        out += sorted(Path(d).glob("*.vtp")) + sorted(Path(d).glob("*__die.ply"))
+        out += sorted(Path(d).glob("*.vtp")) + sorted(Path(d).glob("*__die.ply")) + sorted(Path(d).glob("*.npz"))
     return out
 
 
@@ -123,6 +123,10 @@ def case_arrays(path: Path):
     """→ 网格、特征 (V, 7)（坐标未居中）、目标 (V,)、真值线。"""
     if path.name.endswith("__die.ply"):
         return _die_arrays(path)
+    if path.suffix == ".npz":  # 口扫上的模拟预备体（margin/scan_data.py）
+        z = np.load(path)
+        mesh = trimesh.Trimesh(z["verts"], z["faces"], process=False)
+        return mesh, z["feats"], z["target"], z["line"]
     from ..eval_margin import PREP, load_vtp, truth_line
     from .detect import edge_sharpness
 
@@ -240,6 +244,52 @@ def detect(model, mesh: trimesh.Trimesh, device: str, feats: np.ndarray | None =
     return resample_loop(zero_contour(mesh, field), n), field
 
 
+_LOADED: dict = {}
+
+
+def load_for_inference(model_path, device: str | None = None):
+    import torch
+
+    key = (str(model_path), device)
+    if key not in _LOADED:
+        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        model = _model().to(device)
+        model.load_state_dict(torch.load(model_path, map_location=device)["state"])
+        _LOADED[key] = (model.eval(), device)
+    return _LOADED[key]
+
+
+def detect_in_scan(model_path, mesh: trimesh.Trimesh, labels: np.ndarray, fdi: int, reach: float = 3.0, n: int = 200,
+                   device: str | None = None) -> np.ndarray:
+    """口扫上的预备体：取这颗牙的顶点 + 离它 reach mm 以内的牙龈（不要别的牙），裁成小网格交给代型上训的模型。
+    返回颈缘线点 (n, 3)。线明显不对（太短、离预备体太远）时抛 ValueError，调用方退回几何方法。"""
+    from .detect import resample_loop
+
+    labels = np.asarray(labels)
+    v = np.asarray(mesh.vertices)
+    tooth = labels == fdi
+    if tooth.sum() < 200:
+        raise ValueError("预备体的点太少")
+    near = cKDTree(v[tooth]).query(v, distance_upper_bound=reach)[0] <= reach
+    keep_v = tooth | (near & (labels == 0))
+    faces = np.asarray(mesh.faces)
+    keep_f = keep_v[faces].all(axis=1)
+    crop = mesh.submesh([np.flatnonzero(keep_f)], append=True, repair=False)
+    parts = crop.split(only_watertight=False)
+    if len(parts) > 1:
+        crop = max(parts, key=lambda m: len(m.faces))
+    model, device = load_for_inference(model_path, device)
+    field = predict_field(model, features_of(crop), device)
+    line = resample_loop(zero_contour(crop, field), n)
+    # 合理性：周长至少 12 mm（最小的切牙也有十几毫米），线上的点离预备体的点不超过 1.5 mm
+    length = float(np.linalg.norm(np.diff(np.vstack([line, line[:1]]), axis=0), axis=1).sum())
+    if length < 12.0:
+        raise ValueError(f"学习式颈缘线太短（{length:.1f} mm）")
+    if float(np.percentile(cKDTree(v[tooth]).query(line)[0], 90)) > 1.5:
+        raise ValueError("学习式颈缘线离预备体太远")
+    return line
+
+
 # ---------------------------------------------------------------- 训练 / 评估
 
 
@@ -300,6 +350,7 @@ def train(data_dir, out: Path, epochs: int, batch_size: int, lr: float, repeats:
         if epoch % 10 == 0 or epoch == epochs:
             v = validate()
             print(json.dumps({"epoch": epoch, "loss": round(total / nb, 4), "val_line_mm": round(v, 4), "minutes": round((time.time() - t0) / 60, 1)}), flush=True)
+            torch.save({"state": model.state_dict(), "epoch": epoch, "val_line_mm": v}, out.with_name(out.stem + ".last.pt"))
             if v < best:
                 best = v
                 torch.save({"state": model.state_dict(), "epoch": epoch, "val_line_mm": v}, out)
