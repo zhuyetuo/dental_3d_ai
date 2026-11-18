@@ -252,6 +252,8 @@ def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearanc
     detail_gain：和 keep_sigma 一起用，细节部分（预测 − 低通）乘这个倍数。"""
     import torch
 
+    if getattr(model, "flow", False):
+        return flow_sample(model, cond, cls, steps, generator, ant, clearance, init, strength, keep_sigma, cls_ref, style_w, detail_gain, style_tmin)
     ac = alphas(cond.device)
     s = res_scale(cond.device)
     to_y = (lambda x: (x - base) * s) if base is not None else (lambda x: x)
@@ -287,6 +289,45 @@ def sample(model, cond, cls, steps: int = 50, generator=None, ant=None, clearanc
         a_next = ac[ts[i + 1]] if i + 1 < len(ts) else torch.tensor(1.0, device=y.device)
         y = a_next.sqrt() * y0 + (1 - a_next).sqrt() * eps
     return to_x(y)
+
+
+def flow_sample(model, cond, cls, steps=50, generator=None, ant=None, clearance=None, init=None, strength=1.0, keep_sigma=None,
+                cls_ref=None, style_w=1.0, detail_gain=1.0, style_tmin=0):
+    """Flow Matching 的欧拉积分：t 从 1（或 strength，从 init 加噪）走到 0。每一步先估出 x0，做低频锁 / 对颌限制，
+    再按 x_t = (1−t)·x0 + t·ε 走到下一个 t（和 DDIM 同样的写法）。style_tmin 按 t×999 比较。"""
+    import torch
+
+    y = torch.randn(len(cond), 2, SIZE, SIZE, device=cond.device, generator=generator)
+    t_top = 1.0 if init is None else float(strength)
+    n = max(2, int(round(steps * t_top)))
+    ts = torch.linspace(t_top, 0.0, n + 1, device=cond.device)
+    if init is not None:
+        y = (1 - t_top) * init + t_top * y
+        if keep_sigma:
+            init_mask = init[:, 1] > 0
+            init_low = lowpass(init[:, 0], init_mask, keep_sigma)
+    x0 = y
+    for i in range(n):
+        t, t_next = ts[i], ts[i + 1]
+        tt = (t * 999).expand(len(y))
+        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=cond.is_cuda):
+            if cls_ref is not None and style_w != 1.0 and float(t) * 999 >= style_tmin:
+                uu = model(torch.cat([y, y]), torch.cat([cond, cond]), torch.cat([tt, tt]), torch.cat([cls, cls_ref])).float()
+                u_s, u_r = uu.chunk(2)
+                u = u_r + style_w * (u_s - u_r)
+            else:
+                u = model(y, cond, tt, cls).float()
+        x0 = (y - t * u).clamp(-1.2, 1.2)
+        if init is not None and keep_sigma:
+            d = x0[:, 0]
+            d = torch.where(init_mask, init_low + detail_gain * (d - lowpass(d, init_mask, keep_sigma)), d)
+            x0 = torch.stack([d, init[:, 1]], dim=1).clamp(-1.2, 1.2)
+        if ant is not None and clearance is not None:
+            limit = torch.where(ant > 0, (ant - clearance) / TOOTH_SCALE - 1, torch.full_like(ant, 9.0))
+            x0 = torch.stack([torch.minimum(x0[:, 0], limit), x0[:, 1]], dim=1)
+        eps = (y - (1 - t) * x0) / t.clamp(min=1e-4)
+        y = (1 - t_next) * x0 + t_next * eps
+    return x0
 
 
 def metrics(pred, tooth, ant, has_ant) -> dict:
@@ -359,7 +400,7 @@ def _load_init(model, path, device):
 
 def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None,
           with_d: bool = False, residual: bool = False, library: bool = False, hf_weight: float = 0.0,
-          distill: Path | None = None, distill_w: float = 4.0) -> None:
+          distill: Path | None = None, distill_w: float = 4.0, flow: bool = False, forever: bool = False) -> None:
     """residual（要 with_d）：扩散的对象是“真牙 − D”（× RES_SCALE），模型天然从 D 出发，只学要改的部分。"""
     assert with_d or not residual, "--residual 要和 --with-d 一起用"
     import copy
@@ -384,6 +425,7 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
     if init:
         _load_init(model, init, device)
     model.residual = residual
+    model.flow = flow  # Flow Matching（直线流）：预测速度 ε − x0
     ema = copy.deepcopy(model).requires_grad_(False)
     teacher = None
     if distill:  # 老师：带设计风格类别的模型；学生的设计风格类别学“引导 distill_w 倍”以后的输出
@@ -393,10 +435,34 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     ac = alphas(device)
     steps_per_epoch = len(tooth) // batch
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * steps_per_epoch, pct_start=0.03)
+    sched = None if forever else torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * steps_per_epoch, pct_start=0.03)
     out.parent.mkdir(parents=True, exist_ok=True)
     rng, t0 = np.random.default_rng(0), time.time()
-    for epoch in range(1, epochs + 1):
+    start, stop = 1, {"flag": False}
+    if forever:  # 长期训练：能被打断、能接着训
+        import signal
+
+        signal.signal(signal.SIGTERM, lambda *_: stop.update(flag=True))
+        if out.exists():
+            ck = torch.load(out, map_location=device, weights_only=False)
+            if "opt" in ck:
+                model.load_state_dict({k: v.float() for k, v in ck["raw"].items()})
+                ema.load_state_dict({k: v.float() for k, v in ck["state"].items()})
+                opt.load_state_dict(ck["opt"])
+                start = int(ck["epoch"]) + 1
+                rng = np.random.default_rng(start)
+                print(json.dumps({"resume_from_epoch": int(ck["epoch"])}), flush=True)
+    last_save = time.time()
+
+    def save(epoch_done: int):
+        ck = {"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch_done, "cond_ch": model.cond_ch, "residual": residual, "flow": flow}
+        if forever:
+            ck["opt"] = opt.state_dict()
+        tmp = out.with_suffix(".tmp")
+        torch.save(ck, tmp)
+        tmp.replace(out)  # 先写临时文件再改名：存到一半被打断也不会坏掉
+
+    for epoch in range(start, epochs + 1):
         model.train()
         order, total = rng.permutation(len(tooth)), 0.0
         for s in range(steps_per_epoch):
@@ -414,7 +480,19 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
             a = ac[t].view(-1, 1, 1, 1)
             noise = torch.randn_like(x0)
             c_j = torch.tensor(cls[j], device=device)
-            if teacher is not None:
+            if flow:  # t 取 logit-normal（中间的 t 多一些），x_t = (1−t)·x0 + t·ε，目标速度 ε − x0
+                tf = torch.sigmoid(torch.randn(len(j), device=device)).view(-1, 1, 1, 1)
+                xt = (1 - tf) * x0 + tf * noise
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    v = model(xt, cond, tf.view(-1) * 999, c_j)
+                loss = ((v.float() - (noise - x0)) ** 2).mean()
+                if hf_weight > 0:
+                    x0_hat = xt - tf * v.float()
+                    m = x0[:, 1] > 0
+                    hp = lambda d: torch.where(m, d - lowpass(d, m, 3.0), torch.zeros_like(d))  # noqa: E731
+                    err = (hp(x0_hat[:, 0]) - hp(x0[:, 0])) ** 2
+                    loss = loss + hf_weight * ((err.sum((1, 2)) / m.sum((1, 2)).clamp(min=1)) * (1 - tf.view(-1))).mean()
+            elif teacher is not None:
                 xt = a.sqrt() * x0 + (1 - a).sqrt() * noise
                 nat = c_j < DESIGN_OFFSET
                 c_nat, c_des = c_j % DESIGN_OFFSET, c_j % DESIGN_OFFSET + DESIGN_OFFSET
@@ -433,7 +511,7 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
                 with torch.autocast("cuda", dtype=torch.bfloat16):
                     v = model(a.sqrt() * x0 + (1 - a).sqrt() * noise, cond, t, c_j)
                 loss = ((v.float() - (a.sqrt() * noise - (1 - a).sqrt() * x0)) ** 2).mean()
-            if hf_weight > 0 and not residual:  # 细节损失：还原的 x0 和答案的高频部分（窝沟、牙尖棱）对齐
+            if hf_weight > 0 and not residual and not flow:  # 细节损失：还原的 x0 和答案的高频部分（窝沟、牙尖棱）对齐
                 xt = a.sqrt() * x0 + (1 - a).sqrt() * noise
                 x0_hat = a.sqrt() * xt - (1 - a).sqrt() * v.float()
                 m = x0[:, 1] > 0
@@ -446,18 +524,30 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
-            sched.step()
+            if sched is not None:
+                sched.step()
             with torch.no_grad():
                 for p, q in zip(ema.parameters(), model.parameters()):
                     p.lerp_(q, 0.001)
             total += loss.item()
+            if forever and (stop["flag"] or time.time() - last_save > 900):
+                save(epoch - 1)  # 只记完整的轮数：接着训时这一轮从头再来（EMA / 模型已经往前走了一点，无妨）
+                last_save = time.time()
+                if stop["flag"]:
+                    print(json.dumps({"stopped_in_epoch": epoch, "minutes": round((time.time() - t0) / 60, 1)}), flush=True)
+                    return
         row = {"epoch": epoch, "loss": round(total / steps_per_epoch, 5), "minutes": round((time.time() - t0) / 60, 1)}
         if epoch % 5 == 0 or epoch == epochs:
             row.update({k: round(v, 4) for k, v in run_eval(ema, val, device, n=96, steps=30).items()})
             if val_lib is not None:  # 设计风格：和对齐过来的库牙比
                 row.update({"design_" + k: round(v, 4) for k, v in run_eval(ema, val_lib, device, n=96, steps=30).items()})
         print(json.dumps(row), flush=True)
-        torch.save({"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch, "cond_ch": model.cond_ch, "residual": residual}, out)
+        save(epoch)
+        last_save = time.time()
+        if forever and epoch % 10 == 0:  # 每 10 轮留一个快照，之后可以挑着评估
+            import shutil
+
+            shutil.copy(out, out.with_name(f"{out.stem}.e{epoch:04d}.pt"))
 
 
 def load_model(path: Path, device: str):
@@ -469,6 +559,7 @@ def load_model(path: Path, device: str):
     model.load_state_dict(state)
     model.design = state["cls.weight"].shape[0] > DESIGN_OFFSET  # 有设计风格的类别
     model.residual = bool(ck.get("residual", False))
+    model.flow = bool(ck.get("flow", False))
     return model.eval()
 
 
@@ -643,6 +734,8 @@ def main() -> None:
     t.add_argument("--hf-weight", type=float, default=0.0, help="细节损失的权重（0 = 不加）")
     t.add_argument("--distill", type=Path, help="引导蒸馏：老师模型（有设计风格类别）")
     t.add_argument("--distill-w", type=float, default=4.0, help="蒸馏的引导倍数")
+    t.add_argument("--flow", action="store_true", help="Flow Matching（直线流）代替扩散")
+    t.add_argument("--forever", action="store_true", help="长期训练：学习率固定、能被 SIGTERM 打断、out 存在就接着训")
     t.add_argument("--library", action="store_true", help="加上牙库造的设计风格样本（data/radial_lib/<split>，radial_library.py build 生成）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
@@ -653,7 +746,7 @@ def main() -> None:
     args = p.parse_args()
     if args.cmd == "train":
         train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library, args.hf_weight,
-              args.distill, args.distill_w)
+              args.distill, args.distill_w, args.flow, args.forever)
     else:
         import torch
 

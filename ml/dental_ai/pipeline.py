@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -129,6 +130,8 @@ def run(
                 mesh, labels, jaw, fdi, np.asarray(m["points"]), up, preferences=prefs, antagonist=antagonist,
                 excluded_donors=set(prepared_teeth or []),
                 library=getattr(generator, "library", None),
+                # PREP_OUTER=learned：外表面也用流程的生成器（形状模型 + 扩散），默认还是镜像模板
+                outer_generator=generator if os.environ.get("PREP_OUTER", "mirror") == "learned" else None,
             )
         except (LookupError, ValueError) as exc:
             report["warnings"].append(f"{fdi} 预备体牙冠生成失败: {exc}")

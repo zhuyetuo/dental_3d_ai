@@ -270,6 +270,7 @@ def generate_prep_crown(
     margin_thickness: float = 0.05,
     excluded_donors: set[int] | frozenset[int] = frozenset(),
     library=None,
+    outer_generator=None,
 ) -> PrepCrown:
     prefs = preferences or DesignPreferences()
     # 颈缘线的点先吸附回网格表面：检测结果经过平滑，在凸棱处会稍微缩进牙体，
@@ -302,8 +303,19 @@ def generate_prep_crown(
         mesh=mesh, labels=without, jaw=jaw, antagonist=antagonist, excluded_donors=frozenset(excluded_donors)
     )
     generator = MirrorTemplateGenerator(template_dir=template_dir, preferences=prefs, library=library)
-    outer_tooth = generator.generate(ctx, target, center=margin.mean(axis=0))
-    outer = outer_tooth.crown
+    outer_tooth = None
+    if outer_generator is not None:  # 流程的生成器（形状模型 + 扩散补细节）：把预备体当缺失牙生成外形
+        try:
+            cand = outer_generator.generate(ctx, target)
+            if len(boundary_loops(cand.crown)) == 1:
+                outer_tooth = cand
+            else:
+                warnings.append(f"{fdi} 生成器的外表面边界不是一圈，改用镜像模板")
+        except (LookupError, ValueError) as exc:
+            warnings.append(f"{fdi} 生成器没能生成外表面（{exc}），改用镜像模板")
+    if outer_tooth is None:
+        outer_tooth = generator.generate(ctx, target, center=margin.mean(axis=0))
+    outer = outer_tooth.crown.copy()
     outer_loops = boundary_loops(outer)
     if len(outer_loops) != 1:
         raise ValueError(f"外表面应只有一个开放边界，实际 {len(outer_loops)} 个")
@@ -332,7 +344,13 @@ def generate_prep_crown(
         warnings += [f"{fdi} {w}" for w in occlusion_warnings]
     contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
     enforce_thickness()  # 退开邻牙时可能变薄，再补一次厚度
+    if antagonist is not None:  # 邻接、补厚度都可能又顶到对颌：最后再磨一遍（只磨不抬），和缺失牙流程一样
+        again, _ = adjust_occlusion(outer, antagonist, np.asarray(up, dtype=float), prefs.occlusion_distance, far, lift=False)
+        occlusion["occlusal_clearance_mm"] = again.get("occlusal_clearance_mm")
+        occlusion["occlusal_reduction_mm"] = round(occlusion.get("occlusal_reduction_mm", 0.0) + again.get("occlusal_reduction_mm", 0.0), 3)
     after = _signed_thickness(outer.vertices[far], inner) if far.any() else np.array([np.inf])
+    if np.isfinite(after).any() and float(np.min(after)) < prefs.crown_thickness - 0.05:
+        warnings.append(f"{fdi} 咬合空间不够：最薄处 {float(np.min(after)):.2f} mm，低于设定的 {prefs.crown_thickness:.2f} mm（预备体咬合面要多磨一些）")
     warnings += contact_warnings
 
     # 4. 缝合：外表面法向朝外，组织面翻转（实体的外法向在组织面上指向预备体）
