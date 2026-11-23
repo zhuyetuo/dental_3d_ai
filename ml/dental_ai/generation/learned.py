@@ -73,6 +73,31 @@ def crop_antagonist(ant: np.ndarray | None, origin: np.ndarray, rng: np.random.G
     return out
 
 
+MARGIN_DROP = 0.15  # 训练时不给颈缘线的比例
+
+
+def jitter_rim(rim):
+    """训练时给颈缘点 (B, M, 3) mm 加扰动，模拟检测误差：整体偏 ±0.1 mm、沿一圈的平滑起伏约 ±0.15 mm、逐点 0.03 mm，
+    一半样本再去掉一段连续的弧（最多 30%，用其余点重采样补齐点数）。"""
+    import torch
+
+    b, m, _ = rim.shape
+    dev = rim.device
+    c = rim.mean(dim=1, keepdim=True)
+    th = torch.atan2(rim[..., 1] - c[..., 1], rim[..., 0] - c[..., 0])  # (B, M) 绕牙轴的角度
+    k = torch.arange(1, 4, device=dev).view(1, 1, 3, 1).float()
+    amp = 0.08 * torch.randn(b, 1, 3, 3, device=dev)  # (B, 1, 阶数, 轴)
+    ph = 2 * torch.pi * torch.rand(b, 1, 3, 3, device=dev)
+    wave = (amp * torch.sin(k * th[..., None, None] + ph)).sum(dim=2)  # (B, M, 3)
+    out = rim + 0.1 * torch.randn(b, 1, 3, device=dev) + wave + 0.03 * torch.randn_like(rim)
+    centre = 2 * torch.pi * torch.rand(b, 1, device=dev) - torch.pi
+    half = 0.3 * torch.pi * torch.rand(b, 1, device=dev) * (torch.rand(b, 1, device=dev) < 0.5)
+    d = torch.remainder(th - centre + torch.pi, 2 * torch.pi) - torch.pi
+    keep = (d.abs() >= half).float() + 1e-6
+    idx = torch.multinomial(keep, m, replacement=True)
+    return torch.gather(out, 1, idx[..., None].expand(-1, -1, 3))
+
+
 # ---------------------------------------------------------------- 缓存
 
 
@@ -344,7 +369,7 @@ def dome_template(rings: int = 40, segments: int = 64, max_polar_deg: float = 12
 
 
 def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template: str = "sphere", antagonist: bool = False, refine: bool = False,
-                lib_template: bool = False):
+                lib_template: bool = False, margin: bool = False):
     """antagonist：多一个看对颌的分支（缺隙上方的对颌表面点 + 法向 → 256 维，和牙弓上下文的特征拼在一起）。
     refine：粗结果出来后，每个顶点再看离它最近的几个对颌点，预测一个小的修正量（让咬合面去适应对颌的尖窝）。"""
     import torch
@@ -389,7 +414,13 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             self.e1, self.e2, self.e3 = EdgeConv(3 + 32, 64), EdgeConv(64, 128), EdgeConv(128, 256)
             self.glob = nn.Sequential(nn.Conv1d(448, 1024, 1, bias=False), nn.GroupNorm(16, 1024), nn.LeakyReLU(0.2))
             self.antagonist, self.refine = antagonist, refine and antagonist
-            self.fc = nn.Sequential(nn.Linear(2048 + (256 if antagonist else 0), latent), nn.LeakyReLU(0.2))
+            self.margin = margin  # 颈缘线分支（预备体牙冠：颈缘点 → 256 维，接在最后）
+            self.fc = nn.Sequential(nn.Linear(2048 + (256 if antagonist else 0) + (256 if margin else 0), latent), nn.LeakyReLU(0.2))
+            if margin:
+                self.margin_mlp = nn.Sequential(nn.Conv1d(3, 64, 1), nn.LeakyReLU(0.2), nn.Conv1d(64, 128, 1), nn.LeakyReLU(0.2),
+                                                nn.Conv1d(128, 256, 1), nn.LeakyReLU(0.2))
+                self.margin_fc = nn.Sequential(nn.Linear(512, 256), nn.LeakyReLU(0.2))
+                self.no_margin = nn.Parameter(torch.zeros(256))  # 没有颈缘线时用的特征
             if antagonist:
                 self.ant_mlp = nn.Sequential(nn.Conv1d(6, 64, 1), nn.LeakyReLU(0.2), nn.Conv1d(64, 128, 1), nn.LeakyReLU(0.2),
                                              nn.Conv1d(128, 256, 1), nn.LeakyReLU(0.2))
@@ -434,7 +465,7 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             h = torch.cat([t, local, self.ref_z(z).unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
             return self.ref_dec(h).transpose(1, 2)
 
-        def forward(self, ctx, ctx_idx, cls, ant=None, has_ant=None):  # ctx (B, N, 3) mm、ant (B, K, 6) → (B, V, 3) mm
+        def forward(self, ctx, ctx_idx, cls, ant=None, has_ant=None, margin=None, has_margin=None):  # ctx (B, N, 3) mm、ant (B, K, 6)、margin (B, M, 3) mm → (B, V, 3) mm
             b, n, _ = ctx.shape
             xyz = (ctx / SCALE).transpose(1, 2)
             c = self.emb_cls(cls)
@@ -455,6 +486,16 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
                     a = self.ant_fc(torch.cat([ha.max(dim=-1)[0], ha.mean(dim=-1)], dim=1))
                     m = has_ant.view(-1, 1)
                     feats.append(m * a + (1 - m) * self.no_ant)
+            if self.margin:
+                if margin is None:
+                    feats.append(self.no_margin.unsqueeze(0).expand(b, -1))
+                else:
+                    if has_margin is None:
+                        has_margin = torch.ones(b, device=ctx.device)
+                    hm = self.margin_mlp((margin / SCALE).transpose(1, 2))
+                    mf = self.margin_fc(torch.cat([hm.max(dim=-1)[0], hm.mean(dim=-1)], dim=1))
+                    mm = has_margin.view(-1, 1)
+                    feats.append(mm * mf + (1 - mm) * self.no_margin)
             z = self.fc(torch.cat(feats, dim=1))
             v = self.template.shape[0]
             t = self.template.t().unsqueeze(0).expand(b, -1, -1)
@@ -501,7 +542,7 @@ def load_model(path: Path, device: str):
 
     ckpt = torch.load(path, map_location=device)
     model = build_model(template=ckpt.get("template", "sphere"), antagonist=ckpt.get("antagonist", False), refine=ckpt.get("refine", False),
-                        lib_template=ckpt.get("lib_template", False)).to(device)
+                        lib_template=ckpt.get("lib_template", False), margin=ckpt.get("margin", False)).to(device)
     missing = model.load_state_dict(ckpt["state"], strict=False).missing_keys
     # 早期保存的模型没有这几个由模板决定的缓冲区，其余权重必须齐全
     assert set(missing) <= {"interior", "degree", "boundary"}, missing
@@ -511,7 +552,7 @@ def load_model(path: Path, device: str):
 def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr: float, workers: int, max_scans: int | None, edge_weight: float,
           template: str = "sphere", init: Path | None = None, lap_weight: float = 0.0, rim_weight: float = 1.0,
           antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0,
-          extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None) -> dict:
+          extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None, margin: bool = False) -> dict:
     import torch
 
     torch.manual_seed(0)
@@ -527,7 +568,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     print(json.dumps({"train_scans": len(scans) - n_val, "val_scans": n_val, "train_samples": len(tr), "val_samples": len(va), "device": device}), flush=True)
     dl = torch.utils.data.DataLoader(_dataset(scans, tr, True, ant_drop, antagonist), batch_size=batch_size, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=workers > 0)
     dv = torch.utils.data.DataLoader(_dataset(scans, va, False, 0.0, antagonist), batch_size=batch_size, num_workers=min(workers, 4))
-    model = build_model(template=template, antagonist=antagonist, refine=refine, lib_template=lib_template is not None).to(device)
+    model = build_model(template=template, antagonist=antagonist, refine=refine, lib_template=lib_template is not None, margin=margin).to(device)
     if lib_template is not None:
         model.cls_template.copy_(torch.tensor(np.load(lib_template), device=device) / SCALE)
     if init:  # 沿用已训练的权重（模板不同时，形状对不上的缓冲区跳过）
@@ -562,7 +603,11 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         for ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, _ in dl:
             ctx, ctx_idx, cls, gt, rim = ctx.to(device), ctx_idx.to(device), cls.to(device), gt.to(device), rim.to(device)
             ant, has_ant = ant.to(device), has_ant.to(device)
-            pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
+            if margin:  # 颈缘线 = 真牙的边界环 + 扰动，一部分样本不给
+                has_m = (torch.rand(len(rim), device=device) > MARGIN_DROP).float()
+                pred = model(ctx, ctx_idx, cls, ant if antagonist else None, has_ant if antagonist else None, jitter_rim(rim), has_m)
+            else:
+                pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
             cd = chamfer(pred, gt).mean()
             if extent_weight or gap_weight:  # 整体形状：外形尺寸 / 高度、和邻牙的间隙都向真牙看齐
                 extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
@@ -597,7 +642,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         row.update({f"val_{k}": round(v, 4) for k, v in {**val.get("shape", {}), **val.get("occlusion", {})}.items()})
         print(json.dumps(row), flush=True)
         ckpt = {"state": model.state_dict(), "epoch": epoch, "val": val, "template": template, "antagonist": antagonist, "refine": refine,
-                "lib_template": lib_template is not None}
+                "lib_template": lib_template is not None, "margin": margin}
         torch.save(ckpt, out.with_name(out.stem + ".last.pt"))  # 最后一轮总是留着（验证分数没超过起点时 out 不会被覆盖）
         if score(val) < best:
             best = score(val)
@@ -617,7 +662,10 @@ def evaluate(model, loader, device, collect: bool = False):
     with torch.no_grad():
         for ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, i in loader:
             ant, has_ant = ant.to(device), has_ant.to(device)
-            pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant, has_ant) if use_ant else model(ctx.to(device), ctx_idx.to(device), cls.to(device))
+            if getattr(model, "margin", False):
+                pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant if use_ant else None, has_ant if use_ant else None, rim.to(device))
+            else:
+                pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant, has_ant) if use_ant else model(ctx.to(device), ctx_idx.to(device), cls.to(device))
             gt = gt.to(device)
             cd = chamfer(pred, gt)
             extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
@@ -763,7 +811,9 @@ class LearnedGenerator:
         tooth.info["learned_fallback"] = reason
         return tooth
 
-    def generate(self, ctx, target):
+    accepts_margin = True  # generate 可以接 margin（颈缘线 3D 点）；模型没训过颈缘线条件时忽略
+
+    def generate(self, ctx, target, margin=None):
         import torch
         import trimesh
 
@@ -798,6 +848,16 @@ class LearnedGenerator:
                                  origin, np.random.default_rng(0))
         extra = () if a6 is None else (torch.tensor((a6 * np.concatenate([sign, sign])).astype(np.float32))[None].to(self.device),
                                        torch.ones(1, device=self.device))
+        use_margin = getattr(model, "margin", False) and margin is not None and len(margin) >= 8
+        if getattr(model, "margin", False):  # 颈缘线：和训练时一样，转到标准坐标、减原点、统一左右，取 RIM_POINTS 个点
+            if not extra:
+                extra = (None, None)
+            if use_margin:
+                from ..margin.detect import resample_loop
+
+                mp = (resample_loop(np.asarray(margin, float), 4 * RIM_POINTS) @ rot.T - origin) * sign
+                mp = mp[np.random.default_rng(0).choice(len(mp), RIM_POINTS, replace=False)]
+                extra = extra + (torch.tensor(mp.astype(np.float32))[None].to(self.device), torch.ones(1, device=self.device))
         with torch.no_grad():
             pred = model(
                 torch.tensor((c * sign).astype(np.float32))[None].to(self.device),
@@ -806,6 +866,7 @@ class LearnedGenerator:
                 *extra,
             )[0].cpu().numpy().astype(float)
         faces = model.faces.cpu().numpy()
+        model_ring = pred[model.boundary.cpu().numpy()] if len(model.boundary) else pred[:0]
         detail_info = {}
         detail = self._detail_library()
         if detail is not None and target.fdi % 10 != 7:  # 第二磨牙不换：库里的第二磨牙常常扫描不全，换上去误差明显变大
@@ -821,6 +882,13 @@ class LearnedGenerator:
         source = f"learned:{self.model_path.name}" + (f"+detail:{detail_info['detail_source']}" if detail_info else "")
         info = {"source": source, "placement": "learned", "gap_mm": target.gap_mm, "occlusal_drop_mm": 0.0,
                 "antagonist_input": a6 is not None, **detail_info}
+        if getattr(model, "margin", False):
+            info["shape_margin_condition"] = bool(use_margin)
+            if use_margin:  # 自检：生成牙冠的边界环离给的颈缘线多远（双向平均，mm）
+                from scipy.spatial import cKDTree
+
+                ring = model_ring
+                info["shape_margin_rim_mm"] = round(float((cKDTree(mp).query(ring)[0].mean() + cKDTree(ring).query(mp)[0].mean()) / 2), 3)
         # 咬合由 occlusion.adjust_occlusion 在流程里处理（不再整体下移）
         return GeneratedTooth(fdi=target.fdi, crown=crown, method=self.name, info=info)
 
@@ -954,6 +1022,7 @@ def main() -> None:
     t.add_argument("--extent-weight", type=float, default=0.0, help="外形尺寸、位置、高度（三个方向的最大 / 最小坐标）对齐真牙")
     t.add_argument("--gap-weight", type=float, default=0.0, help="到近中 / 远中邻牙的最小距离对齐真牙")
     t.add_argument("--lib-template", type=Path, help="每个牙位的库牙模板（lib_template.py build 生成）")
+    t.add_argument("--margin", action="store_true", help="加颈缘线分支（预备体牙冠用）：训练时用真牙的边界环 + 扰动")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--cache", type=Path, required=True)
@@ -970,7 +1039,7 @@ def main() -> None:
         train(args.cache, args.out, args.epochs, args.batch_size, args.lr, args.workers, args.max_scans, args.edge_weight,
               template=args.template, init=args.init, lap_weight=args.lap_weight, rim_weight=args.rim_weight,
               antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight,
-              extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template)
+              extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template, margin=args.margin)
     else:
         run_eval(args.model, args.cache, args.out, args.batch_size, args.samples, args.hide_antagonist)
 

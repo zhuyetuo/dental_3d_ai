@@ -720,7 +720,10 @@ class RadialDiffusionGenerator:
         if (self.refine is not None or need_d) and self.fallback is not None:  # 学习模型 D 出整体形状，投到同一张径向图上
             from .radial import splat
 
-            base = self.fallback.generate(ctx, target)
+            if margin is not None and getattr(self.fallback, "accepts_margin", False):  # 形状模型也看颈缘线（训过颈缘线条件的才用）
+                base = self.fallback.generate(ctx, target, margin=margin)
+            else:
+                base = self.fallback.generate(ctx, target)
             sign0 = np.array([-1.0, 1.0, 1.0]) if flip else np.ones(3)
             pts = np.asarray(trimesh.sample.sample_surface(base.crown, 150000, seed=0)[0]) @ rot.T
             d0 = clean_depth(splat((pts - origin) * sign0, np.zeros(3)))
