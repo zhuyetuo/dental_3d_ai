@@ -34,7 +34,8 @@ def _one(args) -> list[dict]:
     from .pipeline import run
     from .synthetic import simulate_preparation
 
-    zip_path, pid, seg_model, gen_model, out, per_jaw, seed = args
+    zip_path, pid, seg_model, gen_model, out, per_jaw, seed, *rest = args
+    sim_kw = {"proximal_band": rest[0]} if rest and rest[0] is not None else {}
     rows: list[dict] = []
     try:
         meshes = {jaw: _load(zip_path, pid, jaw) for jaw in ("upper", "lower")}
@@ -58,7 +59,7 @@ def _one(args) -> list[dict]:
                 ant = _crop(meshes[other], np.asarray(real.vertices), 12.0)
                 from .cache import cached_preparation
 
-                prep, truth, _ = cached_preparation(mesh, lab, jaw, fdi)  # 按输入内容缓存，评分卡反复跑时直接读
+                prep, truth, _ = cached_preparation(mesh, lab, jaw, fdi, **sim_kw)  # 按输入内容缓存，评分卡反复跑时直接读
                 # 真值颈缘线是一堆没排序的顶点（肩台外缘 + 邻面刃状边缘），生成牙冠要的是首尾相连的一圈：按绕牙轴的角度排好
                 c = truth.mean(axis=0)
                 ax = np.cross(up, [1.0, 0.0, 0.0])
@@ -131,6 +132,7 @@ def main() -> None:
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--labels-from", type=Path, help="已有的分割标签缓存目录（复用缺失牙评分卡的）")
+    p.add_argument("--proximal-band", type=float, help="模拟预备体邻面渐变带宽度 mm（默认 1.0：邻面没有棱；0.2：邻面也有台阶）")
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "labels").mkdir(exist_ok=True)
@@ -142,7 +144,7 @@ def main() -> None:
     names = zipfile.ZipFile(args.zip).namelist()
     pids = sorted({n.split("/")[0] for n in names if n.endswith("ios_upper.stl") and n.replace("upper", "lower") in names})
     pids = [pids[i] for i in np.random.default_rng(1).permutation(len(pids))[: args.patients]]
-    jobs = [(str(args.zip), pid, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i) for i, pid in enumerate(pids)]
+    jobs = [(str(args.zip), pid, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i, args.proximal_band) for i, pid in enumerate(pids)]
     rows = []
     with mp.get_context("spawn").Pool(args.workers) as pool:
         for i, r in enumerate(pool.imap_unordered(_one, jobs)):

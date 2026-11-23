@@ -148,7 +148,9 @@ def run(
                 margins[str(fdi)] = {"points": learned.tolist(), "source": "auto", "method": "learned", "confidence": None}
             else:
                 try:
-                    result = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness)
+                    prox = os.environ.get("MARGIN_PROXIMAL", "off")  # 邻面留在分割边界上的距离（mm），如 "2,4"；"off"（默认）不用
+                    keep = None if prox == "off" else tuple(float(x) for x in prox.split(","))
+                    result = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness, proximal_keep=keep)
                 except ValueError as exc:
                     report["warnings"].append(f"{fdi} 颈缘线检测失败: {exc}")
                     continue

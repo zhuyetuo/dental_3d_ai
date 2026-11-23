@@ -85,8 +85,11 @@ def detect_margin(
     up: np.ndarray | None = None,
     sharpness: np.ndarray | None = None,
     start_candidates: int = 8,
+    proximal_keep: tuple[float, float] | None = None,
 ) -> MarginResult:
-    """up：咬合方向（牙冠朝向）。不提供时用该牙表面法向的面积加权平均估计。"""
+    """up：咬合方向（牙冠朝向）。不提供时用该牙表面法向的面积加权平均估计。
+    proximal_keep=(lo, hi)：初始线离邻牙 lo mm 以内的站点留在分割边界上，hi mm 以外用棱检测，中间平滑过渡。
+    邻面贴着邻牙，棱检测容易被拉到轴壁等别的棱上（模拟预备体上邻面误差是颊舌侧的 2 倍），分割边界在那里反而更准。None = 不用。"""
     initial = resample_loop(cervical_line(mesh, labels, fdi, smooth_iters=3), stations)
     score = edge_sharpness(mesh) if sharpness is None else sharpness
     verts = np.asarray(mesh.vertices)
@@ -97,7 +100,9 @@ def detect_margin(
 
     # 只在初始线附近的顶点里找
     tree = cKDTree(verts)
-    band = np.unique(np.concatenate(tree.query_ball_point(initial, search_radius)))
+    band = np.unique(np.concatenate(tree.query_ball_point(initial, search_radius))).astype(np.int64)
+    if len(band) == 0:
+        raise ValueError(f"{fdi} 的初始颈线附近没有网格顶点")
     band_tree = cKDTree(verts[band])
 
     tangent = np.roll(initial, -1, axis=0) - np.roll(initial, 1, axis=0)
@@ -149,6 +154,16 @@ def detect_margin(
     picked = np.roll(picked, start)
 
     pts = verts[picked].copy()
+    others = (labels != fdi) & (labels > 0)
+    if proximal_keep is not None and others.any():  # 邻面留在分割边界上
+        lo, hi = proximal_keep
+        w = np.clip((cKDTree(verts[others]).query(initial)[0] - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+        w = w * w * (3 - 2 * w)
+        for _ in range(3):  # 权重沿线平滑，过渡不要太陡
+            w = 0.5 * w + 0.25 * (np.roll(w, 1) + np.roll(w, -1))
+        for _ in range(2):  # 和原来一样先轻度平滑棱检测的结果
+            pts = 0.5 * pts + 0.25 * (np.roll(pts, 1, axis=0) + np.roll(pts, -1, axis=0))
+        pts = w[:, None] * pts + (1 - w[:, None]) * initial
     for _ in range(2):
         pts = 0.5 * pts + 0.25 * (np.roll(pts, 1, axis=0) + np.roll(pts, -1, axis=0))
 

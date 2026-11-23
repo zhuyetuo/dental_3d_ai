@@ -208,13 +208,16 @@ def simulate_preparation(
     occlusal: float = 1.5,
     taper_deg: float = 6.0,
     scallop: float = 0.4,
+    proximal_band: float = 1.0,
 ) -> tuple[trimesh.Trimesh, np.ndarray]:
     """在真实口扫上把一颗牙“磨”成肩台预备体，返回 (网格, 真值颈缘线上的点)。
 
     颈缘线放在牙颈线（低通平滑、起伏幅度乘 scallop）上方 margin_above_gum mm；颈缘线以上的部分沿水平方向向牙轴内收
     axial mm（越往上收得越多，形成 taper_deg 的聚合角），并整体压低 occlusal mm。跨过颈缘线的三角形
     被拉成近似水平的肩台，肩台外缘就是颈缘线。顶点、三角形和标签都不变（整颗牙仍标为 fdi）。
-    返回的真值颈缘线是肩台外缘那一圈没有移动的顶点。"""
+    返回的真值颈缘线是肩台外缘那一圈没有移动的顶点。
+    proximal_band：邻面离邻牙 / 牙龈多近开始减小磨除量（mm）。1.0 时邻面平滑过渡、没有棱（原来的做法）；
+    0.2 时邻面也磨出台阶，终止线和颊舌侧一样清楚（真实预备体邻面也有终止线，11-23 起颈缘线评估用这个）。"""
     from .geometry import estimate_arch_frame
     from .margin.cervical import cervical_line
 
@@ -274,7 +277,7 @@ def simulate_preparation(
     # 竖直的“悬崖”（大倒凹）。离非本牙顶点 1 mm 以内逐渐减小磨除量，邻面成为刃状边缘
     others = np.nonzero(labels != fdi)[0]
     dist = cKDTree(v[others]).query(v[idx])[0]
-    weight = np.clip(dist / 1.0, 0.0, 1.0)
+    weight = np.clip(dist / max(proximal_band, 1e-3), 0.0, 1.0)
     weight = weight * weight * (3 - 2 * weight)
     scale = 1.0 - weight * (1.0 - scale)
     new = axis + horiz * scale[:, None] + np.outer(hm[above] + lowered, up)
