@@ -40,10 +40,18 @@ def _prep_outer_generator(generator):
     import copy
 
     style = os.environ.get("PREP_OUTER_STYLE", "natural")
-    if getattr(generator, "style", None) in (None, style):
+    model = os.environ.get("PREP_OUTER_MODEL")  # 预备体外表面单独的扩散模型（如颈缘线条件模型）；不设就和缺失牙同一个
+    if getattr(generator, "style", None) is None or (getattr(generator, "style", None) == style and not model):
         return generator
     g = copy.copy(generator)  # 浅拷贝：共用已经加载的模型，只改风格
     g.style = style
+    if model:
+        from pathlib import Path as _P
+
+        g.model_path, g._model = _P(model), None
+        if os.environ.get("PREP_OUTER_REFINE"):  # 外表面单独设从形状模型出发的程度（"none" = 从噪声开始完整生成）
+            v = os.environ["PREP_OUTER_REFINE"]
+            g.refine = None if v == "none" else float(v)
     return g
 
 

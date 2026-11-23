@@ -306,7 +306,10 @@ def generate_prep_crown(
     outer_tooth = None
     if outer_generator is not None:  # 流程的生成器（形状模型 + 扩散补细节）：把预备体当缺失牙生成外形
         try:
-            cand = outer_generator.generate(ctx, target)
+            if getattr(outer_generator, "accepts_margin", False):  # 能看着颈缘线生成的（颈缘线条件扩散模型）
+                cand = outer_generator.generate(ctx, target, margin=crown_margin)
+            else:
+                cand = outer_generator.generate(ctx, target)
             if len(boundary_loops(cand.crown)) == 1:
                 outer_tooth = cand
             else:

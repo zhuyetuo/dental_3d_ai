@@ -116,6 +116,42 @@ def decode_tooth(x):  # (..., 2, S, S) → 深度 mm（没有牙冠的像素 0�
     return torch.where(x[..., 1, :, :] > 0, (x[..., 0, :, :] + 1) * TOOTH_SCALE, torch.zeros_like(x[..., 0, :, :]))
 
 
+MARGIN_DROP = 0.15  # 训练时不给颈缘线的比例
+
+
+def margin_edge(tooth):
+    """答案的径向图 (B, S, S) mm → 颈缘线图：掩码的外边缘像素（一圈），值是那里的深度，别处 0。投影圆盘最外一圈不算（那是视野边缘）。"""
+    import torch
+    import torch.nn.functional as F
+
+    m = (tooth > 0).float()
+    inner = -F.max_pool2d(-m[:, None], 3, 1, 1)[:, 0]
+    c = (torch.arange(SIZE, device=tooth.device) + 0.5) / SIZE * 2 - 1
+    rho = torch.hypot(c[:, None], c[None, :])
+    edge = (m > 0) & (inner < 0.5) & (rho < 0.97)
+    return torch.where(edge, tooth, torch.zeros_like(tooth))
+
+
+def jitter_margin(md, generator=None):
+    """训练时给颈缘线加扰动（模拟检测误差）：整体 ±0.1 mm、平滑起伏约 ±0.15 mm，随机丢掉 0–30% 的像素。"""
+    import torch
+    import torch.nn.functional as F
+
+    b = len(md)
+    shift = 0.1 * torch.randn(b, 1, 1, device=md.device, generator=generator)
+    coarse = torch.randn(b, 1, 8, 8, device=md.device, generator=generator) * 0.15
+    wave = F.interpolate(coarse, size=md.shape[-2:], mode="bicubic", align_corners=False)[:, 0]
+    keep = torch.rand(md.shape, device=md.device, generator=generator) > 0.3 * torch.rand(b, 1, 1, device=md.device, generator=generator)
+    return torch.where((md > 0) & keep, (md + shift + wave).clamp(min=0.31), torch.zeros_like(md))
+
+
+def encode_margin(md):
+    """颈缘线图 (B, S, S) mm（0 = 没有）→ (B, 2, S, S)：先往外扩 1 像素（训练时一圈细线、推理时投影的点疏密不一，扩一下两边对得上）。"""
+    import torch.nn.functional as F
+
+    return encode_tooth(F.max_pool2d(md[:, None], 3, 1, 1)[:, 0])
+
+
 def build_condition(ctx, ant, has_ant):
     """ctx、ant (B, S, S) mm，has_ant (B,) → (B, 5, S, S)。"""
     import torch
@@ -365,6 +401,8 @@ def run_eval(model, data, device, n: int = 128, steps: int = 50, seed: int = 0, 
             j = pick[i:i + 32]
             c, a, h = (torch.tensor(v[j].astype(np.float32), device=device) for v in (ctx, ant, has))
             cond, d_enc = build_condition(c, a, h), None
+            if getattr(model, "margin", False):
+                cond = torch.cat([cond, encode_margin(margin_edge(torch.tensor(tooth[j].astype(np.float32), device=device)))], dim=1)
             if dmap is not None:
                 d_enc = encode_tooth(torch.tensor(dmap[j].astype(np.float32), device=device))
                 cond = torch.cat([cond, d_enc], dim=1)
@@ -400,7 +438,7 @@ def _load_init(model, path, device):
 
 def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant_drop: float, init: Path | None = None,
           with_d: bool = False, residual: bool = False, library: bool = False, hf_weight: float = 0.0,
-          distill: Path | None = None, distill_w: float = 4.0, flow: bool = False, forever: bool = False) -> None:
+          distill: Path | None = None, distill_w: float = 4.0, flow: bool = False, forever: bool = False, margin: bool = False) -> None:
     """residual（要 with_d）：扩散的对象是“真牙 − D”（× RES_SCALE），模型天然从 D 出发，只学要改的部分。"""
     assert with_d or not residual, "--residual 要和 --with-d 一起用"
     import copy
@@ -421,7 +459,9 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
         val_lib = load_lib_dir([val_dir])
         print(json.dumps({"library_teeth": len(lib[0]), "library_val": 0 if val_lib is None else len(val_lib[0])}), flush=True)
     print(json.dumps({"train_teeth": len(tooth), "with_antagonist": int(has.sum()), "val_teeth": len(val[0]), "with_d": with_d}), flush=True)
-    model = build_unet(cond_ch=7 if with_d else 5, n_classes=2 * DESIGN_OFFSET if library else 16).to(device)
+    assert not (margin and with_d), "--margin 暂时不和 --with-d 一起用"
+    model = build_unet(cond_ch=7 if (with_d or margin) else 5, n_classes=2 * DESIGN_OFFSET if library else 16).to(device)
+    model.margin = margin
     if init:
         _load_init(model, init, device)
     model.residual = residual
@@ -455,7 +495,8 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
     last_save = time.time()
 
     def save(epoch_done: int):
-        ck = {"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch_done, "cond_ch": model.cond_ch, "residual": residual, "flow": flow}
+        ck = {"state": ema.state_dict(), "raw": model.state_dict(), "epoch": epoch_done, "cond_ch": model.cond_ch, "residual": residual, "flow": flow,
+              "margin": margin}
         if forever:
             ck["opt"] = opt.state_dict()
         tmp = out.with_suffix(".tmp")
@@ -467,10 +508,15 @@ def train(data_dirs, val_dir, out: Path, epochs: int, batch: int, lr: float, ant
         order, total = rng.permutation(len(tooth)), 0.0
         for s in range(steps_per_epoch):
             j = np.sort(order[s * batch:(s + 1) * batch])
-            x0 = encode_tooth(torch.tensor(tooth[j].astype(np.float32), device=device))
+            tt = torch.tensor(tooth[j].astype(np.float32), device=device)
+            x0 = encode_tooth(tt)
             h = torch.tensor(has[j].astype(np.float32), device=device)
             h = h * (torch.rand(len(j), device=device) > ant_drop)  # 一部分样本不给对颌：没有对颌时也要能用
             cond = build_condition(torch.tensor(ctx[j].astype(np.float32), device=device), torch.tensor(ant[j].astype(np.float32), device=device), h)
+            if margin:  # 颈缘线：答案的外边缘 + 扰动，一部分样本不给
+                md = jitter_margin(margin_edge(tt))
+                md = md * (torch.rand(len(j), 1, 1, device=device) > MARGIN_DROP)
+                cond = torch.cat([cond, encode_margin(md)], dim=1)
             if dmap is not None:
                 d_enc = encode_tooth(jitter_d(torch.tensor(dmap[j].astype(np.float32), device=device)))
                 cond = torch.cat([cond, d_enc], dim=1)
@@ -560,6 +606,7 @@ def load_model(path: Path, device: str):
     model.design = state["cls.weight"].shape[0] > DESIGN_OFFSET  # 有设计风格的类别
     model.residual = bool(ck.get("residual", False))
     model.flow = bool(ck.get("flow", False))
+    model.margin = bool(ck.get("margin", False))  # 条件里有颈缘线（多出的 2 个通道不是 D 的图）
     return model.eval()
 
 
@@ -612,7 +659,9 @@ class RadialDiffusionGenerator:
         tooth.info["radial_fallback"] = reason
         return tooth
 
-    def generate(self, ctx, target):
+    accepts_margin = True  # generate 可以接 margin（颈缘线 3D 点）；模型没训过颈缘线条件时忽略
+
+    def generate(self, ctx, target, margin=None):
         import torch
         import trimesh
 
@@ -653,7 +702,19 @@ class RadialDiffusionGenerator:
         cond = build_condition(torch.tensor(maps["ctx"], device=self.device)[None], a, torch.tensor([float(has)], device=self.device))
         g = torch.Generator(device=self.device).manual_seed(self.seed)
         init, base = None, None
-        need_d = model.cond_ch > 5  # 专门“在 D 上补细节”训练的模型：D 的图是条件之一
+        use_margin = getattr(model, "margin", False)
+        if use_margin:  # 颈缘线投到同一张径向图上；没给颈缘线就是“没有”（训练时 15% 的样本也这样）
+            from .radial import splat
+
+            md = np.zeros((SIZE, SIZE), np.float32)
+            if margin is not None and len(margin) >= 8:
+                from ..margin.detect import resample_loop
+
+                sign_m = np.array([-1.0, 1.0, 1.0]) if flip else np.ones(3)
+                pts = resample_loop(np.asarray(margin, float), 4000) @ rot.T
+                md = splat((pts - origin) * sign_m, np.zeros(3), fill=0)
+            cond = torch.cat([cond, encode_margin(torch.tensor(md, device=self.device).float()[None])], dim=1)
+        need_d = model.cond_ch > (7 if use_margin else 5)  # 专门“在 D 上补细节”训练的模型：D 的图是条件之一
         if need_d and self.fallback is None:
             raise ValueError("这个扩散模型要 D 的输出当条件，需要 fallback=LearnedGenerator")
         if (self.refine is not None or need_d) and self.fallback is not None:  # 学习模型 D 出整体形状，投到同一张径向图上
@@ -701,6 +762,8 @@ class RadialDiffusionGenerator:
             return self._fall(ctx, target, "生成的牙冠边界不是一圈")
         info = {"source": f"radial_diffusion:{(self.terminal_path if terminal else self.model_path).name}", "terminal": terminal, "placement": "radial_diffusion", "gap_mm": target.gap_mm,
                 "occlusal_drop_mm": 0.0, "antagonist_input": has}
+        if use_margin:
+            info["margin_condition"] = margin is not None
         if base is not None:
             info.update({k: v for k, v in base.info.items() if k not in ("source", "placement", "occlusal_drop_mm")})
             kind = "radial_dcond" if need_d else "radial_refine"
@@ -736,6 +799,7 @@ def main() -> None:
     t.add_argument("--distill-w", type=float, default=4.0, help="蒸馏的引导倍数")
     t.add_argument("--flow", action="store_true", help="Flow Matching（直线流）代替扩散")
     t.add_argument("--forever", action="store_true", help="长期训练：学习率固定、能被 SIGTERM 打断、out 存在就接着训")
+    t.add_argument("--margin", action="store_true", help="条件里加颈缘线（预备体牙冠外表面用）：训练时从答案的外边缘取")
     t.add_argument("--library", action="store_true", help="加上牙库造的设计风格样本（data/radial_lib/<split>，radial_library.py build 生成）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
@@ -746,7 +810,7 @@ def main() -> None:
     args = p.parse_args()
     if args.cmd == "train":
         train(args.data, args.val, args.out, args.epochs, args.batch, args.lr, args.ant_drop, args.init, args.with_d, args.residual, args.library, args.hf_weight,
-              args.distill, args.distill_w, args.flow, args.forever)
+              args.distill, args.distill_w, args.flow, args.forever, args.margin)
     else:
         import torch
 
