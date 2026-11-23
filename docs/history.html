@@ -64,6 +64,16 @@
     </div>
     <div class="tl" id="tl">
 
+      <div class="ev no" data-k="seg eval"><div class="d">2026-11-23</div>
+        <h3>Poseidon3D 微调的分割模型：真实缺牙上没比现在的好<span class="tag">分割</span></h3>
+        <p>11-22 在 Poseidon3D 上微调的两个分割模型（常规、难例加权），在它们自己的困难集上检出缺牙 17 → 19、牙号错标 47 → 41。
+        拿到网页同一路径的真实缺牙评估（Bite2Text 190 个缺牙颌 + 80 个对照颌）上，和现在的模型用同样的代码、同样的朝向归一化重跑对照：检出都低 2–3 个点，只有前牙略好、对照颌误报略少。不换。</p>
+        <p class="num">检出 <b>54.4%</b>（现在）/ 51.6%（常规）/ 52.6%（难例加权）· 缺牙数对 <b>67.7%</b> / 65.6% / 67.4% · 前牙 55.1% / 55.1% / <b>56.5%</b> · 前磨牙 <b>44.6%</b> / 41.1% / 42.0% · 对照误报颌 20 / 20 / <b>18</b></p></div>
+
+      <div class="ev ok" data-k="web"><div class="d">2026-11-23</div>
+        <h3>网页服务开机自启<span class="tag">工程</span></h3>
+        <p>服务器重启后网页四个容器停了 3 天没人发现。docker-compose.yml 里都加上 restart: unless-stopped，重启 / 断电后 docker 自己拉起。</p></div>
+
       <div class="ev mid" data-k="margin gen eval"><div class="d">2026-11-22</div>
         <h3>终止线误差传递到成品冠</h3>
         <p>130 组模拟预备体完成四组对照，122 组冠均封闭。独立测试的 42 组里，几何自动线换成模拟真值线后，成品平均边缘偏差中位数 0.235 → 0.073 mm。</p></div>
