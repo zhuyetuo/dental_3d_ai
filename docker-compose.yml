@@ -58,6 +58,7 @@ x-backend-common: &backend-common
 
 services:
   frontend:
+    restart: unless-stopped  # 服务器重启后自己拉起
     build:
       context: ./frontend
       args:
@@ -68,6 +69,7 @@ services:
       - backend
 
   backend:
+    restart: unless-stopped  # 服务器重启后自己拉起
     <<: *backend-common
     ports:
       - "8000:8000"
@@ -77,12 +79,14 @@ services:
   # 处理任务的 worker：从 Redis 队列取任务（分割、生成、封底都在这里算），API 进程不被拖慢。
   # 病例多时可以开多个：docker compose up --scale worker=3
   worker:
+    restart: unless-stopped  # 服务器重启后自己拉起
     <<: *backend-common
     command: ["rq", "worker", "dental", "--url", "redis://redis:6379/0"]
     depends_on:
       - redis
 
   redis:
+    restart: unless-stopped  # 服务器重启后自己拉起
     image: ${DOCKER_REGISTRY:-docker.io}/library/redis:7-alpine
 
   tgnet:
