@@ -27,6 +27,7 @@
 |---|---|
 | [在线效果报告](https://zhuyetuo.github.io/dental_3d_ai/) | **效果报告页**（图为主）：每次训练有提升后更新，页面源码见 [docs/index.html](docs/index.html) |
 | [docs/results.md](docs/results.md) | **模型效果一览**：分割、缺失牙生成、颈缘线的效果图、指标和已知问题 |
+| [近期实验记录](docs/experiments/2026-11-20-to-22.md) | 11 月 20 至 22 日的分割、牙冠、颈缘线和数据实验，含复现命令与聚合指标 |
 | [docs/resources.md](docs/resources.md) | **外部资料清单**：牙冠生成、点云补全、咬合等方向的论文、代码、数据集，以及每一项能不能用上 |
 | [docs/system-architecture.md](docs/system-architecture.md) | 系统架构：前端、后端、算法服务、3D 渲染与交互、部署 |
 | [docs/algorithm-architecture.md](docs/algorithm-architecture.md) | 算法架构：模型分工、数据收集标注训练全链路 |

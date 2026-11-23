@@ -1,0 +1,4614 @@
+{
+  "schema_version": 1,
+  "window": "2026-11-20 to 2026-11-22 America/Los_Angeles",
+  "experiments": {
+    "ptv3_short_trials": {
+      "decision": "checkpoints_keep_separate_pending_review",
+      "stages": {
+        "reference_replay": {
+          "matched_test": {
+            "teeth": 141,
+            "baseline_exact": 76,
+            "trial_exact": 78,
+            "recovered": 2,
+            "lost": 0
+          },
+          "delta_pp_patient_bootstrap_95": [
+            0.0,
+            3.65
+          ],
+          "by_tooth_type": {
+            "molar": {
+              "teeth": 37,
+              "baseline_exact": 27,
+              "trial_exact": 28
+            },
+            "premolar": {
+              "teeth": 66,
+              "baseline_exact": 24,
+              "trial_exact": 25
+            },
+            "anterior": {
+              "teeth": 38,
+              "baseline_exact": 25,
+              "trial_exact": 25
+            }
+          },
+          "report_silent_controls": {
+            "jaws": 41,
+            "before": 13,
+            "after": 13,
+            "new_flagged_jaws": 0,
+            "jaws_with_any_new_slot": 0
+          },
+          "fair_metrics": {
+            "miou": 0.9123,
+            "dice": 0.9338,
+            "tir": 0.9585
+          },
+          "eligible_for_manual_review": false
+        },
+        "eval_balanced_0.00003": {
+          "matched_test": {
+            "teeth": 141,
+            "baseline_exact": 76,
+            "trial_exact": 76,
+            "recovered": 3,
+            "lost": 3
+          },
+          "delta_pp_patient_bootstrap_95": [
+            -3.25,
+            3.6
+          ],
+          "by_tooth_type": {
+            "molar": {
+              "teeth": 37,
+              "baseline_exact": 27,
+              "trial_exact": 28
+            },
+            "premolar": {
+              "teeth": 66,
+              "baseline_exact": 24,
+              "trial_exact": 23
+            },
+            "anterior": {
+              "teeth": 38,
+              "baseline_exact": 25,
+              "trial_exact": 25
+            }
+          },
+          "report_silent_controls": {
+            "jaws": 41,
+            "before": 13,
+            "after": 12,
+            "new_flagged_jaws": 0,
+            "jaws_with_any_new_slot": 2
+          },
+          "fair_metrics": {
+            "miou": 0.914,
+            "dice": 0.9352,
+            "tir": 0.9583
+          },
+          "eligible_for_manual_review": false
+        },
+        "low_lr_existing": {
+          "matched_test": {
+            "teeth": 141,
+            "baseline_exact": 76,
+            "trial_exact": 75,
+            "recovered": 5,
+            "lost": 6
+          },
+          "delta_pp_patient_bootstrap_95": [
+            -5.59,
+            4.43
+          ],
+          "by_tooth_type": {
+            "molar": {
+              "teeth": 37,
+              "baseline_exact": 27,
+              "trial_exact": 30
+            },
+            "premolar": {
+              "teeth": 66,
+              "baseline_exact": 24,
+              "trial_exact": 19
+            },
+            "anterior": {
+              "teeth": 38,
+              "baseline_exact": 25,
+              "trial_exact": 26
+            }
+          },
+          "report_silent_controls": {
+            "jaws": 41,
+            "before": 13,
+            "after": 12,
+            "new_flagged_jaws": 0,
+            "jaws_with_any_new_slot": 3
+          },
+          "fair_metrics": {
+            "miou": 0.9174,
+            "dice": 0.9387,
+            "tir": 0.9638
+          },
+          "eligible_for_manual_review": false
+        },
+        "eval_closed_gap_0.00006": {
+          "matched_test": {
+            "teeth": 141,
+            "baseline_exact": 76,
+            "trial_exact": 77,
+            "recovered": 4,
+            "lost": 3
+          },
+          "delta_pp_patient_bootstrap_95": [
+            -2.96,
+            4.55
+          ],
+          "by_tooth_type": {
+            "molar": {
+              "teeth": 37,
+              "baseline_exact": 27,
+              "trial_exact": 30
+            },
+            "premolar": {
+              "teeth": 66,
+              "baseline_exact": 24,
+              "trial_exact": 23
+            },
+            "anterior": {
+              "teeth": 38,
+              "baseline_exact": 25,
+              "trial_exact": 24
+            }
+          },
+          "report_silent_controls": {
+            "jaws": 41,
+            "before": 13,
+            "after": 12,
+            "new_flagged_jaws": 0,
+            "jaws_with_any_new_slot": 1
+          },
+          "fair_metrics": {
+            "miou": 0.9131,
+            "dice": 0.9342,
+            "tir": 0.9588
+          },
+          "eligible_for_manual_review": false
+        },
+        "eval_balanced_0.00006": {
+          "matched_test": {
+            "teeth": 141,
+            "baseline_exact": 76,
+            "trial_exact": 70,
+            "recovered": 2,
+            "lost": 8
+          },
+          "delta_pp_patient_bootstrap_95": [
+            -8.5,
+            0.0
+          ],
+          "by_tooth_type": {
+            "molar": {
+              "teeth": 37,
+              "baseline_exact": 27,
+              "trial_exact": 27
+            },
+            "premolar": {
+              "teeth": 66,
+              "baseline_exact": 24,
+              "trial_exact": 22
+            },
+            "anterior": {
+              "teeth": 38,
+              "baseline_exact": 25,
+              "trial_exact": 21
+            }
+          },
+          "report_silent_controls": {
+            "jaws": 41,
+            "before": 13,
+            "after": 12,
+            "new_flagged_jaws": 0,
+            "jaws_with_any_new_slot": 3
+          },
+          "fair_metrics": {
+            "miou": 0.9154,
+            "dice": 0.9367,
+            "tir": 0.9606
+          },
+          "eligible_for_manual_review": false
+        },
+        "eval_closed_gap_0.00003": {
+          "matched_test": {
+            "teeth": 141,
+            "baseline_exact": 76,
+            "trial_exact": 78,
+            "recovered": 4,
+            "lost": 2
+          },
+          "delta_pp_patient_bootstrap_95": [
+            -2.04,
+            4.94
+          ],
+          "by_tooth_type": {
+            "molar": {
+              "teeth": 37,
+              "baseline_exact": 27,
+              "trial_exact": 29
+            },
+            "premolar": {
+              "teeth": 66,
+              "baseline_exact": 24,
+              "trial_exact": 25
+            },
+            "anterior": {
+              "teeth": 38,
+              "baseline_exact": 25,
+              "trial_exact": 24
+            }
+          },
+          "report_silent_controls": {
+            "jaws": 41,
+            "before": 13,
+            "after": 12,
+            "new_flagged_jaws": 0,
+            "jaws_with_any_new_slot": 1
+          },
+          "fair_metrics": {
+            "miou": 0.9125,
+            "dice": 0.9336,
+            "tir": 0.9561
+          },
+          "eligible_for_manual_review": false
+        }
+      },
+      "cpu_review": {
+        "review_cases": 36,
+        "paired_photos": 36,
+        "supported_by_other_segmentation_model": 7,
+        "predominant_input_label_differs": 1,
+        "has_review_labels": false,
+        "decision": "cases_ready_for_review; geometry and model disagreements are review evidence only"
+      }
+    },
+    "ptv3_missing_geometry_audit": {
+      "photo_cohort_misses": 64,
+      "photo_cohort_families": {
+        "adjacent_report": 16,
+        "excess_segmented_count": 36,
+        "present_count_not_excess": 12
+      },
+      "all_clean_test_misses": 64,
+      "expected_photo_cohort_misses": 64,
+      "missing_geometry_on_photo_cohort": 8,
+      "rule": {
+        "relative_area": 0.65,
+        "protrusion_mm": 1.0,
+        "development": {
+          "jaws": 129,
+          "missing": 144,
+          "baseline": 89,
+          "trial": 96,
+          "additional_flags": 14,
+          "added_confirmed": 7,
+          "control_jaws": 39,
+          "control_before": 9,
+          "control_after": 10,
+          "control_with_new_flags": 1
+        },
+        "heldout": {
+          "jaws": 123,
+          "missing": 134,
+          "baseline": 70,
+          "trial": 72,
+          "additional_flags": 7,
+          "added_confirmed": 2,
+          "control_jaws": 41,
+          "control_before": 13,
+          "control_after": 13,
+          "control_with_new_flags": 1
+        },
+        "decision": "keep_existing"
+      },
+      "decision": "keep_existing"
+    },
+    "ptv3_numbering_trial": {
+      "adjacent_cases": 16,
+      "cases_with_geometry_candidates": 3,
+      "baseline_clean_test": {
+        "jaws": 124,
+        "missing": 135,
+        "baseline": 71,
+        "trial": 71,
+        "recovered": 0,
+        "lost": 0,
+        "new_slot_flags": 0,
+        "changed_jaws": 0,
+        "control_jaws": 41,
+        "control_changed_slots": 0
+      },
+      "chosen": {
+        "min_gain_mm": 4,
+        "max_new_error_mm": 4,
+        "development": {
+          "jaws": 129,
+          "missing": 144,
+          "baseline": 89,
+          "trial": 90,
+          "recovered": 1,
+          "lost": 0,
+          "new_slot_flags": 1,
+          "changed_jaws": 1,
+          "control_jaws": 39,
+          "control_changed_slots": 0
+        },
+        "heldout": {
+          "jaws": 124,
+          "missing": 135,
+          "baseline": 71,
+          "trial": 71,
+          "recovered": 0,
+          "lost": 0,
+          "new_slot_flags": 1,
+          "changed_jaws": 1,
+          "control_jaws": 41,
+          "control_changed_slots": 0
+        }
+      },
+      "decision": "keep_existing"
+    },
+    "photo_missing_pilot": {
+      "method": "ImageNet ResNet18 features from occlusal photos; report-supervised tooth-slot linear heads",
+      "control_label": "Report-silent cases are a false-alarm proxy; not confirmed complete dentitions",
+      "control_budget_dev": 0.05,
+      "photo_jaws": 1922,
+      "photo_errors": {},
+      "seed": 20261120,
+      "by_jaw": {
+        "upper": {
+          "missing_teeth": 78,
+          "photo_exact_hits": 4,
+          "report_silent_jaws": 414,
+          "photo_flagged_silent_jaws": 25,
+          "scan_pair": {
+            "jaws": 70,
+            "confirmed_missing": 78,
+            "baseline_exact": 40,
+            "fusion_exact": 40,
+            "added_flags": 6,
+            "added_confirmed": 0,
+            "report_silent_jaws": 21,
+            "baseline_flagged_silent_jaws": 6,
+            "fusion_flagged_silent_jaws": 8,
+            "silent_jaws_with_additional_flags": 2
+          },
+          "threshold": 0.7910486459732056,
+          "fit_jaws": 383,
+          "dev_jaws": 96,
+          "test_jaws": 480,
+          "supported_fdi": [
+            12,
+            13,
+            15,
+            16,
+            22,
+            23,
+            25,
+            26
+          ],
+          "dev_control_jaws": 82,
+          "dev_flagged_control_jaws": 4
+        },
+        "lower": {
+          "missing_teeth": 56,
+          "photo_exact_hits": 3,
+          "report_silent_jaws": 416,
+          "photo_flagged_silent_jaws": 14,
+          "scan_pair": {
+            "jaws": 53,
+            "confirmed_missing": 56,
+            "baseline_exact": 30,
+            "fusion_exact": 31,
+            "added_flags": 7,
+            "added_confirmed": 1,
+            "report_silent_jaws": 20,
+            "baseline_flagged_silent_jaws": 7,
+            "fusion_flagged_silent_jaws": 7,
+            "silent_jaws_with_additional_flags": 1
+          },
+          "threshold": 0.8498350381851196,
+          "fit_jaws": 384,
+          "dev_jaws": 96,
+          "test_jaws": 483,
+          "supported_fdi": [
+            34,
+            35,
+            36,
+            37,
+            44,
+            45,
+            46,
+            47
+          ],
+          "dev_control_jaws": 82,
+          "dev_flagged_control_jaws": 4
+        }
+      },
+      "paired_ptv3": {
+        "jaws": 123,
+        "confirmed_missing": 134,
+        "baseline_exact": 70,
+        "fusion_exact": 71,
+        "added_flags": 13,
+        "added_confirmed": 1,
+        "report_silent_jaws": 41,
+        "baseline_flagged_silent_jaws": 13,
+        "fusion_flagged_silent_jaws": 15,
+        "silent_jaws_with_additional_flags": 3
+      },
+      "decision": "do_not_add_to_pipeline"
+    },
+    "ideas_queue": {
+      "model_trials": {
+        "conditioned_detail_contact": {
+          "fixed_validation_teeth": 1189,
+          "sampling_steps": 40,
+          "baseline": {
+            "depth_mae_mm": 0.4324246942996979,
+            "mask_iou": 0.8867112398147583,
+            "clear_med_mm": 0.04763984680175781,
+            "real_clear_med_mm": 0.125,
+            "pen_rate": 0.4179983139038086,
+            "real_pen_rate": 0.15054668486118317,
+            "D_depth_mae_mm": 0.3729511797428131,
+            "D_mask_iou": 0.8858475089073181,
+            "teeth": 1189,
+            "sampling_steps": 40
+          },
+          "candidate": {
+            "depth_mae_mm": 0.43061134219169617,
+            "mask_iou": 0.887309730052948,
+            "clear_med_mm": 0.09106016159057617,
+            "real_clear_med_mm": 0.125,
+            "pen_rate": 0.3927670419216156,
+            "real_pen_rate": 0.15054668486118317,
+            "D_depth_mae_mm": 0.3729511797428131,
+            "D_mask_iou": 0.8858475089073181,
+            "teeth": 1189,
+            "sampling_steps": 40
+          },
+          "depth_mae_delta_mm": -0.001813352108001709,
+          "pen_rate_delta": -0.025231271982192993
+        },
+        "crown_scorecard": {
+          "paired_crown_results": {
+            "generated": {
+              "paired_teeth": 25,
+              "baseline": {
+                "chamfer_median_mm": 0.30631603429856186,
+                "penetration_gt_01": 0.0,
+                "neighbor_overlap": 0.04,
+                "no_contact": 1.0
+              },
+              "candidate": {
+                "chamfer_median_mm": 0.2992411911054004,
+                "penetration_gt_01": 0.0,
+                "neighbor_overlap": 0.12,
+                "no_contact": 1.0
+              }
+            },
+            "generated_contact": {
+              "paired_teeth": 25,
+              "baseline": {
+                "chamfer_median_mm": 0.28441658592377983,
+                "penetration_gt_01": 0.0,
+                "neighbor_overlap": 0.08,
+                "no_contact": 0.0
+              },
+              "candidate": {
+                "chamfer_median_mm": 0.28532192336262435,
+                "penetration_gt_01": 0.0,
+                "neighbor_overlap": 0.04,
+                "no_contact": 0.0
+              }
+            },
+            "generated_raw": {
+              "paired_teeth": 25,
+              "baseline": {
+                "chamfer_median_mm": 0.2970751962287943,
+                "penetration_gt_01": 0.48,
+                "neighbor_overlap": 0.08,
+                "no_contact": 0.24
+              },
+              "candidate": {
+                "chamfer_median_mm": 0.28334237875271173,
+                "penetration_gt_01": 0.56,
+                "neighbor_overlap": 0.08,
+                "no_contact": 0.16
+              }
+            }
+          }
+        },
+        "terminal_library": {
+          "teeth": 108,
+          "isotropic_median_mm": 0.5590391288300163,
+          "anisotropic_median_mm": 0.543618317618606,
+          "isotropic_under_035": 0,
+          "anisotropic_under_035": 0,
+          "better": 84,
+          "worsened_005_mm": 0,
+          "decision": "keep_isotropic"
+        },
+        "photo_views": {
+          "view_alignment": {
+            "dev": {
+              "patients": 4,
+              "photo_classification_correct": 20,
+              "photos": 20,
+              "correct_jaw_selections": 8,
+              "wrong_jaw_selections": 0,
+              "abstained": 0,
+              "index_rule_correct": 6
+            },
+            "test": {
+              "patients": 8,
+              "photo_classification_correct": 43,
+              "photos": 43,
+              "correct_jaw_selections": 16,
+              "wrong_jaw_selections": 0,
+              "abstained": 0,
+              "index_rule_correct": 10
+            },
+            "previous_mismatch": {
+              "patients": 12,
+              "photo_classification_correct": 66,
+              "photos": 66,
+              "correct_jaw_selections": 24,
+              "wrong_jaw_selections": 0,
+              "abstained": 0,
+              "index_rule_correct": 1
+            },
+            "threshold": 0.5,
+            "decision": "collect_larger_external_view_labels_before_missing_model_rerun"
+          }
+        },
+        "conditioned_detail": {
+          "fixed_validation_teeth": 1189,
+          "sampling_steps": 40,
+          "baseline": {
+            "depth_mae_mm": 0.4324246942996979,
+            "mask_iou": 0.8867112398147583,
+            "clear_med_mm": 0.04763984680175781,
+            "real_clear_med_mm": 0.125,
+            "pen_rate": 0.4179983139038086,
+            "real_pen_rate": 0.15054668486118317,
+            "D_depth_mae_mm": 0.3729511797428131,
+            "D_mask_iou": 0.8858475089073181,
+            "teeth": 1189,
+            "sampling_steps": 40
+          },
+          "candidate": {
+            "depth_mae_mm": 0.4206162095069885,
+            "mask_iou": 0.8889394402503967,
+            "clear_med_mm": 0.09032487869262695,
+            "real_clear_med_mm": 0.125,
+            "pen_rate": 0.3927670419216156,
+            "real_pen_rate": 0.15054668486118317,
+            "D_depth_mae_mm": 0.3729511797428131,
+            "D_mask_iou": 0.8858475089073181,
+            "teeth": 1189,
+            "sampling_steps": 40
+          },
+          "depth_mae_delta_mm": -0.01180848479270935,
+          "pen_rate_delta": -0.025231271982192993
+        },
+        "photo_missing_routed": {
+          "photo_routing_coverage": {
+            "eligible_jaws": 1922,
+            "selected_different_slot": 765,
+            "decode_errors": 1,
+            "abstained": 15
+          },
+          "matched_photo_rerun": {
+            "fixed_index": {
+              "jaws": 123,
+              "confirmed_missing": 134,
+              "baseline_exact": 70,
+              "fusion_exact": 71,
+              "added_flags": 9,
+              "added_confirmed": 1,
+              "report_silent_jaws": 41,
+              "baseline_flagged_silent_jaws": 13,
+              "fusion_flagged_silent_jaws": 14,
+              "silent_jaws_with_additional_flags": 1
+            },
+            "content_routed": {
+              "jaws": 123,
+              "confirmed_missing": 134,
+              "baseline_exact": 70,
+              "fusion_exact": 72,
+              "added_flags": 31,
+              "added_confirmed": 2,
+              "report_silent_jaws": 41,
+              "baseline_flagged_silent_jaws": 13,
+              "fusion_flagged_silent_jaws": 14,
+              "silent_jaws_with_additional_flags": 1
+            }
+          },
+          "decision": "exploratory_check_not_a_deployment_test"
+        },
+        "conditioned_residual": {
+          "fixed_validation_teeth": 1189,
+          "sampling_steps": 40,
+          "baseline": {
+            "depth_mae_mm": 0.4108584225177765,
+            "mask_iou": 0.888334333896637,
+            "clear_med_mm": 0.03149223327636719,
+            "real_clear_med_mm": 0.125,
+            "pen_rate": 0.4280908405780792,
+            "real_pen_rate": 0.15054668486118317,
+            "D_depth_mae_mm": 0.3729511797428131,
+            "D_mask_iou": 0.8858475089073181,
+            "teeth": 1189,
+            "sampling_steps": 40
+          },
+          "candidate": {
+            "depth_mae_mm": 0.39474719762802124,
+            "mask_iou": 0.8899217247962952,
+            "clear_med_mm": 0.045174598693847656,
+            "real_clear_med_mm": 0.125,
+            "pen_rate": 0.4146341383457184,
+            "real_pen_rate": 0.15054668486118317,
+            "D_depth_mae_mm": 0.3729511797428131,
+            "D_mask_iou": 0.8858475089073181,
+            "teeth": 1189,
+            "sampling_steps": 40
+          },
+          "depth_mae_delta_mm": -0.01611122488975525,
+          "pen_rate_delta": -0.01345670223236084
+        }
+      }
+    },
+    "simulated_prep_expansion": {
+      "source_patients": 65,
+      "synthetic_pairs": 130,
+      "patient_partitions": {
+        "train": 35,
+        "dev": 8,
+        "test": 22
+      },
+      "rejected": 4,
+      "reference_type": "Natural exterior proxy and synthetic margin, in millimeters",
+      "usable_for_margin_ablation": true
+    },
+    "three_model_crown_comparison": {
+      "paired_crown_results": {
+        "generated": {
+          "paired_teeth": 64,
+          "paired_patients": 34,
+          "metrics": {
+            "shape_only": {
+              "scored_teeth": 64,
+              "sources": {
+                "learned": 64
+              },
+              "chamfer_median_mm": 0.26477,
+              "chamfer_p95_mm": 0.46008,
+              "penetration_gt_01": 0,
+              "neighbor_overlap": 14,
+              "no_contact": 64,
+              "non_watertight": 0
+            },
+            "residual_before": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.31166,
+              "chamfer_p95_mm": 0.56902,
+              "penetration_gt_01": 0,
+              "neighbor_overlap": 9,
+              "no_contact": 64,
+              "non_watertight": 0
+            },
+            "residual_after": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.31055,
+              "chamfer_p95_mm": 0.57452,
+              "penetration_gt_01": 0,
+              "neighbor_overlap": 9,
+              "no_contact": 64,
+              "non_watertight": 0
+            }
+          },
+          "residual_after_minus_before_paired_median_ci_mm": [
+            -0.0154,
+            -0.0043
+          ],
+          "penetration_transitions": {
+            "new_penetration": 0,
+            "resolved_penetration": 0
+          }
+        },
+        "generated_contact": {
+          "paired_teeth": 64,
+          "paired_patients": 34,
+          "metrics": {
+            "shape_only": {
+              "scored_teeth": 64,
+              "sources": {
+                "learned": 64
+              },
+              "chamfer_median_mm": 0.26271,
+              "chamfer_p95_mm": 0.48871,
+              "penetration_gt_01": 0,
+              "neighbor_overlap": 12,
+              "no_contact": 1,
+              "non_watertight": 0
+            },
+            "residual_before": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.30949,
+              "chamfer_p95_mm": 0.54586,
+              "penetration_gt_01": 1,
+              "neighbor_overlap": 11,
+              "no_contact": 1,
+              "non_watertight": 0
+            },
+            "residual_after": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.29638,
+              "chamfer_p95_mm": 0.54332,
+              "penetration_gt_01": 0,
+              "neighbor_overlap": 13,
+              "no_contact": 4,
+              "non_watertight": 0
+            }
+          },
+          "residual_after_minus_before_paired_median_ci_mm": [
+            -0.0138,
+            -0.0015
+          ],
+          "penetration_transitions": {
+            "new_penetration": 0,
+            "resolved_penetration": 1
+          }
+        },
+        "generated_raw": {
+          "paired_teeth": 64,
+          "paired_patients": 34,
+          "metrics": {
+            "shape_only": {
+              "scored_teeth": 64,
+              "sources": {
+                "learned": 64
+              },
+              "chamfer_median_mm": 0.25827,
+              "chamfer_p95_mm": 0.4576,
+              "penetration_gt_01": 0,
+              "neighbor_overlap": 10,
+              "no_contact": 8,
+              "non_watertight": 0
+            },
+            "residual_before": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.31958,
+              "chamfer_p95_mm": 0.55083,
+              "penetration_gt_01": 22,
+              "neighbor_overlap": 9,
+              "no_contact": 16,
+              "non_watertight": 0
+            },
+            "residual_after": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.30864,
+              "chamfer_p95_mm": 0.52211,
+              "penetration_gt_01": 23,
+              "neighbor_overlap": 13,
+              "no_contact": 15,
+              "non_watertight": 0
+            }
+          },
+          "residual_after_minus_before_paired_median_ci_mm": [
+            -0.0188,
+            -0.0046
+          ],
+          "penetration_transitions": {
+            "new_penetration": 3,
+            "resolved_penetration": 2
+          }
+        },
+        "generated_no_antagonist": {
+          "paired_teeth": 64,
+          "paired_patients": 34,
+          "metrics": {
+            "shape_only": {
+              "scored_teeth": 64,
+              "sources": {
+                "learned": 64
+              },
+              "chamfer_median_mm": 0.27768,
+              "chamfer_p95_mm": 0.56014,
+              "penetration_gt_01": 34,
+              "neighbor_overlap": 10,
+              "no_contact": 11,
+              "non_watertight": 0
+            },
+            "residual_before": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.34055,
+              "chamfer_p95_mm": 0.50574,
+              "penetration_gt_01": 27,
+              "neighbor_overlap": 6,
+              "no_contact": 13,
+              "non_watertight": 0
+            },
+            "residual_after": {
+              "scored_teeth": 64,
+              "sources": {
+                "radial_dcond": 64
+              },
+              "chamfer_median_mm": 0.32933,
+              "chamfer_p95_mm": 0.56152,
+              "penetration_gt_01": 30,
+              "neighbor_overlap": 8,
+              "no_contact": 12,
+              "non_watertight": 0
+            }
+          },
+          "residual_after_minus_before_paired_median_ci_mm": [
+            -0.0196,
+            -0.0022
+          ],
+          "penetration_transitions": {
+            "new_penetration": 3,
+            "resolved_penetration": 0
+          }
+        }
+      },
+      "decision": "focus_on_margin_research"
+    },
+    "old_only_vs_mixed_margin": {
+      "decision": "keep_margin_baseline",
+      "margin_training_ablation": {
+        "synthetic_holdout": {
+          "initial": {
+            "cases": 44,
+            "failures": 0,
+            "mean_with_failure_penalty_mm": 0.4857,
+            "median_error_mm": 0.3852,
+            "median_p95_mm": 1.2061
+          },
+          "original_only": {
+            "cases": 44,
+            "failures": 0,
+            "mean_with_failure_penalty_mm": 0.4418,
+            "median_error_mm": 0.3307,
+            "median_p95_mm": 0.9977
+          },
+          "mixed": {
+            "cases": 44,
+            "failures": 0,
+            "mean_with_failure_penalty_mm": 0.2186,
+            "median_error_mm": 0.1976,
+            "median_p95_mm": 0.6244
+          }
+        },
+        "real_die_smoke": {
+          "initial": {
+            "cases": 15,
+            "failures": 0,
+            "mean_with_failure_penalty_mm": 4.5564,
+            "median_error_mm": 4.7087,
+            "median_p95_mm": 6.2406
+          },
+          "original_only": {
+            "cases": 15,
+            "failures": 0,
+            "mean_with_failure_penalty_mm": 4.4907,
+            "median_error_mm": 4.485,
+            "median_p95_mm": 6.1472
+          },
+          "mixed": {
+            "cases": 15,
+            "failures": 0,
+            "mean_with_failure_penalty_mm": 4.8226,
+            "median_error_mm": 4.6149,
+            "median_p95_mm": 5.9721
+          }
+        },
+        "mixed_minus_original_patient_ci_mm": [
+          -0.3277,
+          -0.1323
+        ],
+        "selected_checkpoint": {
+          "initial": "model.pt",
+          "original_only": "original_only.pt",
+          "mixed": "mixed.pt"
+        }
+      }
+    },
+    "neighbor_target_sweep": {
+      "decision": "keep_current_neighbor_target",
+      "paired_crown_results": {
+        "paired_teeth": 64,
+        "expected_teeth": 64,
+        "paired_patients": 34,
+        "rerun_max_shape_delta_mm": 0.0,
+        "arms": {
+          "baseline": {
+            "target_mm": -0.03,
+            "scored": 64,
+            "median_shape_mm": 0.2627122025348252,
+            "shape_p95_mm": 0.4887103510111709,
+            "patient_mean_shape_delta_ci_mm": [
+              0.0,
+              0.0
+            ],
+            "neighbor_overlap": 12,
+            "open_neighbor_gap": 2,
+            "opposing_penetration": 0,
+            "no_opposing_contact": 1,
+            "non_watertight": 0
+          },
+          "zero": {
+            "target_mm": 0.0,
+            "scored": 64,
+            "median_shape_mm": 0.26150332329069675,
+            "shape_p95_mm": 0.4889679487092031,
+            "patient_mean_shape_delta_ci_mm": [
+              -0.00042,
+              6e-05
+            ],
+            "neighbor_overlap": 9,
+            "open_neighbor_gap": 2,
+            "opposing_penetration": 1,
+            "no_opposing_contact": 1,
+            "non_watertight": 0
+          },
+          "plus_005": {
+            "target_mm": 0.05,
+            "scored": 64,
+            "median_shape_mm": 0.2611455118208226,
+            "shape_p95_mm": 0.48985290830134676,
+            "patient_mean_shape_delta_ci_mm": [
+              -0.00149,
+              -0.00024
+            ],
+            "neighbor_overlap": 5,
+            "open_neighbor_gap": 4,
+            "opposing_penetration": 0,
+            "no_opposing_contact": 1,
+            "non_watertight": 0
+          }
+        }
+      }
+    },
+    "local_neighbor_relief": {
+      "decision": "keep_current_neighbor_adjustment",
+      "paired_crown_results": {
+        "comparison": {
+          "paired_teeth": 64,
+          "paired_patients": 34,
+          "errors": 0,
+          "max_prior_baseline_delta_mm": 0.0,
+          "proposed": 13,
+          "accepted": 10,
+          "max_shift_mm": 0.1267,
+          "rejected_by_reason": {
+            "new_or_deeper_neighbor_overlap": 3
+          },
+          "arms": {
+            "baseline": {
+              "median_shape_mm": 0.26271,
+              "shape_p95_mm": 0.48871,
+              "patient_mean_shape_delta_ci_mm": [
+                0.0,
+                0.0
+              ],
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            },
+            "local_raw": {
+              "median_shape_mm": 0.26261,
+              "shape_p95_mm": 0.48871,
+              "patient_mean_shape_delta_ci_mm": [
+                -6e-05,
+                -0.0
+              ],
+              "neighbor_overlap": 10,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0,
+              "overlap_resolved": 2,
+              "overlap_new": 0
+            },
+            "local_guarded": {
+              "median_shape_mm": 0.26261,
+              "shape_p95_mm": 0.48871,
+              "patient_mean_shape_delta_ci_mm": [
+                -5e-05,
+                0.0
+              ],
+              "neighbor_overlap": 10,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0,
+              "overlap_resolved": 2,
+              "overlap_new": 0
+            }
+          }
+        },
+        "holdout": {
+          "paired_teeth": 24,
+          "paired_patients": 12,
+          "errors": 0,
+          "max_prior_baseline_delta_mm": null,
+          "proposed": 3,
+          "accepted": 2,
+          "max_shift_mm": 0.14854,
+          "rejected_by_reason": {
+            "new_or_deeper_neighbor_overlap": 1
+          },
+          "arms": {
+            "baseline": {
+              "median_shape_mm": 0.32636,
+              "shape_p95_mm": 0.50946,
+              "patient_mean_shape_delta_ci_mm": [
+                0.0,
+                0.0
+              ],
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            },
+            "local_raw": {
+              "median_shape_mm": 0.3262,
+              "shape_p95_mm": 0.50946,
+              "patient_mean_shape_delta_ci_mm": [
+                -4e-05,
+                6e-05
+              ],
+              "neighbor_overlap": 6,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 1
+            },
+            "local_guarded": {
+              "median_shape_mm": 0.3262,
+              "shape_p95_mm": 0.50946,
+              "patient_mean_shape_delta_ci_mm": [
+                -4e-05,
+                0.0
+              ],
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            }
+          }
+        }
+      }
+    },
+    "projected_neighbor_localization": {
+      "decision": "keep_current_neighbor_adjustment",
+      "paired_crown_results": {
+        "comparison": {
+          "paired_teeth": 64,
+          "paired_patients": 34,
+          "errors": 0,
+          "max_prior_baseline_delta_mm": 0.0,
+          "proposed": 1,
+          "accepted": 1,
+          "max_shift_mm": 0.00418,
+          "rejected_by_reason": {},
+          "arms": {
+            "baseline": {
+              "median_shape_mm": 0.26271,
+              "shape_p95_mm": 0.48871,
+              "patient_mean_shape_delta_ci_mm": [
+                0.0,
+                0.0
+              ],
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            },
+            "local_raw": {
+              "median_shape_mm": 0.26271,
+              "shape_p95_mm": 0.48871,
+              "patient_mean_shape_delta_ci_mm": [
+                0.0,
+                0.0
+              ],
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            },
+            "local_guarded": {
+              "median_shape_mm": 0.26271,
+              "shape_p95_mm": 0.48871,
+              "patient_mean_shape_delta_ci_mm": [
+                0.0,
+                0.0
+              ],
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            }
+          },
+          "localization": {
+            "reference_positive_sides": 14,
+            "flagged_sides": 1,
+            "agree_positive_sides": 1,
+            "flagged_without_reference_side": 0,
+            "reference_positive_crowns": 12,
+            "agree_positive_crowns": 1,
+            "prior_no_trigger_positive_crowns": 5,
+            "prior_no_trigger_now_localized": 1
+          },
+          "max_baseline_delta_vs_local_v1_mm": 0.0
+        },
+        "holdout": {
+          "paired_teeth": 24,
+          "paired_patients": 12,
+          "errors": 0,
+          "max_prior_baseline_delta_mm": null,
+          "proposed": 1,
+          "accepted": 1,
+          "max_shift_mm": 0.09743,
+          "rejected_by_reason": {},
+          "arms": {
+            "baseline": {
+              "median_shape_mm": 0.32636,
+              "shape_p95_mm": 0.50946,
+              "patient_mean_shape_delta_ci_mm": [
+                0.0,
+                0.0
+              ],
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            },
+            "local_raw": {
+              "median_shape_mm": 0.32617,
+              "shape_p95_mm": 0.50946,
+              "patient_mean_shape_delta_ci_mm": [
+                -5e-05,
+                0.0
+              ],
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            },
+            "local_guarded": {
+              "median_shape_mm": 0.32617,
+              "shape_p95_mm": 0.50946,
+              "patient_mean_shape_delta_ci_mm": [
+                -5e-05,
+                0.0
+              ],
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0,
+              "overlap_resolved": 0,
+              "overlap_new": 0
+            }
+          },
+          "localization": {
+            "reference_positive_sides": 5,
+            "flagged_sides": 1,
+            "agree_positive_sides": 1,
+            "flagged_without_reference_side": 0,
+            "reference_positive_crowns": 5,
+            "agree_positive_crowns": 1,
+            "prior_no_trigger_positive_crowns": 2,
+            "prior_no_trigger_now_localized": 0
+          },
+          "max_baseline_delta_vs_local_v1_mm": 0.0
+        }
+      }
+    },
+    "projected_neighbor_filter_test": {
+      "miss_crowns": 7,
+      "control_crowns": 7,
+      "projection_filter_diagnostic": {
+        "initial": {
+          "miss_detected": 1,
+          "control_flagged": 0
+        },
+        "allow_all_normals": {
+          "miss_detected": 2,
+          "control_flagged": 0
+        },
+        "single_ray": {
+          "miss_detected": 1,
+          "control_flagged": 0
+        },
+        "allow_both": {
+          "miss_detected": 3,
+          "control_flagged": 0
+        }
+      }
+    },
+    "mesh_intersection_and_depth_audit": {
+      "stages": {
+        "cache": "0",
+        "contact_audit": "0",
+        "geometry_relief": "0",
+        "real_margin": "0",
+        "closed_crown_depth_audit": "0"
+      },
+      "contact_geometry_audit": {
+        "legacy_positive": {
+          "sides": 19,
+          "cross_interior": 8,
+          "cross_only_boundary": 11,
+          "no_supported_crossing": 0,
+          "positive_all_grid_phases": 11,
+          "natural_cross_interior": 0
+        },
+        "legacy_negative": {
+          "sides": 157,
+          "cross_interior": 89,
+          "cross_only_boundary": 56,
+          "no_supported_crossing": 12,
+          "positive_all_grid_phases": 0,
+          "natural_cross_interior": 1
+        },
+        "prior_untouched_positive": {
+          "sides": 7,
+          "cross_interior": 6,
+          "cross_only_boundary": 1,
+          "no_supported_crossing": 0,
+          "positive_all_grid_phases": 4,
+          "natural_cross_interior": 0
+        },
+        "generated_section_panels": 19
+      },
+      "paired_crown_results": {
+        "comparison": {
+          "paired_teeth": 64,
+          "outcome_counts": {
+            "not_triggered": 16,
+            "no_safe_direction": 48
+          },
+          "extensive_crossing_sides_before": 69,
+          "extensive_crossing_sides_after": 69,
+          "automated_flags": {
+            "baseline": {
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0
+            },
+            "raw_flags": {
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0
+            },
+            "after": {
+              "neighbor_overlap": 12,
+              "open_neighbor_gap": 2,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 1,
+              "non_watertight": 0
+            }
+          },
+          "median_shape_delta_mm": 0.0
+        },
+        "holdout": {
+          "paired_teeth": 24,
+          "outcome_counts": {
+            "no_safe_direction": 17,
+            "not_triggered": 6,
+            "rollback": 1
+          },
+          "extensive_crossing_sides_before": 28,
+          "extensive_crossing_sides_after": 28,
+          "automated_flags": {
+            "baseline": {
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0
+            },
+            "raw_flags": {
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0
+            },
+            "after": {
+              "neighbor_overlap": 5,
+              "open_neighbor_gap": 0,
+              "opposing_penetration": 0,
+              "no_opposing_contact": 0,
+              "non_watertight": 0
+            }
+          },
+          "median_shape_delta_mm": 0.0
+        }
+      },
+      "real_margin": {
+        "real_die_cross_domain": {
+          "public_die_test": {
+            "scan_baseline": {
+              "cases": 15,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 4.5564,
+              "median_success_mm": 4.7087,
+              "median_success_p95_mm": 6.2406,
+              "median_success_coverage_020": 0.0
+            },
+            "old_only": {
+              "cases": 15,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 4.4907,
+              "median_success_mm": 4.485,
+              "median_success_p95_mm": 6.1472,
+              "median_success_coverage_020": 0.0
+            },
+            "with_simulation": {
+              "cases": 15,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 4.8226,
+              "median_success_mm": 4.6149,
+              "median_success_p95_mm": 5.9721,
+              "median_success_coverage_020": 0.0
+            },
+            "die_domain_reference": {
+              "cases": 15,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 0.113,
+              "median_success_mm": 0.0726,
+              "median_success_p95_mm": 0.118,
+              "median_success_coverage_020": 0.9615
+            }
+          },
+          "incisor_die_test": {
+            "scan_baseline": {
+              "cases": 11,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 5.824,
+              "median_success_mm": 6.3916,
+              "median_success_p95_mm": 8.3123,
+              "median_success_coverage_020": 0.0
+            },
+            "old_only": {
+              "cases": 11,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 5.3927,
+              "median_success_mm": 5.3078,
+              "median_success_p95_mm": 7.276,
+              "median_success_coverage_020": 0.0
+            },
+            "with_simulation": {
+              "cases": 11,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 4.076,
+              "median_success_mm": 3.5395,
+              "median_success_p95_mm": 5.7489,
+              "median_success_coverage_020": 0.0
+            },
+            "die_domain_reference": {
+              "cases": 11,
+              "failures": 0,
+              "mean_mm_with_5mm_failure_penalty": 0.1434,
+              "median_success_mm": 0.0897,
+              "median_success_p95_mm": 0.2425,
+              "median_success_coverage_020": 0.8971
+            }
+          }
+        },
+        "reference_scope": "annotated isolated dies; no in-mouth scan labels"
+      },
+      "decision": "keep_current_models; separate boundary-touch flags from supported penetration for review",
+      "errors": [],
+      "closed_crown_depth_audit": {
+        "combined": {
+          "legacy_positive": {
+            "sides": 19,
+            "consistent_depth_gt_015": 1,
+            "consistent_area_at_015_gt_002": 1,
+            "consistent_area_at_005_gt_002": 2,
+            "median_of_peak_depths_mm": 0.0
+          },
+          "legacy_negative": {
+            "sides": 157,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 0,
+            "median_of_peak_depths_mm": 0.0
+          },
+          "untouched_by_first_local_method": {
+            "sides": 7,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 1,
+            "median_of_peak_depths_mm": 0.0
+          }
+        },
+        "comparison": {
+          "legacy_positive": {
+            "sides": 14,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 1,
+            "median_of_peak_depths_mm": 0.0
+          },
+          "legacy_negative": {
+            "sides": 114,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 0,
+            "median_of_peak_depths_mm": 0.0
+          },
+          "untouched_by_first_local_method": {
+            "sides": 5,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 1,
+            "median_of_peak_depths_mm": 0.0
+          }
+        },
+        "holdout": {
+          "legacy_positive": {
+            "sides": 5,
+            "consistent_depth_gt_015": 1,
+            "consistent_area_at_015_gt_002": 1,
+            "consistent_area_at_005_gt_002": 1,
+            "median_of_peak_depths_mm": 0.0
+          },
+          "legacy_negative": {
+            "sides": 43,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 0,
+            "median_of_peak_depths_mm": 0.0
+          },
+          "untouched_by_first_local_method": {
+            "sides": 2,
+            "consistent_depth_gt_015": 0,
+            "consistent_area_at_015_gt_002": 0,
+            "consistent_area_at_005_gt_002": 0,
+            "median_of_peak_depths_mm": 0.0
+          }
+        }
+      }
+    },
+    "proximal_audit_integration": {
+      "paired_teeth": 88,
+      "audited_sides": 176,
+      "matching_prior_measurements": 176,
+      "review_status": {
+        "interior_crossing_below_depth_area_gate": 96,
+        "open_boundary_crossing": 67,
+        "no_supported_penetration": 12,
+        "supported_penetration": 1
+      },
+      "cli_smoke_generated_outputs": 8,
+      "cli_smoke_audit_counts": {
+        "generated": {
+          "open_boundary_crossing": 1,
+          "interior_crossing_below_depth_area_gate": 3
+        },
+        "generated_contact": {
+          "open_boundary_crossing": 1,
+          "interior_crossing_below_depth_area_gate": 3
+        },
+        "generated_raw": {
+          "open_boundary_crossing": 1,
+          "interior_crossing_below_depth_area_gate": 3
+        },
+        "generated_no_antagonist": {
+          "open_boundary_crossing": 1,
+          "interior_crossing_below_depth_area_gate": 3
+        }
+      }
+    },
+    "proximal_audit_batch": {
+      "errors": {
+        "shape_only": 20,
+        "residual_before": 20,
+        "residual_after": 20
+      },
+      "covered_outputs": {
+        "shape_only": 352,
+        "residual_before": 352,
+        "residual_after": 352
+      },
+      "paired_crown_results": {
+        "all": {
+          "generated": {
+            "paired_teeth": 88,
+            "paired_patients": 46,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 94,
+                  "open_boundary_crossing": 73,
+                  "no_supported_penetration": 8,
+                  "legacy_flag_without_geometric_support": 1
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 25,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 88,
+                "shape_median_mm": 0.26953,
+                "shape_p95_mm": 0.46073
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 89,
+                  "open_boundary_crossing": 80,
+                  "no_supported_penetration": 7
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 16,
+                "crowns_with_open_gap": 5,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 88,
+                "shape_median_mm": 0.32293,
+                "shape_p95_mm": 0.54283
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 98,
+                  "open_boundary_crossing": 69,
+                  "no_supported_penetration": 9
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 16,
+                "crowns_with_open_gap": 5,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 88,
+                "shape_median_mm": 0.31957,
+                "shape_p95_mm": 0.52398
+              }
+            }
+          },
+          "generated_contact": {
+            "paired_teeth": 88,
+            "paired_patients": 46,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 93,
+                  "open_boundary_crossing": 71,
+                  "no_supported_penetration": 12
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 20,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 2,
+                "shape_median_mm": 0.28979,
+                "shape_p95_mm": 0.47213
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 89,
+                  "open_boundary_crossing": 80,
+                  "no_supported_penetration": 7
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 16,
+                "crowns_with_open_gap": 5,
+                "crowns_with_opposing_penetration": 1,
+                "crowns_without_opposing_contact": 2,
+                "shape_median_mm": 0.32326,
+                "shape_p95_mm": 0.53338
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 99,
+                  "open_boundary_crossing": 66,
+                  "no_supported_penetration": 11
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 21,
+                "crowns_with_open_gap": 4,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 5,
+                "shape_median_mm": 0.30426,
+                "shape_p95_mm": 0.50802
+              }
+            }
+          },
+          "generated_raw": {
+            "paired_teeth": 88,
+            "paired_patients": 46,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 91,
+                  "open_boundary_crossing": 74,
+                  "no_supported_penetration": 11
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 19,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 1,
+                "crowns_without_opposing_contact": 13,
+                "shape_median_mm": 0.2696,
+                "shape_p95_mm": 0.46354
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 92,
+                  "open_boundary_crossing": 79,
+                  "no_supported_penetration": 5
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 13,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 29,
+                "crowns_without_opposing_contact": 24,
+                "shape_median_mm": 0.3321,
+                "shape_p95_mm": 0.55006
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 99,
+                  "open_boundary_crossing": 68,
+                  "no_supported_penetration": 9
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 20,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 32,
+                "crowns_without_opposing_contact": 23,
+                "shape_median_mm": 0.31363,
+                "shape_p95_mm": 0.52916
+              }
+            }
+          },
+          "generated_no_antagonist": {
+            "paired_teeth": 88,
+            "paired_patients": 46,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 95,
+                  "open_boundary_crossing": 71,
+                  "no_supported_penetration": 10
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 17,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 46,
+                "crowns_without_opposing_contact": 17,
+                "shape_median_mm": 0.28963,
+                "shape_p95_mm": 0.55763
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 94,
+                  "open_boundary_crossing": 74,
+                  "no_supported_penetration": 8
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 12,
+                "crowns_with_open_gap": 4,
+                "crowns_with_opposing_penetration": 37,
+                "crowns_without_opposing_contact": 20,
+                "shape_median_mm": 0.34404,
+                "shape_p95_mm": 0.56216
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 101,
+                  "open_boundary_crossing": 64,
+                  "no_supported_penetration": 11
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 16,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 41,
+                "crowns_without_opposing_contact": 20,
+                "shape_median_mm": 0.33701,
+                "shape_p95_mm": 0.56256
+              }
+            }
+          }
+        },
+        "previous_comparison": {
+          "generated": {
+            "paired_teeth": 64,
+            "paired_patients": 34,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 71,
+                  "open_boundary_crossing": 51,
+                  "no_supported_penetration": 5,
+                  "legacy_flag_without_geometric_support": 1
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 14,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 64,
+                "shape_median_mm": 0.26477,
+                "shape_p95_mm": 0.46008
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 63,
+                  "open_boundary_crossing": 60,
+                  "no_supported_penetration": 5
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 9,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 64,
+                "shape_median_mm": 0.31166,
+                "shape_p95_mm": 0.56902
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 72,
+                  "open_boundary_crossing": 49,
+                  "no_supported_penetration": 7
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 9,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 64,
+                "shape_median_mm": 0.31055,
+                "shape_p95_mm": 0.57452
+              }
+            }
+          },
+          "generated_contact": {
+            "paired_teeth": 64,
+            "paired_patients": 34,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 69,
+                  "open_boundary_crossing": 50,
+                  "no_supported_penetration": 9
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 12,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 1,
+                "shape_median_mm": 0.26271,
+                "shape_p95_mm": 0.48871
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 62,
+                  "open_boundary_crossing": 60,
+                  "no_supported_penetration": 6
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 11,
+                "crowns_with_open_gap": 4,
+                "crowns_with_opposing_penetration": 1,
+                "crowns_without_opposing_contact": 1,
+                "shape_median_mm": 0.30949,
+                "shape_p95_mm": 0.54586
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 71,
+                  "open_boundary_crossing": 48,
+                  "no_supported_penetration": 9
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 13,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 4,
+                "shape_median_mm": 0.29638,
+                "shape_p95_mm": 0.54332
+              }
+            }
+          },
+          "generated_raw": {
+            "paired_teeth": 64,
+            "paired_patients": 34,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 69,
+                  "open_boundary_crossing": 52,
+                  "no_supported_penetration": 7
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 10,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 8,
+                "shape_median_mm": 0.25827,
+                "shape_p95_mm": 0.4576
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 65,
+                  "open_boundary_crossing": 59,
+                  "no_supported_penetration": 4
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 9,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 22,
+                "crowns_without_opposing_contact": 16,
+                "shape_median_mm": 0.31958,
+                "shape_p95_mm": 0.55083
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 71,
+                  "open_boundary_crossing": 49,
+                  "no_supported_penetration": 8
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 13,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 23,
+                "crowns_without_opposing_contact": 15,
+                "shape_median_mm": 0.30864,
+                "shape_p95_mm": 0.52211
+              }
+            }
+          },
+          "generated_no_antagonist": {
+            "paired_teeth": 64,
+            "paired_patients": 34,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 74,
+                  "open_boundary_crossing": 50,
+                  "no_supported_penetration": 4
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 10,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 34,
+                "crowns_without_opposing_contact": 11,
+                "shape_median_mm": 0.27768,
+                "shape_p95_mm": 0.56014
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 69,
+                  "open_boundary_crossing": 53,
+                  "no_supported_penetration": 6
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 6,
+                "crowns_with_open_gap": 3,
+                "crowns_with_opposing_penetration": 27,
+                "crowns_without_opposing_contact": 13,
+                "shape_median_mm": 0.34055,
+                "shape_p95_mm": 0.50574
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 74,
+                  "open_boundary_crossing": 45,
+                  "no_supported_penetration": 9
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 8,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 30,
+                "crowns_without_opposing_contact": 12,
+                "shape_median_mm": 0.32933,
+                "shape_p95_mm": 0.56152
+              }
+            }
+          }
+        },
+        "additional_patients": {
+          "generated": {
+            "paired_teeth": 24,
+            "paired_patients": 12,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 23,
+                  "open_boundary_crossing": 22,
+                  "no_supported_penetration": 3
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 11,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 24,
+                "shape_median_mm": 0.29316,
+                "shape_p95_mm": 0.45256
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 26,
+                  "open_boundary_crossing": 20,
+                  "no_supported_penetration": 2
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 7,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 24,
+                "shape_median_mm": 0.35318,
+                "shape_p95_mm": 0.49785
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 26,
+                  "open_boundary_crossing": 20,
+                  "no_supported_penetration": 2
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 7,
+                "crowns_with_open_gap": 2,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 24,
+                "shape_median_mm": 0.34742,
+                "shape_p95_mm": 0.47864
+              }
+            }
+          },
+          "generated_contact": {
+            "paired_teeth": 24,
+            "paired_patients": 12,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 24,
+                  "open_boundary_crossing": 21,
+                  "no_supported_penetration": 3
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 8,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 1,
+                "shape_median_mm": 0.33691,
+                "shape_p95_mm": 0.44051
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 27,
+                  "open_boundary_crossing": 20,
+                  "no_supported_penetration": 1
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 5,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 1,
+                "shape_median_mm": 0.35149,
+                "shape_p95_mm": 0.48409
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 28,
+                  "open_boundary_crossing": 18,
+                  "no_supported_penetration": 2
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 8,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 0,
+                "crowns_without_opposing_contact": 1,
+                "shape_median_mm": 0.35449,
+                "shape_p95_mm": 0.46747
+              }
+            }
+          },
+          "generated_raw": {
+            "paired_teeth": 24,
+            "paired_patients": 12,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 22,
+                  "open_boundary_crossing": 22,
+                  "no_supported_penetration": 4
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 9,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 1,
+                "crowns_without_opposing_contact": 5,
+                "shape_median_mm": 0.28464,
+                "shape_p95_mm": 0.45763
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 27,
+                  "open_boundary_crossing": 20,
+                  "no_supported_penetration": 1
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 4,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 7,
+                "crowns_without_opposing_contact": 8,
+                "shape_median_mm": 0.36559,
+                "shape_p95_mm": 0.52851
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 28,
+                  "open_boundary_crossing": 19,
+                  "no_supported_penetration": 1
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 7,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 9,
+                "crowns_without_opposing_contact": 8,
+                "shape_median_mm": 0.34577,
+                "shape_p95_mm": 0.5208
+              }
+            }
+          },
+          "generated_no_antagonist": {
+            "paired_teeth": 24,
+            "paired_patients": 12,
+            "models": {
+              "shape_only": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 21,
+                  "open_boundary_crossing": 21,
+                  "no_supported_penetration": 6
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 7,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 12,
+                "crowns_without_opposing_contact": 6,
+                "shape_median_mm": 0.31862,
+                "shape_p95_mm": 0.51812
+              },
+              "residual_before": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 25,
+                  "open_boundary_crossing": 21,
+                  "no_supported_penetration": 2
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 6,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 10,
+                "crowns_without_opposing_contact": 7,
+                "shape_median_mm": 0.35226,
+                "shape_p95_mm": 0.5678
+              },
+              "residual_after": {
+                "neighbor_review_status": {
+                  "interior_crossing_below_depth_area_gate": 27,
+                  "open_boundary_crossing": 19,
+                  "no_supported_penetration": 2
+                },
+                "crowns_with_supported_penetration": 0,
+                "crowns_with_legacy_overlap": 8,
+                "crowns_with_open_gap": 1,
+                "crowns_with_opposing_penetration": 11,
+                "crowns_without_opposing_contact": 8,
+                "shape_median_mm": 0.34884,
+                "shape_p95_mm": 0.56226
+              }
+            }
+          }
+        }
+      }
+    },
+    "real_die_crop_finetune": {
+      "decision": "replicate_on_real_partial_scans",
+      "real_die_margin_training": {
+        "training": {
+          "train_cases": 85,
+          "development_cases": 19,
+          "train_cropped": 54,
+          "development_cropped": 12,
+          "skipped_training_cases": 0
+        },
+        "summary": {
+          "incisor": {
+            "initial": {
+              "complete": {
+                "samples": 11,
+                "patients": 8,
+                "mean_with_failure_penalty_mm": 0.1434,
+                "median_mm": 0.08971,
+                "median_p95_mm": 0.2425,
+                "failures": 0
+              },
+              "cropped": {
+                "samples": 10,
+                "patients": 7,
+                "mean_with_failure_penalty_mm": 0.2149,
+                "median_mm": 0.14217,
+                "median_p95_mm": 0.36023,
+                "failures": 0
+              }
+            },
+            "standard": {
+              "complete": {
+                "samples": 11,
+                "patients": 8,
+                "mean_with_failure_penalty_mm": 0.14412,
+                "median_mm": 0.08158,
+                "median_p95_mm": 0.23722,
+                "failures": 0
+              },
+              "cropped": {
+                "samples": 10,
+                "patients": 7,
+                "mean_with_failure_penalty_mm": 0.22704,
+                "median_mm": 0.17974,
+                "median_p95_mm": 0.51144,
+                "failures": 0
+              }
+            },
+            "crop_augmented": {
+              "complete": {
+                "samples": 11,
+                "patients": 8,
+                "mean_with_failure_penalty_mm": 0.1331,
+                "median_mm": 0.10432,
+                "median_p95_mm": 0.19715,
+                "failures": 0
+              },
+              "cropped": {
+                "samples": 10,
+                "patients": 7,
+                "mean_with_failure_penalty_mm": 0.18079,
+                "median_mm": 0.13863,
+                "median_p95_mm": 0.42153,
+                "failures": 0
+              }
+            }
+          },
+          "public_die": {
+            "initial": {
+              "complete": {
+                "samples": 15,
+                "patients": 14,
+                "mean_with_failure_penalty_mm": 0.11305,
+                "median_mm": 0.07261,
+                "median_p95_mm": 0.11797,
+                "failures": 0
+              },
+              "cropped": {
+                "samples": 12,
+                "patients": 9,
+                "mean_with_failure_penalty_mm": 0.34172,
+                "median_mm": 0.15911,
+                "median_p95_mm": 0.4326,
+                "failures": 0
+              }
+            },
+            "standard": {
+              "complete": {
+                "samples": 15,
+                "patients": 14,
+                "mean_with_failure_penalty_mm": 0.10879,
+                "median_mm": 0.0722,
+                "median_p95_mm": 0.12757,
+                "failures": 0
+              },
+              "cropped": {
+                "samples": 12,
+                "patients": 9,
+                "mean_with_failure_penalty_mm": 0.33505,
+                "median_mm": 0.17833,
+                "median_p95_mm": 0.31401,
+                "failures": 0
+              }
+            },
+            "crop_augmented": {
+              "complete": {
+                "samples": 15,
+                "patients": 14,
+                "mean_with_failure_penalty_mm": 0.09074,
+                "median_mm": 0.05063,
+                "median_p95_mm": 0.11072,
+                "failures": 0
+              },
+              "cropped": {
+                "samples": 12,
+                "patients": 9,
+                "mean_with_failure_penalty_mm": 0.25952,
+                "median_mm": 0.12638,
+                "median_p95_mm": 0.33428,
+                "failures": 0
+              }
+            }
+          }
+        },
+        "crop_vs_standard_patient_ci_mm": {
+          "incisor": [
+            -0.08126,
+            -0.01752
+          ],
+          "public_die": [
+            -0.15275,
+            -0.01965
+          ]
+        },
+        "selected_checkpoints": {
+          "initial": "margin.pt",
+          "standard": "standard.pt",
+          "crop_augmented": "crop_augmented.pt"
+        }
+      }
+    },
+    "poseidon_hard_sampling": {
+      "decision": "keep_existing_segmenter",
+      "paired_segmentation_results": {
+        "complex": {
+          "expected_scans": 20,
+          "paired_scans": 20,
+          "paired_patients": 20,
+          "models": {
+            "initial": {
+              "failures": 0,
+              "t_miou": 0.60602,
+              "tir": 0.75151,
+              "score": 0.86754,
+              "exact_slot_scans": 8,
+              "annotated_internal_missing": 22,
+              "internal_missing_detected": 17,
+              "false_internal_missing": 15,
+              "slot_errors": 33,
+              "fdi_substitutions": 47
+            },
+            "uniform": {
+              "failures": 0,
+              "t_miou": 0.63373,
+              "tir": 0.7875,
+              "score": 0.87904,
+              "exact_slot_scans": 9,
+              "annotated_internal_missing": 22,
+              "internal_missing_detected": 19,
+              "false_internal_missing": 14,
+              "slot_errors": 29,
+              "fdi_substitutions": 41
+            },
+            "hard_weighted": {
+              "failures": 0,
+              "t_miou": 0.62905,
+              "tir": 0.78333,
+              "score": 0.87742,
+              "exact_slot_scans": 9,
+              "annotated_internal_missing": 22,
+              "internal_missing_detected": 19,
+              "false_internal_missing": 14,
+              "slot_errors": 30,
+              "fdi_substitutions": 45
+            }
+          },
+          "hard_vs_uniform_tmIoU_ci": [
+            -0.01234,
+            0.00065
+          ],
+          "hard_vs_baseline_tmIoU_ci": [
+            -0.01444,
+            0.07901
+          ]
+        },
+        "simple": {
+          "expected_scans": 20,
+          "paired_scans": 20,
+          "paired_patients": 20,
+          "models": {
+            "initial": {
+              "failures": 0,
+              "t_miou": 0.79932,
+              "tir": 0.91016,
+              "score": 0.95887,
+              "exact_slot_scans": 18,
+              "annotated_internal_missing": 0,
+              "internal_missing_detected": 0,
+              "false_internal_missing": 2,
+              "slot_errors": 3,
+              "fdi_substitutions": 24
+            },
+            "uniform": {
+              "failures": 0,
+              "t_miou": 0.80818,
+              "tir": 0.92802,
+              "score": 0.96409,
+              "exact_slot_scans": 18,
+              "annotated_internal_missing": 0,
+              "internal_missing_detected": 0,
+              "false_internal_missing": 2,
+              "slot_errors": 3,
+              "fdi_substitutions": 20
+            },
+            "hard_weighted": {
+              "failures": 0,
+              "t_miou": 0.81233,
+              "tir": 0.92445,
+              "score": 0.96308,
+              "exact_slot_scans": 19,
+              "annotated_internal_missing": 0,
+              "internal_missing_detected": 0,
+              "false_internal_missing": 1,
+              "slot_errors": 2,
+              "fdi_substitutions": 19
+            }
+          },
+          "hard_vs_uniform_tmIoU_ci": [
+            0.00031,
+            0.00951
+          ],
+          "hard_vs_baseline_tmIoU_ci": [
+            -0.00174,
+            0.03434
+          ]
+        },
+        "fair": {
+          "expected_scans": 174,
+          "paired_scans": 174,
+          "paired_patients": 152,
+          "models": {
+            "initial": {
+              "failures": 0,
+              "t_miou": 0.87617,
+              "tir": 0.95037,
+              "score": 0.9663,
+              "exact_slot_scans": 151,
+              "annotated_internal_missing": 40,
+              "internal_missing_detected": 19,
+              "false_internal_missing": 11,
+              "slot_errors": 54,
+              "fdi_substitutions": 112
+            },
+            "uniform": {
+              "failures": 0,
+              "t_miou": 0.87352,
+              "tir": 0.95108,
+              "score": 0.96604,
+              "exact_slot_scans": 149,
+              "annotated_internal_missing": 40,
+              "internal_missing_detected": 17,
+              "false_internal_missing": 13,
+              "slot_errors": 61,
+              "fdi_substitutions": 114
+            },
+            "hard_weighted": {
+              "failures": 0,
+              "t_miou": 0.87631,
+              "tir": 0.95218,
+              "score": 0.96661,
+              "exact_slot_scans": 150,
+              "annotated_internal_missing": 40,
+              "internal_missing_detected": 19,
+              "false_internal_missing": 19,
+              "slot_errors": 61,
+              "fdi_substitutions": 110
+            }
+          },
+          "hard_vs_uniform_tmIoU_ci": [
+            0.00092,
+            0.00541
+          ],
+          "hard_vs_baseline_tmIoU_ci": [
+            -0.00279,
+            0.00218
+          ]
+        }
+      },
+      "selected_checkpoints": {
+        "initial": "deep.pt",
+        "uniform": "uniform.pt",
+        "hard_weighted": "hard_weighted.pt"
+      }
+    },
+    "finish_line_propagation": {
+      "source_pairs": 130,
+      "reference": "simulated preparation and margin",
+      "test_cases": {
+        "truth": {
+          "attempted": 44,
+          "watertight": 42,
+          "error_stages": {
+            "generation_or_measurement": 2
+          },
+          "nonwatertight": 0,
+          "paired_variants": 42,
+          "paired_patients": 21,
+          "metrics": {
+            "input_line_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.0,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "input_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.0,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "edge_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.07258,
+              "arm_median": 0.07258,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "edge_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.20977,
+              "arm_median": 0.20977,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "edge_max_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34822,
+              "arm_median": 0.34822,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "intaglio_abs_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02957,
+              "arm_median": 0.02957,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "intaglio_abs_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02999,
+              "arm_median": 0.02999,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "prep_penetration_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.0,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "thickness_p01_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34495,
+              "arm_median": 0.34495,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "thickness_min_mm": {
+              "values": 42,
+              "matched_truth_median": -0.08442,
+              "arm_median": -0.08442,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "thin_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.06597,
+              "arm_median": 0.06597,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "occl_clearance_mm": {
+              "values": 42,
+              "matched_truth_median": -0.003,
+              "arm_median": -0.003,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "geometric_auto": {
+          "attempted": 44,
+          "watertight": 42,
+          "error_stages": {
+            "generation_or_measurement": 2
+          },
+          "nonwatertight": 0,
+          "paired_variants": 42,
+          "paired_patients": 21,
+          "metrics": {
+            "input_line_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.23745,
+              "patient_mean_paired_delta": 0.27038,
+              "patient_delta_ci": [
+                0.22915,
+                0.31797
+              ]
+            },
+            "input_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.70051,
+              "patient_mean_paired_delta": 0.77641,
+              "patient_delta_ci": [
+                0.64397,
+                0.90285
+              ]
+            },
+            "edge_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.07258,
+              "arm_median": 0.2348,
+              "patient_mean_paired_delta": 0.16409,
+              "patient_delta_ci": [
+                0.12886,
+                0.2001
+              ]
+            },
+            "edge_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.20977,
+              "arm_median": 0.64065,
+              "patient_mean_paired_delta": 0.44129,
+              "patient_delta_ci": [
+                0.29463,
+                0.5874
+              ]
+            },
+            "edge_max_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34822,
+              "arm_median": 0.97823,
+              "patient_mean_paired_delta": 0.54644,
+              "patient_delta_ci": [
+                0.40515,
+                0.67337
+              ]
+            },
+            "intaglio_abs_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02957,
+              "arm_median": 0.02901,
+              "patient_mean_paired_delta": -0.0006,
+              "patient_delta_ci": [
+                -0.0009,
+                -0.00036
+              ]
+            },
+            "intaglio_abs_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02999,
+              "arm_median": 0.02999,
+              "patient_mean_paired_delta": -0.0,
+              "patient_delta_ci": [
+                -0.0,
+                -0.0
+              ]
+            },
+            "prep_penetration_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.0,
+              "patient_mean_paired_delta": 1e-05,
+              "patient_delta_ci": [
+                0.0,
+                3e-05
+              ]
+            },
+            "thickness_p01_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34495,
+              "arm_median": 0.30929,
+              "patient_mean_paired_delta": -0.0604,
+              "patient_delta_ci": [
+                -0.15036,
+                0.00702
+              ]
+            },
+            "thickness_min_mm": {
+              "values": 42,
+              "matched_truth_median": -0.08442,
+              "arm_median": -0.07293,
+              "patient_mean_paired_delta": -0.00742,
+              "patient_delta_ci": [
+                -0.1475,
+                0.10247
+              ]
+            },
+            "thin_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.06597,
+              "arm_median": 0.06892,
+              "patient_mean_paired_delta": 0.00358,
+              "patient_delta_ci": [
+                -0.00409,
+                0.0106
+              ]
+            },
+            "occl_clearance_mm": {
+              "values": 42,
+              "matched_truth_median": -0.003,
+              "arm_median": -0.0035,
+              "patient_mean_paired_delta": 0.0011,
+              "patient_delta_ci": [
+                -0.00279,
+                0.00621
+              ]
+            }
+          }
+        },
+        "occlusal_plus_030": {
+          "attempted": 44,
+          "watertight": 42,
+          "error_stages": {
+            "generation_or_measurement": 2
+          },
+          "nonwatertight": 0,
+          "paired_variants": 42,
+          "paired_patients": 21,
+          "metrics": {
+            "input_line_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.12615,
+              "patient_mean_paired_delta": 0.12653,
+              "patient_delta_ci": [
+                0.12104,
+                0.13183
+              ]
+            },
+            "input_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.23997,
+              "patient_mean_paired_delta": 0.24144,
+              "patient_delta_ci": [
+                0.23391,
+                0.24889
+              ]
+            },
+            "edge_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.07258,
+              "arm_median": 0.12503,
+              "patient_mean_paired_delta": 0.04797,
+              "patient_delta_ci": [
+                0.04031,
+                0.05559
+              ]
+            },
+            "edge_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.20977,
+              "arm_median": 0.24139,
+              "patient_mean_paired_delta": 0.0349,
+              "patient_delta_ci": [
+                0.00051,
+                0.06496
+              ]
+            },
+            "edge_max_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34822,
+              "arm_median": 0.38953,
+              "patient_mean_paired_delta": 0.03176,
+              "patient_delta_ci": [
+                -0.01189,
+                0.0793
+              ]
+            },
+            "intaglio_abs_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02957,
+              "arm_median": 0.02951,
+              "patient_mean_paired_delta": -7e-05,
+              "patient_delta_ci": [
+                -7e-05,
+                -6e-05
+              ]
+            },
+            "intaglio_abs_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02999,
+              "arm_median": 0.02999,
+              "patient_mean_paired_delta": -0.0,
+              "patient_delta_ci": [
+                -0.0,
+                -0.0
+              ]
+            },
+            "prep_penetration_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.0,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "thickness_p01_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34495,
+              "arm_median": 0.33959,
+              "patient_mean_paired_delta": -0.03148,
+              "patient_delta_ci": [
+                -0.08832,
+                0.01746
+              ]
+            },
+            "thickness_min_mm": {
+              "values": 42,
+              "matched_truth_median": -0.08442,
+              "arm_median": -0.06227,
+              "patient_mean_paired_delta": -0.04636,
+              "patient_delta_ci": [
+                -0.18949,
+                0.09775
+              ]
+            },
+            "thin_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.06597,
+              "arm_median": 0.06922,
+              "patient_mean_paired_delta": 0.00157,
+              "patient_delta_ci": [
+                -0.00327,
+                0.00679
+              ]
+            },
+            "occl_clearance_mm": {
+              "values": 42,
+              "matched_truth_median": -0.003,
+              "arm_median": -0.003,
+              "patient_mean_paired_delta": -2e-05,
+              "patient_delta_ci": [
+                -0.00093,
+                0.00083
+              ]
+            }
+          }
+        },
+        "apical_minus_030": {
+          "attempted": 44,
+          "watertight": 42,
+          "error_stages": {
+            "generation_or_measurement": 2
+          },
+          "nonwatertight": 0,
+          "paired_variants": 42,
+          "paired_patients": 21,
+          "metrics": {
+            "input_line_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.12024,
+              "patient_mean_paired_delta": 0.12435,
+              "patient_delta_ci": [
+                0.11428,
+                0.13546
+              ]
+            },
+            "input_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.28554,
+              "patient_mean_paired_delta": 0.27407,
+              "patient_delta_ci": [
+                0.26087,
+                0.28442
+              ]
+            },
+            "edge_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.07258,
+              "arm_median": 0.15444,
+              "patient_mean_paired_delta": 0.08008,
+              "patient_delta_ci": [
+                0.06729,
+                0.09331
+              ]
+            },
+            "edge_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.20977,
+              "arm_median": 0.40236,
+              "patient_mean_paired_delta": 0.16057,
+              "patient_delta_ci": [
+                0.12396,
+                0.19389
+              ]
+            },
+            "edge_max_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34822,
+              "arm_median": 0.54313,
+              "patient_mean_paired_delta": 0.17014,
+              "patient_delta_ci": [
+                0.1265,
+                0.2107
+              ]
+            },
+            "intaglio_abs_mean_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02957,
+              "arm_median": 0.02959,
+              "patient_mean_paired_delta": 2e-05,
+              "patient_delta_ci": [
+                1e-05,
+                2e-05
+              ]
+            },
+            "intaglio_abs_p95_mm": {
+              "values": 42,
+              "matched_truth_median": 0.02999,
+              "arm_median": 0.02999,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                -0.0,
+                0.0
+              ]
+            },
+            "prep_penetration_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.0,
+              "arm_median": 0.0,
+              "patient_mean_paired_delta": 0.0,
+              "patient_delta_ci": [
+                0.0,
+                0.0
+              ]
+            },
+            "thickness_p01_mm": {
+              "values": 42,
+              "matched_truth_median": 0.34495,
+              "arm_median": 0.36748,
+              "patient_mean_paired_delta": -0.02328,
+              "patient_delta_ci": [
+                -0.07468,
+                0.02279
+              ]
+            },
+            "thickness_min_mm": {
+              "values": 42,
+              "matched_truth_median": -0.08442,
+              "arm_median": -0.14929,
+              "patient_mean_paired_delta": -0.02774,
+              "patient_delta_ci": [
+                -0.13441,
+                0.06271
+              ]
+            },
+            "thin_fraction": {
+              "values": 42,
+              "matched_truth_median": 0.06597,
+              "arm_median": 0.06647,
+              "patient_mean_paired_delta": -8e-05,
+              "patient_delta_ci": [
+                -0.00522,
+                0.0049
+              ]
+            },
+            "occl_clearance_mm": {
+              "values": 42,
+              "matched_truth_median": -0.003,
+              "arm_median": -0.003,
+              "patient_mean_paired_delta": -0.00017,
+              "patient_delta_ci": [
+                -0.00086,
+                0.00043
+              ]
+            }
+          }
+        }
+      },
+      "other_partitions": {
+        "dev": {
+          "truth": {
+            "attempted": 16,
+            "watertight": 16,
+            "error_stages": {},
+            "nonwatertight": 0,
+            "paired_variants": 16,
+            "paired_patients": 8,
+            "metrics": {
+              "input_line_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "input_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.07136,
+                "arm_median": 0.07136,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.23078,
+                "arm_median": 0.23078,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_max_mm": {
+                "values": 16,
+                "matched_truth_median": 0.4408,
+                "arm_median": 0.4408,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02951,
+                "arm_median": 0.02951,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 16,
+                "matched_truth_median": 0.16429,
+                "arm_median": 0.16429,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 16,
+                "matched_truth_median": -0.26262,
+                "arm_median": -0.26262,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thin_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.08549,
+                "arm_median": 0.08549,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 16,
+                "matched_truth_median": -0.005,
+                "arm_median": -0.005,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          "geometric_auto": {
+            "attempted": 16,
+            "watertight": 16,
+            "error_stages": {},
+            "nonwatertight": 0,
+            "paired_variants": 16,
+            "paired_patients": 8,
+            "metrics": {
+              "input_line_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.33578,
+                "patient_mean_paired_delta": 0.35122,
+                "patient_delta_ci": [
+                  0.26613,
+                  0.44467
+                ]
+              },
+              "input_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.99705,
+                "patient_mean_paired_delta": 0.90303,
+                "patient_delta_ci": [
+                  0.70033,
+                  1.10372
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.07136,
+                "arm_median": 0.371,
+                "patient_mean_paired_delta": 0.27412,
+                "patient_delta_ci": [
+                  0.18079,
+                  0.36956
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.23078,
+                "arm_median": 1.11352,
+                "patient_mean_paired_delta": 0.71179,
+                "patient_delta_ci": [
+                  0.4574,
+                  0.95776
+                ]
+              },
+              "edge_max_mm": {
+                "values": 16,
+                "matched_truth_median": 0.4408,
+                "arm_median": 1.33341,
+                "patient_mean_paired_delta": 0.8379,
+                "patient_delta_ci": [
+                  0.53672,
+                  1.19814
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02951,
+                "arm_median": 0.02904,
+                "patient_mean_paired_delta": -0.00065,
+                "patient_delta_ci": [
+                  -0.001,
+                  -0.00034
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  -0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.00015,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0004
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 16,
+                "matched_truth_median": 0.16429,
+                "arm_median": 0.07388,
+                "patient_mean_paired_delta": -0.15763,
+                "patient_delta_ci": [
+                  -0.22866,
+                  -0.0833
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 16,
+                "matched_truth_median": -0.26262,
+                "arm_median": -0.29599,
+                "patient_mean_paired_delta": -0.10796,
+                "patient_delta_ci": [
+                  -0.17846,
+                  -0.02592
+                ]
+              },
+              "thin_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.08549,
+                "arm_median": 0.11707,
+                "patient_mean_paired_delta": 0.02032,
+                "patient_delta_ci": [
+                  0.00542,
+                  0.03775
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 16,
+                "matched_truth_median": -0.005,
+                "arm_median": -0.0045,
+                "patient_mean_paired_delta": -0.00644,
+                "patient_delta_ci": [
+                  -0.02362,
+                  0.00412
+                ]
+              }
+            }
+          },
+          "occlusal_plus_030": {
+            "attempted": 16,
+            "watertight": 16,
+            "error_stages": {},
+            "nonwatertight": 0,
+            "paired_variants": 16,
+            "paired_patients": 8,
+            "metrics": {
+              "input_line_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.12107,
+                "patient_mean_paired_delta": 0.12156,
+                "patient_delta_ci": [
+                  0.11058,
+                  0.13132
+                ]
+              },
+              "input_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.2356,
+                "patient_mean_paired_delta": 0.23617,
+                "patient_delta_ci": [
+                  0.22531,
+                  0.24642
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.07136,
+                "arm_median": 0.12028,
+                "patient_mean_paired_delta": 0.05638,
+                "patient_delta_ci": [
+                  0.04346,
+                  0.06879
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.23078,
+                "arm_median": 0.24894,
+                "patient_mean_paired_delta": 0.04011,
+                "patient_delta_ci": [
+                  0.01699,
+                  0.06704
+                ]
+              },
+              "edge_max_mm": {
+                "values": 16,
+                "matched_truth_median": 0.4408,
+                "arm_median": 0.39912,
+                "patient_mean_paired_delta": 0.26704,
+                "patient_delta_ci": [
+                  -0.01665,
+                  0.60851
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02951,
+                "arm_median": 0.02943,
+                "patient_mean_paired_delta": -7e-05,
+                "patient_delta_ci": [
+                  -8e-05,
+                  -6e-05
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": -0.0,
+                "patient_delta_ci": [
+                  -0.0,
+                  -0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 16,
+                "matched_truth_median": 0.16429,
+                "arm_median": 0.12955,
+                "patient_mean_paired_delta": -0.08641,
+                "patient_delta_ci": [
+                  -0.1601,
+                  -0.02312
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 16,
+                "matched_truth_median": -0.26262,
+                "arm_median": -0.32772,
+                "patient_mean_paired_delta": -0.156,
+                "patient_delta_ci": [
+                  -0.27335,
+                  -0.03577
+                ]
+              },
+              "thin_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.08549,
+                "arm_median": 0.08636,
+                "patient_mean_paired_delta": 0.00668,
+                "patient_delta_ci": [
+                  0.00213,
+                  0.01139
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 16,
+                "matched_truth_median": -0.005,
+                "arm_median": -0.0045,
+                "patient_mean_paired_delta": -0.00781,
+                "patient_delta_ci": [
+                  -0.02512,
+                  0.00175
+                ]
+              }
+            }
+          },
+          "apical_minus_030": {
+            "attempted": 16,
+            "watertight": 16,
+            "error_stages": {},
+            "nonwatertight": 0,
+            "paired_variants": 16,
+            "paired_patients": 8,
+            "metrics": {
+              "input_line_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.10684,
+                "patient_mean_paired_delta": 0.1129,
+                "patient_delta_ci": [
+                  0.10423,
+                  0.12284
+                ]
+              },
+              "input_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.28358,
+                "patient_mean_paired_delta": 0.27512,
+                "patient_delta_ci": [
+                  0.2607,
+                  0.28658
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.07136,
+                "arm_median": 0.14637,
+                "patient_mean_paired_delta": 0.06784,
+                "patient_delta_ci": [
+                  0.05716,
+                  0.08052
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.23078,
+                "arm_median": 0.36967,
+                "patient_mean_paired_delta": 0.12288,
+                "patient_delta_ci": [
+                  0.07637,
+                  0.17264
+                ]
+              },
+              "edge_max_mm": {
+                "values": 16,
+                "matched_truth_median": 0.4408,
+                "arm_median": 0.54885,
+                "patient_mean_paired_delta": 0.0821,
+                "patient_delta_ci": [
+                  0.01041,
+                  0.14672
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02951,
+                "arm_median": 0.02953,
+                "patient_mean_paired_delta": 2e-05,
+                "patient_delta_ci": [
+                  1e-05,
+                  3e-05
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 16,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 16,
+                "matched_truth_median": 0.16429,
+                "arm_median": 0.18733,
+                "patient_mean_paired_delta": -0.00307,
+                "patient_delta_ci": [
+                  -0.05199,
+                  0.06426
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 16,
+                "matched_truth_median": -0.26262,
+                "arm_median": -0.31082,
+                "patient_mean_paired_delta": -0.09928,
+                "patient_delta_ci": [
+                  -0.21843,
+                  0.0159
+                ]
+              },
+              "thin_fraction": {
+                "values": 16,
+                "matched_truth_median": 0.08549,
+                "arm_median": 0.09048,
+                "patient_mean_paired_delta": 0.00129,
+                "patient_delta_ci": [
+                  -0.00325,
+                  0.00635
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 16,
+                "matched_truth_median": -0.005,
+                "arm_median": -0.003,
+                "patient_mean_paired_delta": -0.00856,
+                "patient_delta_ci": [
+                  -0.03125,
+                  0.00525
+                ]
+              }
+            }
+          }
+        },
+        "train": {
+          "truth": {
+            "attempted": 70,
+            "watertight": 64,
+            "error_stages": {
+              "generation_or_measurement": 5,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 64,
+            "paired_patients": 32,
+            "metrics": {
+              "input_line_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "input_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.07099,
+                "arm_median": 0.07099,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.20512,
+                "arm_median": 0.20512,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_max_mm": {
+                "values": 64,
+                "matched_truth_median": 0.36402,
+                "arm_median": 0.36402,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0295,
+                "arm_median": 0.0295,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 64,
+                "matched_truth_median": 0.30391,
+                "arm_median": 0.30391,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 64,
+                "matched_truth_median": -0.02532,
+                "arm_median": -0.02532,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thin_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.06386,
+                "arm_median": 0.06386,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 64,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.004,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          "geometric_auto": {
+            "attempted": 70,
+            "watertight": 64,
+            "error_stages": {
+              "generation_or_measurement": 5,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 64,
+            "paired_patients": 32,
+            "metrics": {
+              "input_line_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.30419,
+                "patient_mean_paired_delta": 0.35704,
+                "patient_delta_ci": [
+                  0.31708,
+                  0.40262
+                ]
+              },
+              "input_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 1.05465,
+                "patient_mean_paired_delta": 1.02259,
+                "patient_delta_ci": [
+                  0.93361,
+                  1.11333
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.07099,
+                "arm_median": 0.29103,
+                "patient_mean_paired_delta": 0.24775,
+                "patient_delta_ci": [
+                  0.2055,
+                  0.29655
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.20512,
+                "arm_median": 1.01867,
+                "patient_mean_paired_delta": 0.70268,
+                "patient_delta_ci": [
+                  0.59014,
+                  0.81336
+                ]
+              },
+              "edge_max_mm": {
+                "values": 64,
+                "matched_truth_median": 0.36402,
+                "arm_median": 1.27654,
+                "patient_mean_paired_delta": 0.74951,
+                "patient_delta_ci": [
+                  0.62018,
+                  0.85871
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0295,
+                "arm_median": 0.02872,
+                "patient_mean_paired_delta": -0.00079,
+                "patient_delta_ci": [
+                  -0.00102,
+                  -0.00057
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": -0.0,
+                "patient_delta_ci": [
+                  -0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 3e-05,
+                "patient_delta_ci": [
+                  1e-05,
+                  7e-05
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 64,
+                "matched_truth_median": 0.30391,
+                "arm_median": 0.2993,
+                "patient_mean_paired_delta": -0.05428,
+                "patient_delta_ci": [
+                  -0.08983,
+                  -0.02284
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 64,
+                "matched_truth_median": -0.02532,
+                "arm_median": -0.09191,
+                "patient_mean_paired_delta": -0.08053,
+                "patient_delta_ci": [
+                  -0.17243,
+                  0.01556
+                ]
+              },
+              "thin_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.06386,
+                "arm_median": 0.07324,
+                "patient_mean_paired_delta": 0.00982,
+                "patient_delta_ci": [
+                  0.00469,
+                  0.01557
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 64,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.004,
+                "patient_mean_paired_delta": -0.00022,
+                "patient_delta_ci": [
+                  -0.00294,
+                  0.00178
+                ]
+              }
+            }
+          },
+          "occlusal_plus_030": {
+            "attempted": 70,
+            "watertight": 64,
+            "error_stages": {
+              "generation_or_measurement": 5,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 64,
+            "paired_patients": 32,
+            "metrics": {
+              "input_line_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.13465,
+                "patient_mean_paired_delta": 0.13584,
+                "patient_delta_ci": [
+                  0.13014,
+                  0.1416
+                ]
+              },
+              "input_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.24661,
+                "patient_mean_paired_delta": 0.24638,
+                "patient_delta_ci": [
+                  0.24014,
+                  0.25195
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.07099,
+                "arm_median": 0.13635,
+                "patient_mean_paired_delta": 0.05581,
+                "patient_delta_ci": [
+                  0.03864,
+                  0.06746
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.20512,
+                "arm_median": 0.25481,
+                "patient_mean_paired_delta": 0.04423,
+                "patient_delta_ci": [
+                  -0.01937,
+                  0.09174
+                ]
+              },
+              "edge_max_mm": {
+                "values": 64,
+                "matched_truth_median": 0.36402,
+                "arm_median": 0.48151,
+                "patient_mean_paired_delta": 0.05566,
+                "patient_delta_ci": [
+                  -0.02031,
+                  0.12059
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0295,
+                "arm_median": 0.02944,
+                "patient_mean_paired_delta": -6e-05,
+                "patient_delta_ci": [
+                  -7e-05,
+                  -6e-05
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": -0.0,
+                "patient_delta_ci": [
+                  -0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 2e-05,
+                "patient_delta_ci": [
+                  0.0,
+                  6e-05
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 64,
+                "matched_truth_median": 0.30391,
+                "arm_median": 0.31291,
+                "patient_mean_paired_delta": -0.05725,
+                "patient_delta_ci": [
+                  -0.11118,
+                  -0.0113
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 64,
+                "matched_truth_median": -0.02532,
+                "arm_median": -0.06394,
+                "patient_mean_paired_delta": -0.05592,
+                "patient_delta_ci": [
+                  -0.13261,
+                  0.02104
+                ]
+              },
+              "thin_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.06386,
+                "arm_median": 0.06398,
+                "patient_mean_paired_delta": 0.00172,
+                "patient_delta_ci": [
+                  -0.00183,
+                  0.00583
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 64,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.0045,
+                "patient_mean_paired_delta": 0.00091,
+                "patient_delta_ci": [
+                  -0.00066,
+                  0.00267
+                ]
+              }
+            }
+          },
+          "apical_minus_030": {
+            "attempted": 70,
+            "watertight": 64,
+            "error_stages": {
+              "generation_or_measurement": 5,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 64,
+            "paired_patients": 32,
+            "metrics": {
+              "input_line_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.12092,
+                "patient_mean_paired_delta": 0.12117,
+                "patient_delta_ci": [
+                  0.11488,
+                  0.12758
+                ]
+              },
+              "input_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.27862,
+                "patient_mean_paired_delta": 0.27403,
+                "patient_delta_ci": [
+                  0.26832,
+                  0.27936
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.07099,
+                "arm_median": 0.15631,
+                "patient_mean_paired_delta": 0.07109,
+                "patient_delta_ci": [
+                  0.05713,
+                  0.08228
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.20512,
+                "arm_median": 0.36842,
+                "patient_mean_paired_delta": 0.12903,
+                "patient_delta_ci": [
+                  0.07668,
+                  0.16944
+                ]
+              },
+              "edge_max_mm": {
+                "values": 64,
+                "matched_truth_median": 0.36402,
+                "arm_median": 0.5219,
+                "patient_mean_paired_delta": 0.1052,
+                "patient_delta_ci": [
+                  0.03192,
+                  0.16313
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 64,
+                "matched_truth_median": 0.0295,
+                "arm_median": 0.02953,
+                "patient_mean_paired_delta": 2e-05,
+                "patient_delta_ci": [
+                  1e-05,
+                  3e-05
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 64,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 5e-05,
+                "patient_delta_ci": [
+                  0.0,
+                  0.00015
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 64,
+                "matched_truth_median": 0.30391,
+                "arm_median": 0.32389,
+                "patient_mean_paired_delta": -0.02605,
+                "patient_delta_ci": [
+                  -0.08031,
+                  0.0201
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 64,
+                "matched_truth_median": -0.02532,
+                "arm_median": -0.06457,
+                "patient_mean_paired_delta": -0.0565,
+                "patient_delta_ci": [
+                  -0.15113,
+                  0.02597
+                ]
+              },
+              "thin_fraction": {
+                "values": 64,
+                "matched_truth_median": 0.06386,
+                "arm_median": 0.07602,
+                "patient_mean_paired_delta": 0.00156,
+                "patient_delta_ci": [
+                  -0.00132,
+                  0.00486
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 64,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.004,
+                "patient_mean_paired_delta": -0.00078,
+                "patient_delta_ci": [
+                  -0.00336,
+                  0.00084
+                ]
+              }
+            }
+          }
+        },
+        "all": {
+          "truth": {
+            "attempted": 130,
+            "watertight": 122,
+            "error_stages": {
+              "generation_or_measurement": 7,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 122,
+            "paired_patients": 61,
+            "metrics": {
+              "input_line_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "input_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.07106,
+                "arm_median": 0.07106,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.20986,
+                "arm_median": 0.20986,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "edge_max_mm": {
+                "values": 122,
+                "matched_truth_median": 0.37311,
+                "arm_median": 0.37311,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02953,
+                "arm_median": 0.02953,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 122,
+                "matched_truth_median": 0.3018,
+                "arm_median": 0.3018,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 122,
+                "matched_truth_median": -0.04834,
+                "arm_median": -0.04834,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "thin_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.06875,
+                "arm_median": 0.06875,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 122,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.004,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          "geometric_auto": {
+            "attempted": 130,
+            "watertight": 122,
+            "error_stages": {
+              "generation_or_measurement": 7,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 122,
+            "paired_patients": 61,
+            "metrics": {
+              "input_line_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.28811,
+                "patient_mean_paired_delta": 0.32644,
+                "patient_delta_ci": [
+                  0.29654,
+                  0.35996
+                ]
+              },
+              "input_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.95214,
+                "patient_mean_paired_delta": 0.92216,
+                "patient_delta_ci": [
+                  0.84783,
+                  1.00007
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.07106,
+                "arm_median": 0.27263,
+                "patient_mean_paired_delta": 0.22241,
+                "patient_delta_ci": [
+                  0.19242,
+                  0.25479
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.20986,
+                "arm_median": 0.9402,
+                "patient_mean_paired_delta": 0.61389,
+                "patient_delta_ci": [
+                  0.52885,
+                  0.70535
+                ]
+              },
+              "edge_max_mm": {
+                "values": 122,
+                "matched_truth_median": 0.37311,
+                "arm_median": 1.21674,
+                "patient_mean_paired_delta": 0.69119,
+                "patient_delta_ci": [
+                  0.6006,
+                  0.78322
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02953,
+                "arm_median": 0.0289,
+                "patient_mean_paired_delta": -0.00071,
+                "patient_delta_ci": [
+                  -0.00087,
+                  -0.00056
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": -0.0,
+                "patient_delta_ci": [
+                  -0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 4e-05,
+                "patient_delta_ci": [
+                  1e-05,
+                  9e-05
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 122,
+                "matched_truth_median": 0.3018,
+                "arm_median": 0.28151,
+                "patient_mean_paired_delta": -0.06994,
+                "patient_delta_ci": [
+                  -0.10562,
+                  -0.03902
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 122,
+                "matched_truth_median": -0.04834,
+                "arm_median": -0.10225,
+                "patient_mean_paired_delta": -0.05896,
+                "patient_delta_ci": [
+                  -0.12762,
+                  0.00777
+                ]
+              },
+              "thin_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.06875,
+                "arm_median": 0.07411,
+                "patient_mean_paired_delta": 0.00905,
+                "patient_delta_ci": [
+                  0.00455,
+                  0.01393
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 122,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.004,
+                "patient_mean_paired_delta": -0.00058,
+                "patient_delta_ci": [
+                  -0.00353,
+                  0.00211
+                ]
+              }
+            }
+          },
+          "occlusal_plus_030": {
+            "attempted": 130,
+            "watertight": 122,
+            "error_stages": {
+              "generation_or_measurement": 7,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 122,
+            "paired_patients": 61,
+            "metrics": {
+              "input_line_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.12895,
+                "patient_mean_paired_delta": 0.13077,
+                "patient_delta_ci": [
+                  0.12675,
+                  0.1346
+                ]
+              },
+              "input_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.24226,
+                "patient_mean_paired_delta": 0.24334,
+                "patient_delta_ci": [
+                  0.23891,
+                  0.24768
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.07106,
+                "arm_median": 0.13131,
+                "patient_mean_paired_delta": 0.05318,
+                "patient_delta_ci": [
+                  0.04314,
+                  0.06074
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.20986,
+                "arm_median": 0.2544,
+                "patient_mean_paired_delta": 0.04048,
+                "patient_delta_ci": [
+                  0.00307,
+                  0.06847
+                ]
+              },
+              "edge_max_mm": {
+                "values": 122,
+                "matched_truth_median": 0.37311,
+                "arm_median": 0.42457,
+                "patient_mean_paired_delta": 0.07515,
+                "patient_delta_ci": [
+                  0.01835,
+                  0.14087
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02953,
+                "arm_median": 0.02945,
+                "patient_mean_paired_delta": -7e-05,
+                "patient_delta_ci": [
+                  -7e-05,
+                  -6e-05
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": -0.0,
+                "patient_delta_ci": [
+                  -0.0,
+                  -0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 1e-05,
+                "patient_delta_ci": [
+                  0.0,
+                  3e-05
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 122,
+                "matched_truth_median": 0.3018,
+                "arm_median": 0.31291,
+                "patient_mean_paired_delta": -0.05221,
+                "patient_delta_ci": [
+                  -0.08652,
+                  -0.01995
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 122,
+                "matched_truth_median": -0.04834,
+                "arm_median": -0.08203,
+                "patient_mean_paired_delta": -0.06575,
+                "patient_delta_ci": [
+                  -0.13444,
+                  -0.00278
+                ]
+              },
+              "thin_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.06875,
+                "arm_median": 0.06999,
+                "patient_mean_paired_delta": 0.00232,
+                "patient_delta_ci": [
+                  -0.00031,
+                  0.00522
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 122,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.004,
+                "patient_mean_paired_delta": -0.00056,
+                "patient_delta_ci": [
+                  -0.00324,
+                  0.00131
+                ]
+              }
+            }
+          },
+          "apical_minus_030": {
+            "attempted": 130,
+            "watertight": 122,
+            "error_stages": {
+              "generation_or_measurement": 7,
+              "reference_geometry": 1
+            },
+            "nonwatertight": 0,
+            "paired_variants": 122,
+            "paired_patients": 61,
+            "metrics": {
+              "input_line_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.11879,
+                "patient_mean_paired_delta": 0.12118,
+                "patient_delta_ci": [
+                  0.11618,
+                  0.12661
+                ]
+              },
+              "input_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.28211,
+                "patient_mean_paired_delta": 0.27419,
+                "patient_delta_ci": [
+                  0.26836,
+                  0.2792
+                ]
+              },
+              "edge_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.07106,
+                "arm_median": 0.15362,
+                "patient_mean_paired_delta": 0.07376,
+                "patient_delta_ci": [
+                  0.06461,
+                  0.08208
+                ]
+              },
+              "edge_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.20986,
+                "arm_median": 0.37438,
+                "patient_mean_paired_delta": 0.13908,
+                "patient_delta_ci": [
+                  0.1072,
+                  0.16556
+                ]
+              },
+              "edge_max_mm": {
+                "values": 122,
+                "matched_truth_median": 0.37311,
+                "arm_median": 0.53436,
+                "patient_mean_paired_delta": 0.12453,
+                "patient_delta_ci": [
+                  0.08341,
+                  0.16209
+                ]
+              },
+              "intaglio_abs_mean_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02953,
+                "arm_median": 0.02954,
+                "patient_mean_paired_delta": 2e-05,
+                "patient_delta_ci": [
+                  1e-05,
+                  2e-05
+                ]
+              },
+              "intaglio_abs_p95_mm": {
+                "values": 122,
+                "matched_truth_median": 0.02999,
+                "arm_median": 0.02999,
+                "patient_mean_paired_delta": 0.0,
+                "patient_delta_ci": [
+                  0.0,
+                  0.0
+                ]
+              },
+              "prep_penetration_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.0,
+                "arm_median": 0.0,
+                "patient_mean_paired_delta": 3e-05,
+                "patient_delta_ci": [
+                  0.0,
+                  8e-05
+                ]
+              },
+              "thickness_p01_mm": {
+                "values": 122,
+                "matched_truth_median": 0.3018,
+                "arm_median": 0.33364,
+                "patient_mean_paired_delta": -0.02208,
+                "patient_delta_ci": [
+                  -0.05571,
+                  0.00891
+                ]
+              },
+              "thickness_min_mm": {
+                "values": 122,
+                "matched_truth_median": -0.04834,
+                "arm_median": -0.12399,
+                "patient_mean_paired_delta": -0.05221,
+                "patient_delta_ci": [
+                  -0.11389,
+                  0.00333
+                ]
+              },
+              "thin_fraction": {
+                "values": 122,
+                "matched_truth_median": 0.06875,
+                "arm_median": 0.07353,
+                "patient_mean_paired_delta": 0.00096,
+                "patient_delta_ci": [
+                  -0.00139,
+                  0.00341
+                ]
+              },
+              "occl_clearance_mm": {
+                "values": 122,
+                "matched_truth_median": -0.004,
+                "arm_median": -0.003,
+                "patient_mean_paired_delta": -0.00159,
+                "patient_delta_ci": [
+                  -0.00502,
+                  0.00071
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "real_cad_pair_audit": {
+      "verified_exocad_cases": 1,
+      "scan_and_design_hashes_matched": true,
+      "shared_coordinates_verified_for_three_shape_candidate": false,
+      "single_case_ref_chamfer_l1_mm": {
+        "automatic_wrong_target": 13.912214769113906,
+        "label_corrected": 0.900199389212849,
+        "margin_corrected": 0.8483573427012039
+      },
+      "prep_margin_annotation_verified": false
+    }
+  }
+}

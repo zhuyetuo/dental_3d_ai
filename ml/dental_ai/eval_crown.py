@@ -14,6 +14,7 @@
 - generated_no_antagonist：同上，但不给对颌（现在后端没有对颌时的情况）。
 
 汇总里每个指标给出中位数和 5%–95% 分位；生成的牙冠另外给出“落在天然牙 5%–95% 范围内”的比例。
+使用 --proximal-audit 时，另给生成牙冠的每个邻面输出几何复核状态，并按生成模式汇总。
 """
 
 from __future__ import annotations
@@ -81,7 +82,8 @@ def _one(args) -> list[dict]:
     from .preferences import DesignPreferences
     from .synthetic import simulate_missing
 
-    zip_path, pid, seg_model, gen_model, out, per_jaw, seed = args
+    zip_path, pid, seg_model, gen_model, out, per_jaw, seed, *opts = args
+    proximal_audit = bool(opts and opts[0])
     rows: list[dict] = []
     try:
         meshes = {jaw: _load(zip_path, pid, jaw) for jaw in ("upper", "lower")}
@@ -136,7 +138,8 @@ def _one(args) -> list[dict]:
                     extra = {"source": done[fdi].get("source"), "pipe_mesial": pipe.get(str(fdi - 1)), "pipe_distal": pipe.get(str(fdi + 1)),
                              "pipe_lift_mm": done[fdi].get("occlusal_lift_mm"), "pipe_reduction_mm": done[fdi].get("occlusal_reduction_mm"),
                              "antagonist_input": done[fdi].get("antagonist_input")}
-                    rows.append({**base, "kind": kind, **extra, **score_crown(solid, up, mesial, distal, ant, reference=real)})
+                    score = score_crown(solid, up, mesial, distal, ant, reference=real, proximal_audit=proximal_audit)
+                    rows.append({**base, "kind": kind, **extra, **score})
             except Exception as exc:  # 评估要跑完整批，单颗失败记下来
                 rows.append({**base, "kind": "error", "error": f"{type(exc).__name__}: {exc}"[:200]})
     return rows
@@ -176,6 +179,15 @@ def summarize(rows: list[dict]) -> dict:
         "不封闭": lambda r: not r.get("watertight"),
     }
     summary["checks"] = {name: {k: rate(k, fn) for k in KINDS} for name, fn in checks.items()}
+    statuses = {kind: {} for kind in KINDS}
+    for row in rows:
+        for side in ("mesial", "distal"):
+            status = row.get(f"{side}_review_status")
+            if status is not None:
+                counts = statuses[row["kind"]]
+                counts[status] = counts.get(status, 0) + 1
+    if any(statuses.values()):
+        summary["proximal_audit"] = {kind: counts for kind, counts in statuses.items() if counts}
     return summary
 
 
@@ -190,6 +202,7 @@ def main() -> None:
     p.add_argument("--patients", type=int, default=60)
     p.add_argument("--per-jaw", type=int, default=2)
     p.add_argument("--workers", type=int, default=6)
+    p.add_argument("--proximal-audit", action="store_true", help="额外报告牙冠邻面的边缘相交和有深度及面积支撑的穿入")
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
 
@@ -201,7 +214,8 @@ def main() -> None:
     rng = np.random.default_rng(0)
     pids = [pids[i] for i in rng.permutation(len(pids))[: args.patients]]
     (args.out / "labels").mkdir(parents=True, exist_ok=True)
-    jobs = [(str(args.zip), q, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i) for i, q in enumerate(pids)]
+    jobs = [(str(args.zip), q, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i, args.proximal_audit)
+            for i, q in enumerate(pids)]
     print(f"{len(pids)} 位患者", flush=True)
     rows: list[dict] = []
     for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):  # 子进程继承：每个进程 2 个线程

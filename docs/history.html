@@ -34,7 +34,7 @@
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
-    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-18</div>
+    <div class="eyebrow">迭代历程 · 每轮训练 / 实验都记一条 · 更新于 2026-11-22</div>
     <h1>来时路：每一轮试了什么、结果怎样</h1>
     <p class="lead">成功的、失败的都记。卡住的时候回头看：哪类改法有效、哪类总是白费，往往比再想一个新点子更有用。
     <span class="state ok">● 采用</span> <span class="state bad">● 没采用</span> <span class="state mid">● 部分 / 默认关闭</span></p>
@@ -63,6 +63,27 @@
       <button data-k="margin">颈缘线</button><button data-k="eval">评估</button><button data-k="web">网页 / 工程</button>
     </div>
     <div class="tl" id="tl">
+
+      <div class="ev mid" data-k="margin gen eval"><div class="d">2026-11-22</div>
+        <h3>终止线误差传递到成品冠</h3>
+        <p>130 组模拟预备体完成四组对照，122 组冠均封闭。独立测试的 42 组里，几何自动线换成模拟真值线后，成品平均边缘偏差中位数 0.235 → 0.073 mm。</p></div>
+
+      <div class="ev mid" data-k="seg eval"><div class="d">2026-11-22</div>
+        <h3>Poseidon3D 困难病例短程微调</h3>
+        <p>214 个正式测试扫描完成配对。困难组的 22 个牙弓内部缺牙位，现有模型检出 17 个，两组微调均检出 19 个。常规微调错号较少，难例加权在常规集误报增多。</p></div>
+
+      <div class="ev mid" data-k="margin"><div class="d">2026-11-22</div>
+        <h3>真实代型裁剪增强</h3>
+        <p>85 个代型训练，两组各 8 轮。裁剪切牙与裁剪公开代型的平均误差分别从 0.227 和 0.335 降到 0.181 和 0.260 mm，等待真实局部口扫复验。</p></div>
+
+      <div class="ev mid" data-k="gen eval"><div class="d">2026-11-22</div>
+        <h3>邻接几何复核接入离线评估</h3>
+        <p>88 颗冠的 176 个邻面用深度、面积与开放边缘相交分项复核。全四模式、三模型正式对照保留纯形状基线。</p></div>
+
+      <div class="ev mid" data-k="seg gen margin eval"><div class="d">2026-11-22</div>
+        <h3>近期实验完整记录</h3>
+        <p>数据配对、PTv3、口内照片选颌、残差续训、邻接、颈缘线训练和未通过的试验均有记录。 <a href="https://github.com/zhuyetuo/dental_3d_ai/blob/main/docs/experiments/2026-11-20-to-22.md">查看实验记录与复现方法</a>。</p></div>
+
 
       <div class="ev no" data-k="margin"><div class="d">2026-11-18</div>
         <h3>学习式颈缘线：口扫上重训，取线修好了，但和几何方法持平<span class="tag">颈缘线</span></h3>

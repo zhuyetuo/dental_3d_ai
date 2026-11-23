@@ -235,6 +235,8 @@ def score_crown(
     distal: trimesh.Trimesh | None = None,
     antagonist: trimesh.Trimesh | None = None,
     reference: trimesh.Trimesh | None = None,
+    *,
+    proximal_audit: bool = False,
 ) -> dict:
     """crown：牙冠（开放的牙冠面或封闭实体都可以）；up：咬合方向（指向对颌）。返回一行指标，缺的项为 None。"""
     points = _sample(crown)
@@ -244,7 +246,15 @@ def score_crown(
     for side, neighbor in (("mesial", mesial), ("distal", distal)):
         if neighbor is None or len(neighbor.faces) == 0:
             continue
-        row.update({f"{side}_{k}": v for k, v in proximal(points, area, neighbor, up).items()})
+        proximal_score = proximal(points, area, neighbor, up)
+        row.update({f"{side}_{k}": v for k, v in proximal_score.items()})
+        if proximal_audit:
+            from .proximal_audit import audit_proximal
+
+            axis = up / np.linalg.norm(up)
+            floor = float(np.percentile(points @ axis, 98)) - 4.5
+            review = audit_proximal(crown, neighbor, axis, floor, proximal_score["gap"])
+            row.update({f"{side}_{k}": v for k, v in review.items()})
         neighbor_points.append(_sample(neighbor, 4000))
     if antagonist is not None:
         row.update({f"occl_{k}": v for k, v in occlusion(points, area, antagonist).items()})
