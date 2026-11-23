@@ -6,6 +6,9 @@
 # 切回 CPU 版：docker compose up -d --build worker（不带这个文件）
 # 前提：宿主机能跑 docker run --gpus all（装了 NVIDIA Container Toolkit），见 docker/README.md。
 # worker 加载模型约占 2–3 GB 显存；和训练共用一块卡时注意别把训练挤爆。
+# 同时起 TeethSplineSeg 分割服务（splineseg，分割二选一用，只在 docker 网络里可访问），也随服务器开机自启：
+#   docker build -f docker/Dockerfile.splineseg-service -t dental3d-splineseg-svc .   # 或 up 时加 --build
+#   需要 third_party/TeethSplineSeg（作者代码）和 models/teethsplineseg/finetuned_aug.ckpt
 
 services:
   worker:
@@ -15,3 +18,18 @@ services:
       dockerfile: docker/Dockerfile.worker-gpu
     gpus: all
     ipc: host
+    restart: unless-stopped
+    environment:
+      SEGMENTER_FUSION_URL: http://splineseg:8002  # 覆盖 docker-compose.yml 里宿主机上的地址
+
+  splineseg:
+    image: dental3d-splineseg-svc
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.splineseg-service
+    restart: unless-stopped  # 服务器重启后自己拉起（11-24 之前在宿主机上手动起，重启后丢了，网页悄悄退回只用自己的模型）
+    gpus: all
+    ipc: host
+    volumes:
+      - ./third_party/TeethSplineSeg:/opt/TeethSplineSeg:ro
+      - ./models/teethsplineseg:/models/teethsplineseg:ro

@@ -64,11 +64,14 @@ docker compose up -d --build worker                                             
 
 ## TeethSplineSeg 分割服务（和自己的分割模型二选一）
 
-在宿主机上用 TeethSplineSeg 自己的环境（`.venv-splineseg`，见 `scripts/gpu/splineseg_eval.sh`）起服务，只监听 docker 网络的网关（worker 容器能访问，局域网访问不到）：
+和网页一起由 `docker-compose.worker-gpu.yml` 拉起（`splineseg` 容器，`restart: unless-stopped`，服务器重启后自己起来），
+只在 docker 内部网络可见，worker 的 `SEGMENTER_FUSION_URL=http://splineseg:8002`：
 
 ```bash
-bash scripts/gpu/start_splineseg_service.sh
+docker compose -f docker-compose.gpu.yml build train      # 底层镜像，只要建一次
+docker compose -f docker-compose.yml -f docker-compose.worker-gpu.yml up -d --build splineseg worker
 ```
 
-worker 的 `SEGMENTER_FUSION_URL` 指向它；服务没起时 worker 自动只用自己的分割模型。一个颌约 30 秒（每次都重新加载模型，后续可以改成常驻）。
-重启机器后要重新起一次。
+需要 `third_party/TeethSplineSeg`（作者代码，19 GB，不进 git、不打进镜像，只读挂载）和 `models/teethsplineseg/finetuned_aug.ckpt`。
+服务连不上时 worker 自动只用自己的分割模型（不报错，缺牙检出会从约 62% 掉到约 54%），所以重启后可以 `docker ps` 看一眼 splineseg 在不在。
+一个颌约 15 秒。旧的宿主机启动方式 `scripts/gpu/start_splineseg_service.sh` 还在，调试用。

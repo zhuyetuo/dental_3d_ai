@@ -1,0 +1,16 @@
+# TeethSplineSeg 分割服务（网页“分割二选一”用），和网页一起由 docker-compose.worker-gpu.yml 拉起、开机自启。
+# 以训练镜像为底（PyTorch 2.7.1 + CUDA 12.8，3090 / 4090 / 5090 通用），只补 TeethSplineSeg 推理要的包；不编译 FlashAttention
+# （PTv3 会退回 PyTorch 自带的融合注意力，结果相同）。TeethSplineSeg 代码和权重运行时只读挂载（third_party/、models/teethsplineseg/）。
+#   docker compose -f docker-compose.gpu.yml build train          # 底层镜像，只要建一次
+#   docker compose -f docker-compose.yml -f docker-compose.worker-gpu.yml up -d --build splineseg
+ARG BASE=dental3d-train
+FROM ${BASE}
+
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1 PIP_INDEX_URL=${PIP_INDEX_URL}
+RUN pip install torch-scatter -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+RUN pip install spconv-cu126==2.3.8 "lightning==2.5.6" "pytorch-lightning<2.6" torchmetrics==1.8.2 addict timm PyMaxflow "numpy<2"
+COPY services/splineseg /app/services/splineseg
+ENV SPLINESEG_DIR=/opt/TeethSplineSeg SPLINESEG_CKPT=/models/teethsplineseg/finetuned_aug.ckpt SPLINESEG_DEVICE=0
+EXPOSE 8002
+CMD ["python", "/app/services/splineseg/server.py", "--host", "0.0.0.0", "--port", "8002"]
