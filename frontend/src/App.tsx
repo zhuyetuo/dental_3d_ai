@@ -3,6 +3,10 @@ import { api, Case, Demo } from "./api";
 import type { MarginMap } from "./editor/margins";
 import { LabelEditor } from "./editor/LabelEditor";
 import { Viewer } from "./Viewer";
+import type { Compare } from "./three/scene";
+
+const COMPARE_TEXT: Record<Compare, string> = { off: "关", overlay: "叠加", heat: "偏差色图", original: "只看原始牙", side: "并排" };
+const COMPARE_NEXT: Record<Compare, Compare> = { off: "overlay", overlay: "side", side: "original", original: "heat", heat: "off" };
 
 const KIND_TEXT = { space: "有缺隙，可修复", closed: "间隙已关闭", free_end: "游离端缺失" } as const;
 
@@ -25,7 +29,9 @@ export function App() {
   /** 展开的二级面板：示例 id，或 "__uploads"（自己上传的） */
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [antagonistOpacity, setAntagonistOpacity] = useState(0.32);
-  const [compare, setCompare] = useState<"off" | "overlay" | "heat">("off");
+  const [compare, setCompare] = useState<Compare>("off");
+  /** 并排对比时原始牙和生成的牙之间的间隔（mm） */
+  const [sideGap, setSideGap] = useState(3);
   const [showTags, setShowTags] = useState(true);
   const [isolate, setIsolate] = useState(false);
   /** 第 2 步里勾选的、要生成的缺失牙 */
@@ -50,7 +56,7 @@ export function App() {
     if (dirty && !window.confirm("当前病例有未保存的标注修改，确定要离开吗？")) return;
     setDirty(false);
     setCurrent(c);
-    setOpenGroup(null);
+    // 历史运行列表保持展开：连续点几次运行对比时不用每次重新打开
   }
 
   async function saveMargins(margins: MarginMap) {
@@ -132,8 +138,7 @@ export function App() {
     try {
       setDirty(false);
       setCurrent(await api.createDemoCase(d.id));
-      setOpenGroup(null);
-      refresh();
+      refresh(); // 新的运行出现在展开的历史列表里，列表不收起
     } catch (err) {
       setError(String(err));
     }
@@ -477,11 +482,19 @@ export function App() {
                 {originalUrls.length > 0 && (
                   <label className="inline">
                     和原始牙对比
-                    <select value={compare} onChange={(e) => setCompare(e.target.value as typeof compare)}>
+                    <select value={compare} onChange={(e) => setCompare(e.target.value as Compare)}>
                       <option value="off">不对比</option>
                       <option value="overlay">叠加原始牙（金色半透明）</option>
+                      <option value="side">并排：原始牙挪到旁边（只留这两颗牙）</option>
+                      <option value="original">只看原始牙（藏起生成的牙）</option>
                       <option value="heat">偏差色图（生成的牙按偏差上色）</option>
                     </select>
+                  </label>
+                )}
+                {originalUrls.length > 0 && compare === "side" && (
+                  <label className="inline">
+                    并排间隔 {sideGap} mm
+                    <input type="range" min={0} max={15} step={1} value={sideGap} onChange={(e) => setSideGap(Number(e.target.value))} />
                   </label>
                 )}
                 {current.files.antagonist && (
@@ -555,6 +568,7 @@ export function App() {
             antagonistOpacity={antagonistOpacity}
             originalUrls={originalUrls}
             compare={compare}
+            sideGap={sideGap}
             showTags={showTags}
             isolate={isolate}
           />
@@ -583,10 +597,10 @@ export function App() {
               <button
                 type="button"
                 className={compare !== "off" ? "on" : ""}
-                onClick={() => setCompare(compare === "off" ? "overlay" : compare === "overlay" ? "heat" : "off")}
-                title="点一下在 不对比 / 叠加原始牙 / 偏差色图 之间切换"
+                onClick={() => setCompare(COMPARE_NEXT[compare])}
+                title="点一下依次切换：不对比 / 叠加 / 并排 / 只看原始牙 / 偏差色图。并排时转了视角，再切一次就按新的屏幕方向排开"
               >
-                对比原始牙：{compare === "off" ? "关" : compare === "overlay" ? "叠加" : "偏差色图"}
+                对比原始牙：{COMPARE_TEXT[compare]}
               </button>
             )}
           </div>

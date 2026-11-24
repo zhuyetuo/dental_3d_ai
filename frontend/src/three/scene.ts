@@ -101,6 +101,8 @@ export function frameCamera(ctx: SceneContext, geometry: THREE.BufferGeometry) {
   ctx.camera.position.copy(center).add(new THREE.Vector3(0, -radius * 1.6, radius * 1.6));
 }
 
+export type Compare = "off" | "overlay" | "heat" | "original" | "side";
+
 export interface Overlays {
   generatedUrls: string[];
   cervicalLines?: Record<string, number[][]>;
@@ -109,8 +111,11 @@ export interface Overlays {
   /** 0 = 不显示，1 = 不透明（看对颌的凹凸面），中间是半透明 */
   antagonistOpacity?: number;
   originalUrls?: string[];
-  /** 和原始牙对比：overlay = 半透明金色叠上去；heat = 生成的牙按到原始牙的距离上色 */
-  compare?: "off" | "overlay" | "heat";
+  /** 和原始牙对比：overlay = 半透明金色叠上去；heat = 生成的牙按到原始牙的距离上色；
+   * original = 只看原始牙（生成的牙藏起来）；side = 原始牙挪到旁边并排 */
+  compare?: Compare;
+  /** 并排对比时原始牙挪开的距离（mm，在两颗牙宽度之外再加的间隔） */
+  sideGap?: number;
   showTags?: boolean;
   /** 只看生成的牙（和原始牙）：牙弓、对颌都藏起来 */
   isolate?: boolean;
@@ -189,13 +194,16 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
   const compare = props.compare ?? "off";
   const showTags = props.showTags ?? true;
   const isolate = props.isolate ?? false;
+  const sideGap = props.sideGap ?? 3;
   useEffect(() => {
     const group = ctx.current?.overlays;
     if (!group) return;
     group.clear();
     let cancelled = false;
     const content = (ctx.current as unknown as { content?: THREE.Object3D }).content;
-    if (content) content.visible = !isolate;
+    // 并排对比时牙弓和对颌也藏起来：原始牙挪到旁边会和邻牙重叠
+    const hideArch = isolate || compare === "side";
+    if (content) content.visible = !hideArch;
     // 偏差色图要先拿到原始牙的顶点
     const originalPoints =
       compare === "heat" && originalUrls?.length
@@ -211,7 +219,7 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
           })
         : null;
 
-    for (const url of generatedUrls) {
+    for (const url of compare === "original" ? [] : generatedUrls) {
       loadGeometry(url).then((geometry) => {
         if (cancelled) return;
         geometry.computeVertexNormals();
@@ -231,21 +239,38 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
         });
       });
     }
-    if (compare === "overlay") {
-      // 示例里被去掉的真牙：半透明金色叠在生成的牙上，直接看差在哪
+    if (compare === "overlay" || compare === "original" || compare === "side") {
+      // 示例里被去掉的真牙（或技师设计的牙冠）：overlay 半透明金色叠在生成的牙上；original 只看它；side 挪到旁边并排
+      const camera = (ctx.current as unknown as { camera?: THREE.Camera }).camera;
       for (const url of originalUrls ?? []) {
         loadGeometry(url).then((geometry) => {
           if (cancelled) return;
           geometry.computeVertexNormals();
-          const material = new THREE.MeshStandardMaterial({ color: ORIGINAL_COLOR, roughness: 0.4, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+          const solid = compare !== "overlay";
+          const material = new THREE.MeshStandardMaterial({
+            color: ORIGINAL_COLOR, roughness: 0.4, side: THREE.DoubleSide, transparent: !solid, opacity: solid ? 1 : 0.6,
+          });
           const mesh = new THREE.Mesh(geometry, material);
           mesh.userData = { original: true };
           mesh.raycast = () => {};
+          geometry.computeBoundingBox();
+          const box = geometry.boundingBox!;
+          const center = box.getCenter(new THREE.Vector3());
+          if (compare === "side") {
+            // 沿屏幕的水平方向（相机的右方）挪开：一颗牙宽度 + 间隔，转了视角再切一次就按新方向排
+            const right = new THREE.Vector3(1, 0, 0);
+            if (camera) right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+            const size = box.getSize(new THREE.Vector3());
+            const width = Math.abs(size.x * right.x) + Math.abs(size.y * right.y) + Math.abs(size.z * right.z);
+            mesh.position.copy(right.multiplyScalar(width + sideGap));
+          }
           group.add(mesh);
+          const fdi = /original_(\d+)/.exec(url)?.[1];
+          if (showTags && compare !== "overlay") group.add(makeTag(`原始 ${fdi ?? ""}`.trim(), center.clone().add(mesh.position), "#ffc857"));
         });
       }
     }
-    if (antagonistUrl && antagonistOpacity > 0 && !isolate) {
+    if (antagonistUrl && antagonistOpacity > 0 && !hideArch) {
       // 对颌：半透明，不参与拾取，只用来看生成的牙冠和它的咬合关系
       loadGeometry(antagonistUrl).then((geometry) => {
         if (cancelled) return;
@@ -270,5 +295,5 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
     return () => {
       cancelled = true;
     };
-  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, antagonistOpacity, originalUrls, compare, showTags, isolate]);
+  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, antagonistOpacity, originalUrls, compare, showTags, isolate, sideGap]);
 }
