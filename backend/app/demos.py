@@ -39,7 +39,10 @@ def list_demos() -> list[dict]:
     out = []
     for d in demos:
         reason = None
-        if not (_scan_dir(d) / f"{d['scan']}.obj.gz").exists():
+        if d.get("precomputed"):  # 离线算好的示例（如局部牙弓）：目录里有 result/report.json 就能用
+            if not (DEMO_DIR / "local" / d["precomputed"] / "result" / "report.json").exists():
+                reason = "本地示例数据不存在（运行 scripts/make_cf_demos.py）"
+        elif not (_scan_dir(d) / f"{d['scan']}.obj.gz").exists():
             reason = "本地示例数据不存在（运行 scripts/make_demos.py --local）"
         elif d.get("requires") == "segmenter" and not ok:
             reason = "需要分割模型（GPU 服务或 CPU 基线）"
@@ -54,8 +57,27 @@ def get_demo(demo_id: str) -> dict:
     return demo
 
 
+def precomputed_report(demo: dict) -> dict | None:
+    """预计算示例的结果报告；普通示例返回 None。"""
+    if not demo.get("precomputed"):
+        return None
+    return json.loads((DEMO_DIR / "local" / demo["precomputed"] / "result" / "report.json").read_text())
+
+
 def materialize(demo: dict, target_dir: Path) -> dict[str, str]:
     """生成示例病例的文件，返回 {"mesh": 文件名, "labels": 文件名（可能没有）}。"""
+    if demo.get("precomputed"):  # 整个目录（含 result/）复制过去
+        import shutil
+
+        src = DEMO_DIR / "local" / demo["precomputed"]
+        shutil.copytree(src, target_dir, dirs_exist_ok=True)
+        files = {"mesh": "mesh.obj"}
+        for name in ("labels", "antagonist"):
+            for f in src.glob(f"{name}.*"):
+                files[name] = f.name
+        for f in src.glob("original_*.stl"):
+            files[f.stem] = f.name
+        return files
     stem = demo["scan"]
     with gzip.open(_scan_dir(demo) / f"{stem}.obj.gz", "rt", encoding="utf-8", errors="replace") as f:
         mesh = parse_obj(f)
@@ -63,7 +85,7 @@ def materialize(demo: dict, target_dir: Path) -> dict[str, str]:
         labels = np.asarray(json.load(f)["labels"], dtype=np.int64)
     jaw = demo["jaw"]
     originals = {}
-    for fdi in demo.get("missing", []):  # 被去掉的真牙留一份，网页上可以叠在生成的牙上对比
+    for fdi in [*demo.get("missing", []), *demo.get("prepared", [])]:  # 被去掉 / 磨成预备体的真牙留一份，网页上可以叠在生成的牙上对比
         if (labels == fdi).any():
             from dental_ai.geometry import tooth_mesh
 

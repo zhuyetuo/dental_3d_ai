@@ -102,6 +102,13 @@ def create_demo_case(demo_id: str, background: BackgroundTasks) -> dict:
     case["files"] = demos.materialize(demo, storage.case_path(case["id"]))
     case["prepared_teeth"] = sorted(demo.get("prepared", []))
     case["demo"] = {"id": demo["id"], "title": demo["title"]}
+    report = demos.precomputed_report(demo)
+    if report is not None:  # 离线算好的示例：直接是完成状态
+        from datetime import datetime, timezone
+
+        case.update(status="done", report=report, finished_at=datetime.now(timezone.utc).isoformat())
+        storage.save_case(case)
+        return case
     case["status"] = "queued"
     storage.save_case(case)
     jobs.submit(case["id"], background)
