@@ -411,7 +411,21 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             self.mlp = nn.Sequential(nn.Conv2d(2 * cin, cout, 1, bias=False), nn.GroupNorm(8, cout), nn.LeakyReLU(0.2))
 
         def forward(self, x, idx):
+            if getattr(self, "fast", False):
+                return self._fast_edge(x, idx)
             return self.mlp(edge_features(x, idx)).max(dim=-1)[0]
+
+        def _fast_edge(self, x, idx):
+            # conv([邻居 − 中心, 中心]) = Wa·邻居 + (Wb − Wa)·中心：先在每个点上做线性（小 k 倍），再按邻居取。数学上相等，只差浮点舍入
+            w = self.mlp[0].weight[:, :, 0, 0]
+            cin = x.shape[1]
+            wa, wb = w[:, :cin], w[:, cin:]
+            y = torch.einsum("oc,bcn->bon", wa, x)
+            yc = torch.einsum("oc,bcn->bon", wb - wa, x)
+            b, co, n = y.shape
+            flat = (idx + torch.arange(b, device=x.device).view(-1, 1, 1) * n).reshape(-1)
+            nb = y.transpose(1, 2).reshape(b * n, co)[flat].view(b, n, -1, co).permute(0, 3, 1, 2)
+            return self.mlp[2](self.mlp[1](nb + yc.unsqueeze(-1))).max(dim=-1)[0]
 
     class ToothGen(nn.Module):
         def __init__(self):
@@ -559,7 +573,8 @@ def load_model(path: Path, device: str):
 def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr: float, workers: int, max_scans: int | None, edge_weight: float,
           template: str = "sphere", init: Path | None = None, lap_weight: float = 0.0, rim_weight: float = 1.0,
           antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0,
-          extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None, margin: bool = False) -> dict:
+          extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None, margin: bool = False,
+          compile: bool = False) -> dict:
     import torch
 
     torch.manual_seed(0)
@@ -604,6 +619,39 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         val = evaluate(model, dv, device)
         best = score(val)
         print(json.dumps({"epoch": 0, "val_chamfer_mm": round(val["chamfer_mm"], 4), "val_rim_mm": round(val["rim_mm"], 4), "note": "起点"}), flush=True)
+    def step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m):  # 前向 + 损失 → (loss, 形状损失)
+        if margin:
+            pred = model(ctx, ctx_idx, cls, ant if antagonist else None, has_ant if antagonist else None, rim_in, has_m)
+        else:
+            pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
+        cd = chamfer(pred, gt).mean()
+        if extent_weight or gap_weight:  # 整体形状：外形尺寸 / 高度、和邻牙的间隙都向真牙看齐
+            extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
+            cd = cd + extent_weight * extent.mean() + gap_weight * gap.mean()
+        if antagonist and has_ant.sum() > 0 and (pen_weight or clear_weight):
+            sd = antagonist_distance(pred, ant)
+            if pen_weight:  # 穿进对颌的部分：按穿入深度罚（对所有顶点取平均）
+                cd = cd + pen_weight * (torch.relu(-sd).mean(dim=1) * has_ant).sum() / has_ant.sum()
+            if clear_weight:
+                # 只罚穿入的话模型学会的是“躲开对颌”（留缝）。再要求离对颌最近的地方和真牙一样近：
+                # 生成牙到对颌的最小距离（软最小值）对齐真牙到对颌的最小距离
+                soft = -0.02 * torch.logsumexp(-torch.where(torch.isfinite(sd), sd, torch.full_like(sd, 3.0)) / 0.02, dim=1)
+                real = antagonist_distance(gt, ant).min(dim=1)[0]
+                ok = (torch.isfinite(real) & (has_ant > 0)).float()
+                real = torch.where(torch.isfinite(real), real, torch.zeros_like(real)).clamp(-0.3, 1.0)
+                cd = cd + clear_weight * ((soft - real).abs() * ok).sum() / ok.sum().clamp(min=1)
+        if rim_weight and len(model.boundary):  # 模板的边界环对齐真牙的边界环，否则穹顶会折回去变成双层
+            cd = cd + rim_weight * chamfer(pred[:, model.boundary], rim).mean()
+        e = pred[:, model.edges[:, 0]] - pred[:, model.edges[:, 1]]
+        loss = cd + edge_weight * (e**2).sum(dim=-1).mean()
+        if lap_weight:
+            loss = loss + lap_weight * (model.laplacian(pred) ** 2).sum(dim=-1).mean()
+        return loss, cd
+
+    if compile:  # 前向 + 损失一起编译（第一步编译约 1 分钟）；邻域卷积换成等价的快写法
+        for e in (model.e1, model.e2, model.e3):
+            e.fast = True
+        step_fn = torch.compile(step_fn)
     for epoch in range(1, epochs + 1):
         model.train()
         total, n = 0.0, 0
@@ -612,31 +660,10 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
             ant, has_ant = ant.to(device), has_ant.to(device)
             if margin:  # 颈缘线 = 真牙的边界环 + 扰动，一部分样本不给
                 has_m = (torch.rand(len(rim), device=device) > MARGIN_DROP).float()
-                pred = model(ctx, ctx_idx, cls, ant if antagonist else None, has_ant if antagonist else None, jitter_rim(rim), has_m)
+                rim_in = jitter_rim(rim)
             else:
-                pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
-            cd = chamfer(pred, gt).mean()
-            if extent_weight or gap_weight:  # 整体形状：外形尺寸 / 高度、和邻牙的间隙都向真牙看齐
-                extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
-                cd = cd + extent_weight * extent.mean() + gap_weight * gap.mean()
-            if antagonist and has_ant.sum() > 0 and (pen_weight or clear_weight):
-                sd = antagonist_distance(pred, ant)
-                if pen_weight:  # 穿进对颌的部分：按穿入深度罚（对所有顶点取平均）
-                    cd = cd + pen_weight * (torch.relu(-sd).mean(dim=1) * has_ant).sum() / has_ant.sum()
-                if clear_weight:
-                    # 只罚穿入的话模型学会的是“躲开对颌”（留缝）。再要求离对颌最近的地方和真牙一样近：
-                    # 生成牙到对颌的最小距离（软最小值）对齐真牙到对颌的最小距离
-                    soft = -0.02 * torch.logsumexp(-torch.where(torch.isfinite(sd), sd, torch.full_like(sd, 3.0)) / 0.02, dim=1)
-                    real = antagonist_distance(gt, ant).min(dim=1)[0]
-                    ok = (torch.isfinite(real) & (has_ant > 0)).float()
-                    real = torch.where(torch.isfinite(real), real, torch.zeros_like(real)).clamp(-0.3, 1.0)
-                    cd = cd + clear_weight * ((soft - real).abs() * ok).sum() / ok.sum().clamp(min=1)
-            if rim_weight and len(model.boundary):  # 模板的边界环对齐真牙的边界环，否则穹顶会折回去变成双层
-                cd = cd + rim_weight * chamfer(pred[:, model.boundary], rim).mean()
-            e = pred[:, model.edges[:, 0]] - pred[:, model.edges[:, 1]]
-            loss = cd + edge_weight * (e**2).sum(dim=-1).mean()
-            if lap_weight:
-                loss = loss + lap_weight * (model.laplacian(pred) ** 2).sum(dim=-1).mean()
+                has_m = rim_in = None
+            loss, cd = step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -1030,6 +1057,7 @@ def main() -> None:
     t.add_argument("--gap-weight", type=float, default=0.0, help="到近中 / 远中邻牙的最小距离对齐真牙")
     t.add_argument("--lib-template", type=Path, help="每个牙位的库牙模板（lib_template.py build 生成）")
     t.add_argument("--margin", action="store_true", help="加颈缘线分支（预备体牙冠用）：训练时用真牙的边界环 + 扰动")
+    t.add_argument("--compile", action="store_true", help="torch.compile 前向和损失（约快 1.5 倍；结果只差浮点舍入）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
     e.add_argument("--cache", type=Path, required=True)
@@ -1046,7 +1074,8 @@ def main() -> None:
         train(args.cache, args.out, args.epochs, args.batch_size, args.lr, args.workers, args.max_scans, args.edge_weight,
               template=args.template, init=args.init, lap_weight=args.lap_weight, rim_weight=args.rim_weight,
               antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight,
-              extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template, margin=args.margin)
+              extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template, margin=args.margin,
+              compile=args.compile)
     else:
         run_eval(args.model, args.cache, args.out, args.batch_size, args.samples, args.hide_antagonist)
 
