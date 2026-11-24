@@ -315,6 +315,12 @@ def make_sample(fdi: np.ndarray, pts: np.ndarray, rim: np.ndarray, t: int, rng: 
             a6.astype(np.float32), np.float32(has_ant), nb.astype(np.float32), has_nb)
 
 
+def _is_target(scan, t: int) -> bool:
+    """能当生成目标的牙：不是第三磨牙；缓存指定了目标牙（target）时只要那一颗。"""
+    only = scan[5] if len(scan) > 5 else None
+    return scan[1][t] % 10 <= 7 and (only is None or int(scan[1][t]) == only)
+
+
 def load_cache(cache: Path | list[Path]):
     """一个或几个缓存目录。每个扫描：(名字, fdi, pts, rim, 对颌点 (K,6) 或 None)。"""
     scans = []
@@ -322,8 +328,9 @@ def load_cache(cache: Path | list[Path]):
         for f in sorted(Path(c).glob("*.npz")):
             with np.load(f) as d:
                 ant = d["ant"].astype(np.float32) if "ant" in d.files and len(d["ant"]) else None
-                scans.append((f.stem, d["fdi"].astype(np.int64), d["pts"].astype(np.float32), d["rim"].astype(np.float32), ant))
-    items = [(s, t) for s, sc in enumerate(scans) for t in range(len(sc[1])) if sc[1][t] % 10 <= 7]
+                only = int(d["target"]) if "target" in d.files else None  # 只把这颗牙当目标（如真实预备体数据里的 16 号）
+                scans.append((f.stem, d["fdi"].astype(np.int64), d["pts"].astype(np.float32), d["rim"].astype(np.float32), ant, only))
+    items = [(s, t) for s, sc in enumerate(scans) for t in range(len(sc[1])) if _is_target(sc, t)]
     return scans, items
 
 
@@ -562,7 +569,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     order = np.random.default_rng(0).permutation(len(scans))
     n_val = max(1, int(len(scans) * 0.05))
     val_set = set(order[:n_val].tolist())
-    items = [(s, t) for s, sc in enumerate(scans) for t in range(len(sc[1])) if sc[1][t] % 10 <= 7]
+    items = [(s, t) for s, sc in enumerate(scans) for t in range(len(sc[1])) if _is_target(sc, t)]
     tr =[it for it in items if it[0] not in val_set]
     va = [it for it in items if it[0] in val_set]
     print(json.dumps({"train_scans": len(scans) - n_val, "val_scans": n_val, "train_samples": len(tr), "val_samples": len(va), "device": device}), flush=True)
