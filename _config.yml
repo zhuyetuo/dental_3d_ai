@@ -1,0 +1,5 @@
+# GitHub Pages（Jekyll）构建配置。
+# docker/venv-shim/bin/python* 是指向容器里 /opt/conda 的符号链接，在 Pages 的构建环境里不存在，Jekyll 扫到会整体失败（11-24 第 56 次构建）。
+# 网站用不到 docker/，直接跳过。
+exclude:
+  - docker
