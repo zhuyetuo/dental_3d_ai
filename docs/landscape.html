@@ -70,7 +70,7 @@ td.w{white-space:normal;min-width:260px}
       <tr><td>2026-06</td><td>生成</td><td>深度谱模型（arXiv 2606.31293）</td><td class="w">ToothForge 的后续，形状生成更稳健</td></tr>
       <tr><td>2026-08</td><td>分割</td><td>TeethSplineSeg（B 样条牙弓坐标）</td><td class="w">PTv3 + 牙弓连续坐标，T-mIoU 92.6%，训练 2 小时、推理 0.8 秒</td></tr>
       <tr><td>2026</td><td>产业</td><td>exocad DentalCAD 3.3</td><td class="w">AI 支持最多 3 颗相邻后牙冠 / 3 单位桥，加上咬合垫 AI</td></tr>
-      <tr><td>—</td><td>生成</td><td>CrownFusion（项目页 crownfusion.github.io）</td><td class="w">扩散模型生成牙冠；我们的径向深度图表示参考了它的“把 3D 牙冠变成 2形状模型的图再用图像扩散”的思路</td></tr>
+      <tr><td>2026</td><td>生成</td><td>CrownFusion（MICCAI 2026，github.com/JohanYe/CrownFusion，MIT；数据 FDI 16 Crown Dataset）</td><td class="w">技师牙冠（只有 16 号牙）展成 3 通道几何图（调和参数化），微调的 FLUX VAE + SiT 潜空间扩散，条件 = 预备体 + 颈缘 + 15/17 + 对颌 45–47 的点云（3DShape2VecSet 编码，交叉注意力）。测试集 CD-L2 0.412 mm（VBCD 0.353、DMC 0.433），8 个方案约 5 分钟（4090）。<b>只放了训练代码，没有权重、没有推理脚本</b>。我们的形状模型在同一测试集 0.445 mm（中位 0.417），不到 1 秒；我们的径向深度图扩散也参考了它“3D 牙冠变成 2D 图再用图像扩散”的思路</td></tr>
     </table></div>
   </section>
 

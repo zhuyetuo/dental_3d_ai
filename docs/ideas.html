@@ -63,6 +63,7 @@ td.w{white-space:normal;min-width:240px}
       已有的学习式颈缘线模型（单独代型上训的）还没接进流程，先在模拟预备体评分卡上比</td><td class="cost">接入 + 评估半天</td></tr>
       <tr><td>预备体牙冠外表面用形状模型 + 扩散</td><td><span class="state">做了一半</span></td><td class="w">PREP_OUTER=learned：整体形状好 16%、高度更准，但牙尖位置比镜像对侧牙差（0.92 vs 0.75），且会碰到对颌（−0.02 mm）。
       可以试：牙尖用对侧牙、整体用模型；查清咬合调整为什么对它不起作用</td><td class="cost">半天</td></tr>
+      <tr><td>借鉴 CrownFusion（11-24 读过代码）</td><td><span class="state">待做</span></td><td class="w">没有权重，要用只能自己按它的代码训（FLUX VAE + SiT，作者自己说多卡同步有 bug、超参没调），成本高、收益不确定（它 0.412 mm，比 VBCD 0.353 差）。值得拿过来的：① 评测加它的咬合指标（最近 10% 点到对颌的平均距离、1000 点里穿进对颌的点数和面积），和论文能直接对比；② 条件里加对颌的两颗邻牙（45、47），不只是缺隙正上方那一块；③ 几何图用调和参数化代替径向投影（侧面不再被压扁，细节库/扩散的贴图更均匀）；④ 一次出多个方案让医生挑（我们的扩散细节已经能多次采样）。同一测试集上真正更好的是 VBCD（体素粗到细），更值得细看</td><td class="cost">① 半天 ② 1 天 ③ 2–3 天</td></tr>
       <tr><td>预备体牙冠外表面：颈缘线当生成条件</td><td><span class="state">待做</span></td><td class="w">现在颈缘线只在后面的几何步骤里用，生成模型不知道牙冠底边在哪、该多高，可能是牙尖位置差、碰对颌的原因之一。参考蒙特利尔理工 Golriz 团队的 shellGeneration（github.com/Golriz-code/shellGeneration，DMC 的前作），把颈缘线 / 预备体形状编码后作为条件输入。模拟预备体数据已经有了，可直接训（11-19 记）</td><td class="cost">改输入 + 重训约 1 天</td></tr>
       <tr><td>扩散模型接着训（v2）</td><td><span class="state mid">暂停</span></td><td class="w">v1 只训了 30 轮，损失还在降。v2 从 v1 接着训，11-15 训到第 10 轮时暂停，GPU 让给“看着形状模型补细节的扩散”。
       检查点在服务器 runs/radial_diffusion_v2/model_paused.pt，用 --init 接着训</td><td class="cost">剩 30 轮约 2.5 小时；可能要 100 小时以上才饱和</td></tr>
