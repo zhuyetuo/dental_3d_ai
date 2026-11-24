@@ -27,3 +27,4 @@ demo/local/
 runs/
 third_party/
 .venv-tgnet/
+models/generation/radial_cf16.pt
