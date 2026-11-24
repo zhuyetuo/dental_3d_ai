@@ -13,6 +13,8 @@ export interface MissingTooth {
 }
 
 export interface GeneratedTooth {
+  /** 预备体牙冠：颈缘线以内的预备体表面（result/ 下的文件名），看贴合用 */
+  prep_file?: string;
   fdi: number;
   file: string;
   method: string;

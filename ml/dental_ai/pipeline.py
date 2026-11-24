@@ -178,9 +178,13 @@ def run(
             continue
         name = f"crown_{fdi}.stl"
         crown.mesh.export(out / name)
+        prep_file = {}
+        if crown.die is not None and len(crown.die.faces):  # 预备体单独存一份：网页上看牙冠和预备体的贴合
+            crown.die.export(out / f"prep_{fdi}.stl")
+            prep_file = {"prep_file": f"prep_{fdi}.stl"}
         report["warnings"] += crown.warnings
         report["generated"].append(
-            {"fdi": fdi, "file": name, "method": "prep_crown", "watertight": bool(crown.mesh.is_watertight), **crown.info}
+            {"fdi": fdi, "file": name, "method": "prep_crown", "watertight": bool(crown.mesh.is_watertight), **prep_file, **crown.info}
         )
     for target in missing:
         if target.kind == "closed":

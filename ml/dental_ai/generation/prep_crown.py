@@ -40,6 +40,7 @@ class PrepCrown:
     mesh: trimesh.Trimesh
     info: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    die: trimesh.Trimesh | None = None  # 颈缘线以内的预备体表面（网页上看贴合用）
 
 
 @dataclass
@@ -390,4 +391,4 @@ def generate_prep_crown(
         "contacts_mm": {str(k): v for k, v in contacts.items()},
         **occlusion,
     }
-    return PrepCrown(fdi=fdi, mesh=crown, info=info, warnings=warnings)
+    return PrepCrown(fdi=fdi, mesh=crown, info=info, warnings=warnings, die=die)

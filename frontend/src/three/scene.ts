@@ -119,6 +119,80 @@ export interface Overlays {
   showTags?: boolean;
   /** 只看生成的牙（和原始牙）：牙弓、对颌都藏起来 */
   isolate?: boolean;
+  /** 预备体（颈缘线以内的预备体表面，prep_<牙号>.stl）：牙弓藏起来时单独显示，并排时原始牙下面也放一份 */
+  prepUrls?: string[];
+  /** 牙冠不透明度（1 = 实心；调低能透过牙冠看预备体） */
+  crownOpacity?: number;
+  /** 预备体按到生成牙冠的间隙上色（看贴合） */
+  fitHeat?: boolean;
+  /** 剖面：null = 不剖；-1…1 = 剖切面在牙冠里的位置（垂直于视线，切掉靠近相机的一半） */
+  section?: number | null;
+}
+
+const PREP_COLOR = 0xe9dccb;
+
+/** 预备体每个顶点到生成牙冠（世界坐标顶点）最近点的距离 → 颜色：绿 ≤ 0.1 mm，黄 0.3 mm，红 ≥ 0.5 mm。 */
+function colorByGap(prep: THREE.Mesh, crown: THREE.Mesh) {
+  const pos = prep.geometry.getAttribute("position");
+  const cp = crown.geometry.getAttribute("position");
+  const off = crown.position;
+  // 牙冠顶点按 1 mm 网格分桶，每个预备体顶点只查附近 27 个桶
+  const cell = 1.0;
+  const buckets = new Map<string, number[]>();
+  const key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  for (let j = 0; j < cp.count; j++) {
+    const x = cp.getX(j) + off.x, y = cp.getY(j) + off.y, z = cp.getZ(j) + off.z;
+    const k = key(x, y, z);
+    let b = buckets.get(k);
+    if (!b) buckets.set(k, (b = []));
+    b.push(x, y, z);
+  }
+  const colors = new Float32Array(pos.count * 3);
+  const stops: [number, number[]][] = [[0.1, [0.24, 0.86, 0.59]], [0.3, [1.0, 0.86, 0.3]], [0.5, [0.95, 0.25, 0.22]]];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + prep.position.x, y = pos.getY(i) + prep.position.y, z = pos.getZ(i) + prep.position.z;
+    const cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
+    let best = Infinity;
+    for (let a = -1; a <= 1; a++)
+      for (let b2 = -1; b2 <= 1; b2++)
+        for (let c = -1; c <= 1; c++) {
+          const arr = buckets.get(`${cx + a},${cy + b2},${cz + c}`);
+          if (!arr) continue;
+          for (let j = 0; j < arr.length; j += 3) {
+            const dx = arr[j] - x, dy = arr[j + 1] - y, dz = arr[j + 2] - z;
+            const d = dx * dx + dy * dy + dz * dz;
+            if (d < best) best = d;
+          }
+        }
+    const d = Math.sqrt(best);
+    let col = stops[2][1];
+    if (d <= stops[0][0]) col = stops[0][1];
+    else
+      for (let k = 1; k < stops.length; k++)
+        if (d <= stops[k][0]) {
+          const t = (d - stops[k - 1][0]) / (stops[k][0] - stops[k - 1][0]);
+          col = stops[k - 1][1].map((v, n) => v + (stops[k][1][n] - v) * t);
+          break;
+        }
+    colors.set(col, i * 3);
+  }
+  prep.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const m = prep.material as THREE.MeshStandardMaterial;
+  m.vertexColors = true;
+  m.color.set(0xffffff);
+  m.needsUpdate = true;
+}
+
+function prepMesh(geometry: THREE.BufferGeometry): THREE.Mesh {
+  geometry.computeVertexNormals();
+  // 预备体和牙弓网格里的同一块表面重合：往前挪一点深度，不闪
+  const material = new THREE.MeshStandardMaterial({
+    color: PREP_COLOR, roughness: 0.55, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData = { prep: true };
+  mesh.raycast = () => {};
+  return mesh;
 }
 
 /** 生成牙的每个顶点到原始牙最近顶点的距离 → 顶点颜色：绿 ≤ 0.2 mm，黄 0.5 mm，红 ≥ 1 mm；超过 1.5 mm 的（封底部分，原始牙没有）灰色。 */
@@ -195,6 +269,10 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
   const showTags = props.showTags ?? true;
   const isolate = props.isolate ?? false;
   const sideGap = props.sideGap ?? 3;
+  const prepUrls = props.prepUrls;
+  const crownOpacity = props.crownOpacity ?? 1;
+  const fitHeat = props.fitHeat ?? false;
+  const section = props.section ?? null;
   useEffect(() => {
     const group = ctx.current?.overlays;
     if (!group) return;
@@ -219,36 +297,81 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
           })
         : null;
 
+    const renderer = ctx.current?.renderer;
+    const camera = ctx.current?.camera;
+    const see = crownOpacity < 1 || section !== null; // 透明或剖开时两面都画，能看到牙冠内表面
+    const generatedByFdi = new Map<string, Promise<THREE.Mesh>>();
     for (const url of compare === "original" ? [] : generatedUrls) {
-      loadGeometry(url).then((geometry) => {
-        if (cancelled) return;
+      const fdiText = /(?:tooth|crown)_(\d+)\.stl/.exec(url)?.[1] ?? "";
+      const p = loadGeometry(url).then((geometry) => {
         geometry.computeVertexNormals();
         // 几何中心移到原点、网格放回原位：手动调整（旋转、缩放）时绕牙自己的中心转
         geometry.computeBoundingBox();
         const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
         geometry.translate(-center.x, -center.y, -center.z);
-        const material = new THREE.MeshStandardMaterial({ color: GENERATED_COLOR, emissive: 0x0a4a55, roughness: 0.3, metalness: 0.05 });
+        const material = new THREE.MeshStandardMaterial({
+          color: GENERATED_COLOR, emissive: 0x0a4a55, roughness: 0.3, metalness: 0.05,
+          transparent: crownOpacity < 1, opacity: crownOpacity, depthWrite: crownOpacity >= 1, side: see ? THREE.DoubleSide : THREE.FrontSide,
+        });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.copy(center);
-        const fdi = Number(/(?:tooth|crown)_(\d+)\.stl/.exec(url)?.[1] ?? NaN);
+        const fdi = Number(fdiText || NaN);
         mesh.userData = { generated: true, fdi, url, center: center.clone() };
+        if (cancelled) return mesh;
         group.add(mesh);
         if (showTags && Number.isFinite(fdi)) group.add(makeTag(`生成 ${fdi}`, center, "#19d3e6"));
         originalPoints?.then((points) => {
           if (!cancelled) colorByDeviation(mesh, center, points);
         });
+        if (renderer && section !== null && camera) {
+          // 剖切面垂直于视线、过牙冠中心（再按滑条前后移），切掉靠近相机的一半
+          geometry.computeBoundingSphere();
+          const dir = camera.getWorldDirection(new THREE.Vector3());
+          const at = center.clone().addScaledVector(dir, section * geometry.boundingSphere!.radius);
+          renderer.clippingPlanes = [new THREE.Plane(dir, -dir.dot(at))];
+        }
+        return mesh;
+      });
+      if (fdiText) generatedByFdi.set(fdiText, p);
+    }
+    if (renderer && section === null) renderer.clippingPlanes = [];
+    // 预备体：牙弓藏起来时单独显示（看贴合时也显示，按间隙上色）；并排时原始牙下面放一份
+    const sideOffset = new Map<string, Promise<THREE.Vector3>>();
+    for (const url of prepUrls ?? []) {
+      const fdiText = /prep_(\d+)\.stl/.exec(url)?.[1] ?? "";
+      const inPlace = hideArch || fitHeat || crownOpacity < 1 || section !== null || compare === "original";
+      if (!inPlace && compare !== "side") continue;
+      loadGeometry(url).then((geometry) => {
+        if (cancelled) return;
+        if (inPlace) {
+          const mesh = prepMesh(geometry);
+          group.add(mesh);
+          const gen = generatedByFdi.get(fdiText);
+          if (fitHeat && gen) gen.then((crown) => !cancelled && colorByGap(mesh, crown));
+        }
+        if (compare === "side") {
+          const copy = prepMesh(geometry.clone());
+          sideOffset.get(fdiText)?.then((v) => {
+            if (cancelled) return;
+            copy.position.copy(v);
+            group.add(copy);
+          });
+        }
       });
     }
     if (compare === "overlay" || compare === "original" || compare === "side") {
       // 示例里被去掉的真牙（或技师设计的牙冠）：overlay 半透明金色叠在生成的牙上；original 只看它；side 挪到旁边并排
-      const camera = (ctx.current as unknown as { camera?: THREE.Camera }).camera;
       for (const url of originalUrls ?? []) {
+        const fdiKey = /original_(\d+)/.exec(url)?.[1] ?? "";
+        let setOffset: (v: THREE.Vector3) => void = () => {};
+        sideOffset.set(fdiKey, new Promise((resolve) => (setOffset = resolve)));
         loadGeometry(url).then((geometry) => {
           if (cancelled) return;
           geometry.computeVertexNormals();
           const solid = compare !== "overlay";
+          const opacity = solid ? crownOpacity : 0.6;
           const material = new THREE.MeshStandardMaterial({
-            color: ORIGINAL_COLOR, roughness: 0.4, side: THREE.DoubleSide, transparent: !solid, opacity: solid ? 1 : 0.6,
+            color: ORIGINAL_COLOR, roughness: 0.4, side: THREE.DoubleSide, transparent: opacity < 1, opacity, depthWrite: opacity >= 1,
           });
           const mesh = new THREE.Mesh(geometry, material);
           mesh.userData = { original: true };
@@ -264,6 +387,7 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
             const width = Math.abs(size.x * right.x) + Math.abs(size.y * right.y) + Math.abs(size.z * right.z);
             mesh.position.copy(right.multiplyScalar(width + sideGap));
           }
+          setOffset(mesh.position.clone());
           group.add(mesh);
           const fdi = /original_(\d+)/.exec(url)?.[1];
           if (showTags && compare !== "overlay") group.add(makeTag(`原始 ${fdi ?? ""}`.trim(), center.clone().add(mesh.position), "#ffc857"));
@@ -295,5 +419,6 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
     return () => {
       cancelled = true;
     };
-  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, antagonistOpacity, originalUrls, compare, showTags, isolate, sideGap]);
+  }, [ctx, generatedUrls, cervicalLines, showCervical, antagonistUrl, antagonistOpacity, originalUrls, compare, showTags, isolate, sideGap,
+      prepUrls, crownOpacity, fitHeat, section]);
 }

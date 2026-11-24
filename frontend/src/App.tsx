@@ -32,6 +32,10 @@ export function App() {
   const [compare, setCompare] = useState<Compare>("off");
   /** 并排对比时原始牙和生成的牙之间的间隔（mm） */
   const [sideGap, setSideGap] = useState(3);
+  /** 预备体牙冠：牙冠不透明度、预备体按间隙上色、剖面位置（null = 不剖） */
+  const [crownOpacity, setCrownOpacity] = useState(1);
+  const [fitHeat, setFitHeat] = useState(false);
+  const [section, setSection] = useState<number | null>(null);
   const [showTags, setShowTags] = useState(true);
   const [isolate, setIsolate] = useState(false);
   /** 第 2 步里勾选的、要生成的缺失牙 */
@@ -212,6 +216,14 @@ export function App() {
         : [],
     [current?.id],
   );
+  const prepUrls = useMemo(
+    () =>
+      current?.status === "done"
+        ? current.report!.generated.filter((g) => g.prep_file).map((g) => api.fileUrl(current.id, `result/${g.prep_file}`, version))
+        : [],
+    [current?.id, current?.status, version],
+  );
+  const fitView = fitHeat && crownOpacity < 1;
   const report = current?.report;
   const running = current ? ["queued", "running"].includes(current.status) : false;
   return (
@@ -491,6 +503,37 @@ export function App() {
                     </select>
                   </label>
                 )}
+                {prepUrls.length > 0 && (
+                  <fieldset className="fit">
+                    <legend>预备体贴合</legend>
+                    <label className="inline">
+                      牙冠不透明度 {Math.round(crownOpacity * 100)}%
+                      <input type="range" min={0.15} max={1} step={0.05} value={crownOpacity} onChange={(e) => setCrownOpacity(Number(e.target.value))} />
+                    </label>
+                    <label className="inline">
+                      <input type="checkbox" checked={fitHeat} onChange={(e) => setFitHeat(e.target.checked)} />
+                      预备体按到生成牙冠的间隙上色
+                    </label>
+                    {fitHeat && (
+                      <ul className="legend">
+                        <li><i style={{ background: "#3ddc97" }} />间隙 ≤ 0.1 mm</li>
+                        <li><i style={{ background: "#ffdb4d" }} />0.3 mm</li>
+                        <li><i style={{ background: "#f24038" }} />≥ 0.5 mm（贴不上 / 有缝）</li>
+                      </ul>
+                    )}
+                    <label className="inline">
+                      <input type="checkbox" checked={section !== null} onChange={(e) => setSection(e.target.checked ? 0 : null)} />
+                      剖面（垂直于视线切开，看粘接间隙、冠厚度、颈缘对接）
+                    </label>
+                    {section !== null && (
+                      <label className="inline">
+                        剖切位置
+                        <input type="range" min={-0.9} max={0.9} step={0.05} value={section} onChange={(e) => setSection(Number(e.target.value))} />
+                      </label>
+                    )}
+                    <p className="note">剖面按当前视角切；转了视角后拖一下剖切位置就按新方向切。</p>
+                  </fieldset>
+                )}
                 {originalUrls.length > 0 && compare === "side" && (
                   <label className="inline">
                     并排间隔 {sideGap} mm
@@ -569,6 +612,10 @@ export function App() {
             originalUrls={originalUrls}
             compare={compare}
             sideGap={sideGap}
+            prepUrls={prepUrls}
+            crownOpacity={crownOpacity}
+            fitHeat={fitHeat}
+            section={section}
             showTags={showTags}
             isolate={isolate}
           />
@@ -593,6 +640,29 @@ export function App() {
             <button type="button" className={isolate ? "on" : ""} onClick={() => setIsolate(!isolate)} title="隐藏牙弓和对颌，只留生成的牙">
               只看生成牙：{isolate ? "开" : "关"}
             </button>
+            {prepUrls.length > 0 && (
+              <button
+                type="button"
+                className={fitView ? "on" : ""}
+                onClick={() => {
+                  setFitHeat(!fitView);
+                  setCrownOpacity(fitView ? 1 : 0.4);
+                }}
+                title="牙冠变半透明、预备体按间隙上色：看牙冠和预备体贴得怎么样"
+              >
+                看贴合：{fitView ? "开" : "关"}
+              </button>
+            )}
+            {prepUrls.length > 0 && (
+              <button
+                type="button"
+                className={section !== null ? "on" : ""}
+                onClick={() => setSection(section === null ? 0 : null)}
+                title="垂直于视线把牙冠和预备体切开（左侧可以拖剖切位置）"
+              >
+                剖面：{section === null ? "关" : "开"}
+              </button>
+            )}
             {originalUrls.length > 0 && (
               <button
                 type="button"

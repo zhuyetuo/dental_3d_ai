@@ -77,9 +77,11 @@ def build(model, d: Path, out: Path, device: str) -> dict:
         pc = generate_prep_crown(mesh, labels, "upper", 16, margin, np.array([0.0, 1.0, 0.0]), antagonist=antagonist,
                                  outer_generator=Fixed(outer))
         solid, info, warnings = pc.mesh, pc.info, pc.warnings
+        (pc.die if pc.die is not None else prep).export(out / "result" / "prep_16.stl")
     except (LookupError, ValueError) as exc:  # 局部牙弓上缺牙检测等步骤不一定能跑：退回只给外表面
         warnings = [f"完整预备体牙冠没生成（{exc}），只显示形状模型的外表面"]
         solid, info = outer, {}
+        prep.export(out / "result" / "prep_16.stl")
     solid.export(out / "result" / "crown_16.stl")
     from dental_ai.io import export_colored_ply
 
@@ -92,7 +94,7 @@ def build(model, d: Path, out: Path, device: str) -> dict:
     report = {
         "jaw": "upper", "segmenter": "数据集标注", "teeth": [15, 16, 17], "missing": [], "orientation": None, "numbering": None,
         "warnings": warnings + ["局部牙弓（FDI 16 Crown Dataset 真实预备体），结果是离线用线上同一个形状模型算好的；“原始牙”= 技师设计的牙冠"],
-        "generated": [{"fdi": 16, "file": "crown_16.stl", "method": "prep_crown", "watertight": bool(solid.is_watertight),
+        "generated": [{"fdi": 16, "file": "crown_16.stl", "method": "prep_crown", "watertight": bool(solid.is_watertight), "prep_file": "prep_16.stl",
                        "source": "形状模型（预备体表面 + 颈缘线 + 对颌）", **{k: v for k, v in info.items() if isinstance(v, (int, float, str, bool))}}],
         "margins": {"16": {"source": "数据集（预备体网格开边界）", "confidence": None, "method": "dataset"}},
         "comparison": {"16": {"mean_mm": round(float(dist.mean()), 3), "median_mm": round(float(np.median(dist)), 3),
