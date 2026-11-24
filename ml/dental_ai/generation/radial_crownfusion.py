@@ -142,7 +142,7 @@ def detail_stats(pred, gt, sigma=6.0):
 
 def evaluate(data: Path, model_path: Path | None, out: Path, steps: int, refine: float | None, keep_sigma: float | None, limit: int | None,
              save: int, root: Path, clearance: float | None = None, split: str = "test", blend: float | None = None,
-             detail_gain: float = 1.0) -> dict:
+             detail_gain: float = 1.0, n_samples: int = 1) -> dict:
     """测试集：D 自己 / 扩散模型补完的牙冠，和技师牙冠比（深度图逐像素 + 网格距离 + 细节）。"""
     import torch
     from scipy.spatial import cKDTree
@@ -175,11 +175,15 @@ def evaluate(data: Path, model_path: Path | None, out: Path, steps: int, refine:
             from .learned import target_class
 
             cls = torch.full((len(ok),), target_class(16), device=device)
-            with torch.no_grad():
-                x = sample(model, cond, cls, steps, g, ant=ant if clearance is not None else None, clearance=clearance,
-                           init=d_enc if refine is not None else None, strength=refine or 1.0,
-                           keep_sigma=keep_sigma, base=d_enc if getattr(model, "residual", False) else None)
-            preds["diff"] = decode_tooth(x)
+            outs = []
+            for _ in range(n_samples):  # 几次采样取平均：接近“最可能的沟在哪”，位置更准、幅度变小（再用 detail_gain 放大）
+                with torch.no_grad():
+                    x = sample(model, cond, cls, steps, g, ant=ant if clearance is not None else None, clearance=clearance,
+                               init=d_enc if refine is not None else None, strength=refine or 1.0,
+                               keep_sigma=keep_sigma, base=d_enc if getattr(model, "residual", False) else None)
+                outs.append(decode_tooth(x))
+            st = torch.stack(outs)
+            preds["diff"] = torch.where((st > 0).all(0), st.mean(0), outs[0])
             if blend:  # 大尺度形状完全用 D 的，只叠扩散模型的细节（各自减去自己的低通）
                 from .radial_diffusion import lowpass
 
@@ -249,13 +253,14 @@ def main() -> None:
     e.add_argument("--split", default="test", help="调参用 val，最后的数字用 test")
     e.add_argument("--blend", type=float, help="大尺度用 D、细节用扩散模型的分界（低通 σ，像素）")
     e.add_argument("--detail-gain", type=float, default=1.0, help="和 --blend 一起：细节乘这个倍数")
+    e.add_argument("--n-samples", type=int, default=1, help="每颗牙采样几次取平均")
     e.add_argument("--clearance", type=float, help="采样时每一步把牙冠限制在离对颌至少这么远（mm）")
     a = ap.parse_args()
     if a.cmd == "cache":
         print("cached", cache(a.data, a.split, a.gen_model, a.workers, a.root))
     else:
         print(json.dumps(evaluate(a.data, a.model, a.out, a.steps, a.refine, a.keep_sigma, a.limit, a.save, a.root, a.clearance, a.split,
-                                  a.blend, a.detail_gain),
+                                  a.blend, a.detail_gain, a.n_samples),
                          ensure_ascii=False))
 
 
