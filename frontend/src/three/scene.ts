@@ -337,10 +337,11 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
     if (renderer && section === null) renderer.clippingPlanes = [];
     // 预备体：牙弓藏起来时单独显示（看贴合时也显示，按间隙上色）；并排时原始牙下面放一份
     const sideOffset = new Map<string, Promise<THREE.Vector3>>();
+    const sideMode: boolean = compare === "side";
     for (const url of prepUrls ?? []) {
       const fdiText = /prep_(\d+)\.stl/.exec(url)?.[1] ?? "";
-      const inPlace = hideArch || fitHeat || crownOpacity < 1 || section !== null || compare === "original";
-      if (!inPlace && compare !== "side") continue;
+      const inPlace: boolean = hideArch || fitHeat || crownOpacity < 1 || section !== null || compare === "original";
+      if (!inPlace && !sideMode) continue;
       loadGeometry(url).then((geometry) => {
         if (cancelled) return;
         if (inPlace) {
@@ -349,7 +350,7 @@ export function useOverlays(ctx: RefObject<SceneContext | null>, props: Overlays
           const gen = generatedByFdi.get(fdiText);
           if (fitHeat && gen) gen.then((crown) => !cancelled && colorByGap(mesh, crown));
         }
-        if (compare === "side") {
+        if (sideMode) {
           const copy = prepMesh(geometry.clone());
           sideOffset.get(fdiText)?.then((v) => {
             if (cancelled) return;
