@@ -275,7 +275,7 @@ class DetailLibrary:
         if best is None or best[0] > self.max_fit_mm or best[4] > self.max_miss_mm:
             return None  # 没有贴得上的真牙冠：保留网络的平滑牙冠
         c, x, f, i, _ = best
-        return x + center, f, {"detail_source": ["teeth3ds", "fdi16"][int(d["source"][i])], "detail_index": i, "detail_fit_mm": round(c, 3)}
+        return x + center, f, {"detail_source": ["teeth3ds", "fdi16", "technician"][int(d["source"][i])], "detail_index": i, "detail_fit_mm": round(c, 3)}
 
 
 def main() -> None:
