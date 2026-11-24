@@ -64,6 +64,17 @@
     </div>
     <div class="tl" id="tl">
 
+      <div class="ev ok" data-k="gen web"><div class="d">2026-11-24</div>
+        <h3>预备体牙冠的形状模型换成混合训练版，接到网页<span class="tag">牙冠生成</span></h3>
+        <p>从网页原来的颈缘线形状模型接着训 15 轮，设置不变，数据 = 原来的天然牙（Teeth3DS + 咬合口扫）+ FDI 16 真实预备体技师牙冠训练集，共 46564 例，62 分钟。</p>
+        <p>真实预备体测试集 1000 例：距离 1.054 → 0.234 mm（和只用预备体数据训的专用模型一样），CD-L2 0.417 mm，颈缘贴合 0.277 mm。
+        模拟预备体评分卡（60 位患者 114 颗，和原模型并排）：整体形状不变或略好（倒角距离 −0.005 mm，64% 的牙更好），窝的位置更准（−0.16 mm），
+        牙尖位置略差（+0.10 mm）；全自动流程下整体持平。真实预备体上提升很大、模拟上不变坏，所以上线。</p>
+        <p>顺带发现：重启 worker 时只带了 docker-compose.yml，会退回 CPU 版旧镜像（约 5 分钟，期间无任务）；
+        线上 worker 必须用 <code>-f docker-compose.yml -f docker-compose.worker-gpu.yml</code>。已恢复并从最新代码重建。</p>
+        <img src="images/crownfusion_real_prep.png" alt="真实预备体：技师牙冠和形状模型">
+        <p class="num">真实预备体测试集：距离 1.054 → 0.234 mm · 模拟预备体评分卡：倒角距离 0.280 → 0.268 mm · 牙尖 0.86 → 0.82 mm（中位）· 窝 0.72 → 0.58 mm（中位）</p></div>
+
       <div class="ev no" data-k="gen eval"><div class="d">2026-11-24</div>
         <h3>咬合面细节第三轮：技师牙冠细节库——沟是连贯的了，但数字和扩散模型一样<span class="tag">牙冠生成</span></h3>
         <p>9513 个训练集技师牙冠做成细节库（1.7 GB）。形状模型出整体形状，在库里取外形最像的 48 颗，各自缩放、ICP、低频形变贴上去，

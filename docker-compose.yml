@@ -48,7 +48,7 @@ x-backend-common: &backend-common
     PREP_OUTER: learned
     PREP_OUTER_STYLE: natural
     # 预备体牙冠外表面的形状模型：看着颈缘线出整体形状（11-23 预备体评分卡：真值颈缘线时整体形状误差 0.256 → 0.234 mm，70% 的牙变好，咬合、高度、贴合不变）；去掉这一行就和缺失牙用同一个
-    PREP_SHAPE_MODEL: /models/generation/toothgen_margin.pt
+    PREP_SHAPE_MODEL: /models/generation/toothgen_mixed.pt
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:
