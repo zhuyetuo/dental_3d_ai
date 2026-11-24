@@ -74,6 +74,8 @@ def crop_antagonist(ant: np.ndarray | None, origin: np.ndarray, rng: np.random.G
 
 
 MARGIN_DROP = 0.15  # 训练时不给颈缘线的比例
+SOFT_K, SOFT_SIGMA = 32, 0.3  # 软的对颌邻居：取最近 32 个点，距离权重的尺度 mm
+N_PREP, PREP_K, PREP_SIGMA, PREP_DROP = 1024, 16, 0.5, 0.15  # 预备体表面：点数、每个顶点看的邻居数、距离权重尺度 mm、训练时不给的比例
 
 
 def jitter_rim(rim):
@@ -274,8 +276,20 @@ def build_context(fdi: np.ndarray, pts: np.ndarray, target: int, rng: np.random.
     return ctx[pick] - origin, ctx_idx[pick], origin
 
 
+def prep_surface_points(mesh, n: int, seed: int = 0) -> np.ndarray:
+    """预备体表面取 n 个点 + 朝外的法向 (n,6)，网格自己的坐标。"""
+    import trimesh
+
+    p, fi = trimesh.sample.sample_surface(mesh, n, seed=seed)
+    nrm = np.asarray(mesh.face_normals)[fi]
+    if ((p - p.mean(0)) * nrm).sum(1).mean() < 0:  # 法向朝里就翻过来
+        nrm = -nrm
+    return np.concatenate([np.asarray(p), nrm], 1)
+
+
 def make_sample(fdi: np.ndarray, pts: np.ndarray, rim: np.ndarray, t: int, rng: np.random.Generator, drop: bool, augment: bool,
-                ant: np.ndarray | None = None, ant_drop: float = 0.0):
+                ant: np.ndarray | None = None, ant_drop: float = 0.0, prep: np.ndarray | None = None, prep_mode: bool = False,
+                prep_drop: float = 0.0):
     """挖掉第 t 颗牙。返回 ctx (N_CTX,3) mm、ctx_idx (N_CTX,)、目标类别、真牙点 (TOOTH_POINTS,3) mm、真牙边界点 (RIM_POINTS,3) mm、
     对颌点和法向 (N_ANT,6)、有没有对颌；坐标已平移到原点并统一左右。ant 是这个颌缓存的对颌点 (K,6)，没有就是 None。"""
     target = int(fdi[t])
@@ -298,9 +312,16 @@ def make_sample(fdi: np.ndarray, pts: np.ndarray, rim: np.ndarray, t: int, rng: 
     has_ant = a6 is not None
     if a6 is None:
         a6 = np.zeros((N_ANT, 6), np.float32)
+    has_prep = prep is not None and len(prep) > 0 and not (prep_drop and rng.random() < prep_drop)
+    if has_prep:
+        p6 = prep[rng.choice(len(prep), N_PREP, replace=len(prep) < N_PREP)].astype(np.float64)
+        p6[:, :3] -= origin
+    else:
+        p6 = np.zeros((N_PREP, 6))
     if target // 10 in (2, 3):  # 左侧 → 镜像成右侧
         ctx, gt, nb = ctx * [-1, 1, 1], gt * [-1, 1, 1], nb * [-1, 1, 1]
         a6 = a6 * np.array([-1, 1, 1, -1, 1, 1], np.float32)
+        p6 = p6 * np.array([-1, 1, 1, -1, 1, 1])
     if augment:
         a, b, c = np.deg2rad(rng.uniform(-10, 10)), np.deg2rad(rng.uniform(-5, 5)), np.deg2rad(rng.uniform(-5, 5))
         rz = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
@@ -310,9 +331,11 @@ def make_sample(fdi: np.ndarray, pts: np.ndarray, rim: np.ndarray, t: int, rng: 
         m = r * rng.uniform(0.95, 1.05)
         ctx, gt, nb = ctx @ m, gt @ m, nb @ m
         a6 = np.concatenate([a6[:, :3] @ m, a6[:, 3:] @ r], axis=1)
+        p6 = np.concatenate([p6[:, :3] @ m, p6[:, 3:] @ r], axis=1)
     gt = gt.astype(np.float32)
-    return (ctx.astype(np.float32), ctx_idx.astype(np.int64), target_class(target), gt[:TOOTH_POINTS], gt[TOOTH_POINTS:],
-            a6.astype(np.float32), np.float32(has_ant), nb.astype(np.float32), has_nb)
+    out = (ctx.astype(np.float32), ctx_idx.astype(np.int64), target_class(target), gt[:TOOTH_POINTS], gt[TOOTH_POINTS:],
+           a6.astype(np.float32), np.float32(has_ant), nb.astype(np.float32), has_nb)
+    return out + (p6.astype(np.float32), np.float32(has_prep)) if prep_mode else out
 
 
 def _is_target(scan, t: int) -> bool:
@@ -329,12 +352,13 @@ def load_cache(cache: Path | list[Path]):
             with np.load(f) as d:
                 ant = d["ant"].astype(np.float32) if "ant" in d.files and len(d["ant"]) else None
                 only = int(d["target"]) if "target" in d.files else None  # 只把这颗牙当目标（如真实预备体数据里的 16 号）
-                scans.append((f.stem, d["fdi"].astype(np.int64), d["pts"].astype(np.float32), d["rim"].astype(np.float32), ant, only))
+                prep = d["prep"].astype(np.float32) if "prep" in d.files and len(d["prep"]) else None  # 预备体表面点 + 法向（真实预备体数据）
+                scans.append((f.stem, d["fdi"].astype(np.int64), d["pts"].astype(np.float32), d["rim"].astype(np.float32), ant, only, prep))
     items = [(s, t) for s, sc in enumerate(scans) for t in range(len(sc[1])) if _is_target(sc, t)]
     return scans, items
 
 
-def _dataset(scans, items, train: bool, ant_drop: float = 0.0, use_ant: bool = True):
+def _dataset(scans, items, train: bool, ant_drop: float = 0.0, use_ant: bool = True, use_prep: bool = False):
     import torch
 
     class DS(torch.utils.data.Dataset):
@@ -344,10 +368,11 @@ def _dataset(scans, items, train: bool, ant_drop: float = 0.0, use_ant: bool = T
         def __getitem__(self, i):
             s, t = items[i]
             rng = np.random.default_rng() if train else np.random.default_rng(i)
-            ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb = make_sample(
-                scans[s][1], scans[s][2], scans[s][3], t, rng, drop=train, augment=train,
-                ant=scans[s][4] if use_ant else None, ant_drop=ant_drop if train else 0.0)
-            return ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, i
+            r = make_sample(scans[s][1], scans[s][2], scans[s][3], t, rng, drop=train, augment=train,
+                            ant=scans[s][4] if use_ant else None, ant_drop=ant_drop if train else 0.0,
+                            prep=scans[s][6] if use_prep and len(scans[s]) > 6 else None, prep_mode=use_prep,
+                            prep_drop=PREP_DROP if train else 0.0)
+            return (*r[:9], i, *r[9:])  # 第 10 个是样本序号；有预备体分支时后面多 (预备体点, 有没有)
 
     return DS()
 
@@ -376,7 +401,7 @@ def dome_template(rings: int = 40, segments: int = 64, max_polar_deg: float = 12
 
 
 def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template: str = "sphere", antagonist: bool = False, refine: bool = False,
-                lib_template: bool = False, margin: bool = False):
+                lib_template: bool = False, margin: bool = False, soft_refine: bool = False, prep: bool = False):
     """antagonist：多一个看对颌的分支（缺隙上方的对颌表面点 + 法向 → 256 维，和牙弓上下文的特征拼在一起）。
     refine：粗结果出来后，每个顶点再看离它最近的几个对颌点，预测一个小的修正量（让咬合面去适应对颌的尖窝）。"""
     import torch
@@ -435,8 +460,22 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             self.e1, self.e2, self.e3 = EdgeConv(3 + 32, 64), EdgeConv(64, 128), EdgeConv(128, 256)
             self.glob = nn.Sequential(nn.Conv1d(448, 1024, 1, bias=False), nn.GroupNorm(16, 1024), nn.LeakyReLU(0.2))
             self.antagonist, self.refine = antagonist, refine and antagonist
+            self.soft_refine = soft_refine  # 对颌修正：软的加权邻居（连续）而不是最近 8 个取最大
             self.margin = margin  # 颈缘线分支（预备体牙冠：颈缘点 → 256 维，接在最后）
-            self.fc = nn.Sequential(nn.Linear(2048 + (256 if antagonist else 0) + (256 if margin else 0), latent), nn.LeakyReLU(0.2))
+            self.prep = prep  # 预备体表面分支（整体特征 + 每个顶点看附近的预备体）
+            self.fc = nn.Sequential(nn.Linear(2048 + (256 if antagonist else 0) + (256 if margin else 0) + (256 if prep else 0), latent),
+                                    nn.LeakyReLU(0.2))
+            if prep:
+                self.prep_mlp = nn.Sequential(nn.Conv1d(6, 64, 1), nn.LeakyReLU(0.2), nn.Conv1d(64, 128, 1), nn.LeakyReLU(0.2),
+                                              nn.Conv1d(128, 256, 1), nn.LeakyReLU(0.2))
+                self.prep_fc = nn.Sequential(nn.Linear(512, 256), nn.LeakyReLU(0.2))
+                self.no_prep = nn.Parameter(torch.zeros(256))
+                self.prep_local = nn.Sequential(nn.Conv2d(7, 64, 1), nn.LeakyReLU(0.2), nn.Conv2d(64, 64, 1), nn.LeakyReLU(0.2))
+                self.prep_z = nn.Linear(latent, 128)
+                self.prep_dec = nn.Sequential(nn.Conv1d(3 + 64 + 128 + 16, 256, 1), nn.LeakyReLU(0.2),
+                                              nn.Conv1d(256, 128, 1), nn.LeakyReLU(0.2), nn.Conv1d(128, 3, 1))
+                nn.init.zeros_(self.prep_dec[-1].weight)  # 修正量从 0 开始：一开始和原模型输出一样
+                nn.init.zeros_(self.prep_dec[-1].bias)
             if margin:
                 self.margin_mlp = nn.Sequential(nn.Conv1d(3, 64, 1), nn.LeakyReLU(0.2), nn.Conv1d(64, 128, 1), nn.LeakyReLU(0.2),
                                                 nn.Conv1d(128, 256, 1), nn.LeakyReLU(0.2))
@@ -475,18 +514,36 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             s = torch.zeros_like(pred).index_add(1, e0, pred[:, e1]).index_add(1, e1, pred[:, e0])
             return (pred - s / self.degree.view(1, -1, 1))[:, self.interior]
 
+        def prep_step(self, out, prep, t, z, c):  # out (B,V,3) mm、prep (B,P,6) → 修正量 (B,V,3) mm；软加权邻居，输出连续
+            v = out.shape[1]
+            dist, idx = torch.cdist(out, prep[..., :3]).topk(PREP_K, dim=2, largest=False)
+            nb = torch.gather(prep.unsqueeze(1).expand(-1, v, -1, -1), 2, idx.unsqueeze(-1).expand(-1, -1, -1, 6))
+            off = out.unsqueeze(2) - nb[..., :3]
+            sd = (off * nb[..., 3:]).sum(-1, keepdim=True)  # 沿预备体法向往外多远（≈ 牙冠厚度）
+            f = torch.cat([off.clamp(-5, 5), nb[..., 3:], sd.clamp(-5, 5)], dim=-1).permute(0, 3, 1, 2)
+            w = torch.softmax(-dist / PREP_SIGMA, dim=-1)
+            local = (self.prep_local(f) * w.unsqueeze(1)).sum(dim=-1)
+            h = torch.cat([t, local, self.prep_z(z).unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
+            return self.prep_dec(h).transpose(1, 2)
+
         def refine_step(self, out, ant, t, z, c):  # out (B,V,3) mm、ant (B,K,6) → 修正量 (B,V,3) mm
             v = out.shape[1]
-            idx = torch.cdist(out, ant[..., :3]).topk(8, dim=2, largest=False)[1]  # (B,V,8)
+            kk = SOFT_K if self.soft_refine else 8
+            dist, idx = torch.cdist(out, ant[..., :3]).topk(kk, dim=2, largest=False)  # (B,V,kk)
             nb = torch.gather(ant.unsqueeze(1).expand(-1, v, -1, -1), 2, idx.unsqueeze(-1).expand(-1, -1, -1, 6))
             off = out.unsqueeze(2) - nb[..., :3]  # 对颌点 → 顶点，mm
             sd = (off * nb[..., 3:]).sum(-1, keepdim=True)  # 沿对颌法向的距离：负的是穿进去了
             f = torch.cat([off.clamp(-5, 5), nb[..., 3:], sd.clamp(-5, 5)], dim=-1).permute(0, 3, 1, 2)
-            local = self.ref_local(f).max(dim=-1)[0]
+            if self.soft_refine:
+                # 按距离加权：离最近点远 SOFT_SIGMA 的点权重降到 1/e；第 32 近的点权重≈0，所以点集合变了输出也不跳
+                w = torch.softmax(-dist / SOFT_SIGMA, dim=-1)
+                local = (self.ref_local(f) * w.unsqueeze(1)).sum(dim=-1)
+            else:
+                local = self.ref_local(f).max(dim=-1)[0]
             h = torch.cat([t, local, self.ref_z(z).unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
             return self.ref_dec(h).transpose(1, 2)
 
-        def forward(self, ctx, ctx_idx, cls, ant=None, has_ant=None, margin=None, has_margin=None):  # ctx (B, N, 3) mm、ant (B, K, 6)、margin (B, M, 3) mm → (B, V, 3) mm
+        def forward(self, ctx, ctx_idx, cls, ant=None, has_ant=None, margin=None, has_margin=None, prep=None, has_prep=None):  # ctx (B, N, 3) mm、ant (B, K, 6)、margin (B, M, 3) mm → (B, V, 3) mm
             b, n, _ = ctx.shape
             xyz = (ctx / SCALE).transpose(1, 2)
             c = self.emb_cls(cls)
@@ -517,6 +574,16 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
                     mf = self.margin_fc(torch.cat([hm.max(dim=-1)[0], hm.mean(dim=-1)], dim=1))
                     mm = has_margin.view(-1, 1)
                     feats.append(mm * mf + (1 - mm) * self.no_margin)
+            if self.prep:
+                if prep is None:
+                    feats.append(self.no_prep.unsqueeze(0).expand(b, -1))
+                else:
+                    if has_prep is None:
+                        has_prep = torch.ones(b, device=ctx.device)
+                    hp = self.prep_mlp(torch.cat([prep[..., :3] / SCALE, prep[..., 3:]], dim=-1).transpose(1, 2))
+                    pf = self.prep_fc(torch.cat([hp.max(dim=-1)[0], hp.mean(dim=-1)], dim=1))
+                    pm = has_prep.view(-1, 1)
+                    feats.append(pm * pf + (1 - pm) * self.no_prep)
             z = self.fc(torch.cat(feats, dim=1))
             v = self.template.shape[0]
             t = self.template.t().unsqueeze(0).expand(b, -1, -1)
@@ -529,6 +596,8 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             else:
                 h = torch.cat([t, z.unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
                 out = (0.3 * t + self.dec(h)).transpose(1, 2) * SCALE
+            if self.prep and prep is not None:  # 先按预备体修侧面，再按对颌修咬合面
+                out = out + self.prep_step(out, prep, t, z, c) * has_prep.view(-1, 1, 1)
             if self.refine and ant is not None:
                 out = out + self.refine_step(out, ant, t, z, c) * has_ant.view(-1, 1, 1)
             return out
@@ -563,7 +632,8 @@ def load_model(path: Path, device: str):
 
     ckpt = torch.load(path, map_location=device)
     model = build_model(template=ckpt.get("template", "sphere"), antagonist=ckpt.get("antagonist", False), refine=ckpt.get("refine", False),
-                        lib_template=ckpt.get("lib_template", False), margin=ckpt.get("margin", False)).to(device)
+                        lib_template=ckpt.get("lib_template", False), margin=ckpt.get("margin", False),
+                        soft_refine=ckpt.get("soft_refine", False), prep=ckpt.get("prep", False)).to(device)
     missing = model.load_state_dict(ckpt["state"], strict=False).missing_keys
     # 早期保存的模型没有这几个由模板决定的缓冲区，其余权重必须齐全
     assert set(missing) <= {"interior", "degree", "boundary"}, missing
@@ -574,7 +644,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
           template: str = "sphere", init: Path | None = None, lap_weight: float = 0.0, rim_weight: float = 1.0,
           antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0,
           extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None, margin: bool = False,
-          compile: bool = False) -> dict:
+          compile: bool = False, soft_refine: bool = False, prep: bool = False) -> dict:
     import torch
 
     torch.manual_seed(0)
@@ -588,9 +658,10 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     tr =[it for it in items if it[0] not in val_set]
     va = [it for it in items if it[0] in val_set]
     print(json.dumps({"train_scans": len(scans) - n_val, "val_scans": n_val, "train_samples": len(tr), "val_samples": len(va), "device": device}), flush=True)
-    dl = torch.utils.data.DataLoader(_dataset(scans, tr, True, ant_drop, antagonist), batch_size=batch_size, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=workers > 0)
-    dv = torch.utils.data.DataLoader(_dataset(scans, va, False, 0.0, antagonist), batch_size=batch_size, num_workers=min(workers, 4))
-    model = build_model(template=template, antagonist=antagonist, refine=refine, lib_template=lib_template is not None, margin=margin).to(device)
+    dl = torch.utils.data.DataLoader(_dataset(scans, tr, True, ant_drop, antagonist, prep), batch_size=batch_size, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=workers > 0)
+    dv = torch.utils.data.DataLoader(_dataset(scans, va, False, 0.0, antagonist, prep), batch_size=batch_size, num_workers=min(workers, 4))
+    model = build_model(template=template, antagonist=antagonist, refine=refine, lib_template=lib_template is not None, margin=margin,
+                        soft_refine=soft_refine, prep=prep).to(device)
     if lib_template is not None:
         model.cls_template.copy_(torch.tensor(np.load(lib_template), device=device) / SCALE)
     if init:  # 沿用已训练的权重（模板不同时，形状对不上的缓冲区跳过）
@@ -619,9 +690,9 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         val = evaluate(model, dv, device)
         best = score(val)
         print(json.dumps({"epoch": 0, "val_chamfer_mm": round(val["chamfer_mm"], 4), "val_rim_mm": round(val["rim_mm"], 4), "note": "起点"}), flush=True)
-    def step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m):  # 前向 + 损失 → (loss, 形状损失)
+    def step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m, prep6=None, has_prep=None):  # 前向 + 损失
         if margin:
-            pred = model(ctx, ctx_idx, cls, ant if antagonist else None, has_ant if antagonist else None, rim_in, has_m)
+            pred = model(ctx, ctx_idx, cls, ant if antagonist else None, has_ant if antagonist else None, rim_in, has_m, prep6, has_prep)
         else:
             pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
         cd = chamfer(pred, gt).mean()
@@ -655,7 +726,9 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     for epoch in range(1, epochs + 1):
         model.train()
         total, n = 0.0, 0
-        for ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, _ in dl:
+        for batch in dl:
+            ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, _ = batch[:10]
+            prep6, has_prep = (batch[10].to(device), batch[11].to(device)) if prep else (None, None)
             ctx, ctx_idx, cls, gt, rim = ctx.to(device), ctx_idx.to(device), cls.to(device), gt.to(device), rim.to(device)
             ant, has_ant = ant.to(device), has_ant.to(device)
             if margin:  # 颈缘线 = 真牙的边界环 + 扰动，一部分样本不给
@@ -663,7 +736,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
                 rim_in = jitter_rim(rim)
             else:
                 has_m = rim_in = None
-            loss, cd = step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m)
+            loss, cd = step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m, prep6, has_prep)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -676,7 +749,8 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         row.update({f"val_{k}": round(v, 4) for k, v in {**val.get("shape", {}), **val.get("occlusion", {})}.items()})
         print(json.dumps(row), flush=True)
         ckpt = {"state": model.state_dict(), "epoch": epoch, "val": val, "template": template, "antagonist": antagonist, "refine": refine,
-                "lib_template": lib_template is not None, "margin": margin}
+                "lib_template": lib_template is not None, "margin": margin,
+                "soft_refine": soft_refine, "prep": prep}
         torch.save(ckpt, out.with_name(out.stem + ".last.pt"))  # 最后一轮总是留着（验证分数没超过起点时 out 不会被覆盖）
         if score(val) < best:
             best = score(val)
@@ -694,10 +768,13 @@ def evaluate(model, loader, device, collect: bool = False):
     f = model.faces
     use_ant = getattr(model, "antagonist", False)
     with torch.no_grad():
-        for ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, i in loader:
+        for batch in loader:
+            ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, i = batch[:10]
             ant, has_ant = ant.to(device), has_ant.to(device)
+            pp = (batch[10].to(device), batch[11].to(device)) if len(batch) > 10 else ()
             if getattr(model, "margin", False):
-                pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant if use_ant else None, has_ant if use_ant else None, rim.to(device))
+                pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant if use_ant else None, has_ant if use_ant else None, rim.to(device),
+                             None, *pp)
             else:
                 pred = model(ctx.to(device), ctx_idx.to(device), cls.to(device), ant, has_ant) if use_ant else model(ctx.to(device), ctx_idx.to(device), cls.to(device))
             gt = gt.to(device)
@@ -846,8 +923,9 @@ class LearnedGenerator:
         return tooth
 
     accepts_margin = True  # generate 可以接 margin（颈缘线 3D 点）；模型没训过颈缘线条件时忽略
+    accepts_prep = True  # generate 可以接 prep（预备体表面网格）；模型没有预备体分支时忽略
 
-    def generate(self, ctx, target, margin=None):
+    def generate(self, ctx, target, margin=None, prep=None):
         import torch
         import trimesh
 
@@ -892,6 +970,12 @@ class LearnedGenerator:
                 mp = (resample_loop(np.asarray(margin, float), 4 * RIM_POINTS) @ rot.T - origin) * sign
                 mp = mp[np.random.default_rng(0).choice(len(mp), RIM_POINTS, replace=False)]
                 extra = extra + (torch.tensor(mp.astype(np.float32))[None].to(self.device), torch.ones(1, device=self.device))
+        if getattr(model, "prep", False) and prep is not None and len(prep.faces) >= 20:
+            # 预备体表面：和训练时一样，标准坐标、减原点、统一左右；位置参数前面要先占满对颌和颈缘两组
+            extra = extra + (None,) * (4 - len(extra))
+            p6 = prep_surface_points(prep, N_PREP, 0)
+            p6 = np.concatenate([(p6[:, :3] @ rot.T - origin) * sign, (p6[:, 3:] @ rot.T) * sign], 1)
+            extra = extra + (torch.tensor(p6.astype(np.float32))[None].to(self.device), torch.ones(1, device=self.device))
         with torch.no_grad():
             pred = model(
                 torch.tensor((c * sign).astype(np.float32))[None].to(self.device),
@@ -1057,6 +1141,8 @@ def main() -> None:
     t.add_argument("--gap-weight", type=float, default=0.0, help="到近中 / 远中邻牙的最小距离对齐真牙")
     t.add_argument("--lib-template", type=Path, help="每个牙位的库牙模板（lib_template.py build 生成）")
     t.add_argument("--margin", action="store_true", help="加颈缘线分支（预备体牙冠用）：训练时用真牙的边界环 + 扰动")
+    t.add_argument("--prep", action="store_true", help="加预备体表面分支（缓存里有 prep 的样本才给）：整体特征 + 每个顶点看附近的预备体")
+    t.add_argument("--soft-refine", action="store_true", help="对颌修正用软的加权邻居（最近 32 个点按距离加权），输出随输入连续变化")
     t.add_argument("--compile", action="store_true", help="torch.compile 前向和损失（约快 1.5 倍；结果只差浮点舍入）")
     e = sub.add_parser("eval")
     e.add_argument("--model", type=Path, required=True)
@@ -1075,7 +1161,7 @@ def main() -> None:
               template=args.template, init=args.init, lap_weight=args.lap_weight, rim_weight=args.rim_weight,
               antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight,
               extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template, margin=args.margin,
-              compile=args.compile)
+              compile=args.compile, soft_refine=args.soft_refine, prep=args.prep)
     else:
         run_eval(args.model, args.cache, args.out, args.batch_size, args.samples, args.hide_antagonist)
 

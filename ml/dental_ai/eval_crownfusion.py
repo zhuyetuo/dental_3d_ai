@@ -50,7 +50,35 @@ def rim_points(mesh: trimesh.Trimesh) -> np.ndarray:
     return np.asarray(mesh.vertices)[np.unique(e[group_rows(e, require_count=1)])]
 
 
-def run_case(model, d: Path, s: float, use_margin: bool, use_ant: bool, device: str):
+def occlusal_metrics(mesh: trimesh.Trimesh, ant: np.ndarray, seed: int = 0) -> dict:
+    """mesh：牙冠（和 ant 同一坐标）；ant (K,6)：对颌点 + 朝向牙冠一侧的法向（antagonist_points 的约定，沿法向为正 = 在对颌外面）。"""
+    rng = np.random.default_rng(seed)
+    a = ant[rng.choice(len(ant), 30000, replace=len(ant) < 30000)]
+    surf = surface_points(mesh, 60000, seed)
+    d = np.sort(cKDTree(surf).query(a[:, :3])[0])
+    bite10 = float(d[: max(1, len(d) // 10)].mean())
+    tree = cKDTree(ant[:, :3])
+
+    def signed(pts):
+        dist, i = tree.query(pts)
+        sd = ((pts - ant[i, :3]) * ant[i, 3:]).sum(1)
+        return np.where(dist < 3.0, sd, np.inf)  # 离对颌 3 mm 以外的不算
+
+    sd1k = signed(surface_points(mesh, 1000, seed + 1))
+    inside = signed(np.asarray(mesh.triangles_center)) < 0
+    return {"bite10": bite10, "inter_n": int((sd1k < 0).sum()), "inter_area": float(mesh.area_faces[inside].sum())}
+
+
+def prep_points(prep: trimesh.Trimesh, n: int, seed: int) -> np.ndarray:
+    """预备体表面取 n 个点 + 朝外的法向 (n,6)，数据坐标。"""
+    p, fi = trimesh.sample.sample_surface(prep, n, seed=seed)
+    nrm = np.asarray(prep.face_normals)[fi]
+    if ((p - p.mean(0)) * nrm).sum(1).mean() < 0:  # 法向朝里就翻过来
+        nrm = -nrm
+    return np.concatenate([p, nrm], 1)
+
+
+def run_case(model, d: Path, s: float, use_margin: bool, use_ant: bool, device: str, use_prep: bool = True):
     import torch
 
     from .generation.learned import (RIM_POINTS, TOOTH_POINTS, antagonist_points, build_context, crop_antagonist,
@@ -86,6 +114,11 @@ def run_case(model, d: Path, s: float, use_margin: bool, use_ant: bool, device: 
             mp = resample_loop(margin, 4 * RIM_POINTS) @ R.T - origin
             mp = mp[rng.choice(len(mp), RIM_POINTS, replace=False)]
             extra = extra + (torch.tensor(mp.astype(np.float32))[None].to(device), torch.ones(1, device=device))
+    if getattr(model, "prep", False) and use_prep:
+        extra = extra + (None,) * (4 - len(extra))  # 位置参数：对颌、有没有、颈缘、有没有，然后才是预备体
+        p6 = prep_points(prep, 1024, 0)
+        p6 = np.concatenate([p6[:, :3] @ R.T - origin, p6[:, 3:] @ R.T], 1)
+        extra = extra + (torch.tensor(p6.astype(np.float32))[None].to(device), torch.ones(1, device=device))
     with torch.no_grad():
         pred = model(torch.tensor(c.astype(np.float32))[None].to(device), torch.tensor(c_idx.astype(np.int64))[None].to(device),
                      torch.tensor([target_class(16)]).to(device), *extra)[0].cpu().numpy().astype(float)
@@ -97,7 +130,14 @@ def run_case(model, d: Path, s: float, use_margin: bool, use_ant: bool, device: 
     # CrownFusion 代码里的 CD-L2：两个方向“最近点距离平方”的均值相加再开方（各 1 万点）
     a10, b10 = surface_points(gen, 10000, 1), surface_points(crown, 10000, 1)
     cf = float(np.sqrt((cKDTree(b10).query(a10)[0] ** 2).mean() + (cKDTree(a10).query(b10)[0] ** 2).mean()))
-    return {"case": d.name, "neighbors": len(fdi), "antagonist": bool(extra and extra[0] is not None), "cd_l2_cf": cf,
+    occ = {}
+    antm = props[:, 1] == 1
+    if antm.sum() >= 64:  # 咬合指标在标准坐标里算（对颌法向约定和形状模型训练时一样）
+        a6 = antagonist_points(xyz[antm], nrm[antm])
+        g = occlusal_metrics(trimesh.Trimesh(verts @ R.T, gen.faces, process=False), a6)
+        t = occlusal_metrics(trimesh.Trimesh(np.asarray(crown.vertices) @ R.T, crown.faces, process=False), a6)
+        occ = {**g, **{f"gt_{k}": v for k, v in t.items()}}
+    return {"case": d.name, "neighbors": len(fdi), "antagonist": bool(extra and extra[0] is not None), "cd_l2_cf": cf, **occ,
             "cd": float((d_ab.mean() + d_ba.mean()) / 2), "gen_to_gt": float(d_ab.mean()), "gt_to_gen": float(d_ba.mean()),
             "p95": float(max(np.percentile(d_ab, 95), np.percentile(d_ba, 95))),
             "rim_to_margin": float(cKDTree(margin).query(ring)[0].mean()),
@@ -137,8 +177,11 @@ def _cache_case(args):
         o = np.argsort(fdi)
         ant = props[:, 1] == 1
         a6 = antagonist_points(xyz[ant], nrm[ant]) if ant.sum() >= 64 else np.zeros((0, 6), np.float32)
+        p6 = prep_points(prep, 4096, int(d.name))
+        p6 = np.concatenate([p6[:, :3] @ R.T, p6[:, 3:] @ R.T], 1)  # 标准坐标
         np.savez_compressed(dest, fdi=np.array(fdi, np.int16)[o], pts=np.stack(tp).astype(np.float32)[o],
-                            rim=np.stack(rim).astype(np.float32)[o], ant=a6.astype(np.float16), target=np.int16(16))
+                            rim=np.stack(rim).astype(np.float32)[o], ant=a6.astype(np.float16), target=np.int16(16),
+                            prep=p6.astype(np.float16))
         return True
     except Exception as exc:  # noqa: BLE001
         print("skip", d.name, type(exc).__name__, exc, flush=True)
@@ -156,10 +199,13 @@ def build_cache(data: Path, split: str, out: Path, s: float, workers: int) -> in
 
 
 def summarize(rows):
-    keys = ["cd_l2_cf", "cd", "gen_to_gt", "gt_to_gen", "p95", "rim_to_margin", "gt_rim_to_margin", "height_err"]
+    keys = ["cd_l2_cf", "cd", "gen_to_gt", "gt_to_gen", "p95", "rim_to_margin", "gt_rim_to_margin", "height_err",
+            "bite10", "gt_bite10", "inter_n", "gt_inter_n", "inter_area", "gt_inter_area"]
     out = {"n": len(rows)}
     for k in keys:
-        v = np.array([r[k] for r in rows])
+        v = np.array([r[k] for r in rows if k in r])
+        if not len(v):
+            continue
         out[k] = {"median": round(float(np.median(v)), 3), "mean": round(float(v.mean()), 3)}
     out["with_antagonist"] = sum(r["antagonist"] for r in rows)
     out["neighbors"] = {n: sum(r["neighbors"] == n for r in rows) for n in (1, 2)}

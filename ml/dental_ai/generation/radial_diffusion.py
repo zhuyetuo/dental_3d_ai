@@ -660,8 +660,9 @@ class RadialDiffusionGenerator:
         return tooth
 
     accepts_margin = True  # generate 可以接 margin（颈缘线 3D 点）；模型没训过颈缘线条件时忽略
+    accepts_prep = True  # prep（预备体表面网格）转交给形状模型
 
-    def generate(self, ctx, target, margin=None):
+    def generate(self, ctx, target, margin=None, prep=None):
         import torch
         import trimesh
 
@@ -721,7 +722,8 @@ class RadialDiffusionGenerator:
             from .radial import splat
 
             if margin is not None and getattr(self.fallback, "accepts_margin", False):  # 形状模型也看颈缘线（训过颈缘线条件的才用）
-                base = self.fallback.generate(ctx, target, margin=margin)
+                kw = {"prep": prep} if prep is not None and getattr(self.fallback, "accepts_prep", False) else {}
+                base = self.fallback.generate(ctx, target, margin=margin, **kw)
             else:
                 base = self.fallback.generate(ctx, target)
             sign0 = np.array([-1.0, 1.0, 1.0]) if flip else np.ones(3)
