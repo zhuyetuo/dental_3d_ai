@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from dental_ai.io import parse_obj, save_labels
-from dental_ai.synthetic import simulate_missing, simulate_preparation
+from dental_ai.synthetic import REAL_PREP_KW, simulate_missing, simulate_preparation
 
 DEMO_DIR = Path(os.environ.get("DEMO_DIR", Path(__file__).resolve().parents[2] / "demo"))
 
@@ -94,7 +94,9 @@ def materialize(demo: dict, target_dir: Path) -> dict[str, str]:
     if demo.get("missing"):
         mesh, labels = simulate_missing(mesh, labels, jaw, demo["missing"])
     for fdi in demo.get("prepared", []):
-        mesh, _ = simulate_preparation(mesh, labels, jaw, fdi)
+        # 默认用按 1500 个真实预备体校准的模拟（邻面也磨、咬合面多磨）；示例里写 "prep_sim": "v1" 用原来的
+        kw = {} if demo.get("prep_sim") == "v1" else REAL_PREP_KW
+        mesh, _ = simulate_preparation(mesh, labels, jaw, fdi, **kw)
     files = {"mesh": "mesh.obj", **originals}
     mesh.export(target_dir / "mesh.obj")  # trimesh 写 OBJ 保留全部顶点，标签仍一一对应
     if demo.get("labels", True):
