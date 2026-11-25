@@ -49,6 +49,8 @@ x-backend-common: &backend-common
     PREP_OUTER_STYLE: natural
     # 预备体牙冠外表面的形状模型：看着颈缘线出整体形状（11-23 预备体评分卡：真值颈缘线时整体形状误差 0.256 → 0.234 mm，70% 的牙变好，咬合、高度、贴合不变）；去掉这一行就和缺失牙用同一个
     PREP_SHAPE_MODEL: /models/generation/toothgen_ctx.pt
+    # 上颌第一磨牙（16 / 26）预备体牙冠外表面：体素模型（照 VBCD），形状模型的网格贴到它的点上（真实预备体 CD-L2 0.404 → 0.338、牙尖 1.38 → 0.90 mm）
+    PREP_VOXEL_MODEL: /models/generation/voxel_crown.pt
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:

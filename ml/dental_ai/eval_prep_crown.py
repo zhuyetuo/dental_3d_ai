@@ -136,6 +136,7 @@ def main() -> None:
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--labels-from", type=Path, help="已有的分割标签缓存目录（复用缺失牙评分卡的）")
+    p.add_argument("--only-pids", help="逗号分隔的病人号：只跑这些（快速对比用）")
     p.add_argument("--prep-sim", default="v1", choices=["v1", "real"],
                    help="模拟预备体：v1 = 原来的参数；real = 按 1500 个真实预备体校准的（邻面也磨、咬合面多磨）")
     p.add_argument("--proximal-band", type=float, help="模拟预备体邻面渐变带宽度 mm（默认 1.0：邻面没有棱；0.2：邻面也有台阶）")
@@ -151,6 +152,9 @@ def main() -> None:
     pids = sorted({n.split("/")[0] for n in names if n.endswith("ios_upper.stl") and n.replace("upper", "lower") in names})
     pids = [pids[i] for i in np.random.default_rng(1).permutation(len(pids))[: args.patients]]
     jobs = [(str(args.zip), pid, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i, args.proximal_band, args.prep_sim) for i, pid in enumerate(pids)]
+    if args.only_pids:  # 只跑这些病人（随机种子不变，选的牙和全量跑时一样）
+        keep = set(args.only_pids.split(","))
+        jobs = [j for j in jobs if j[1] in keep]
     rows = []
     with mp.get_context("spawn").Pool(args.workers) as pool:
         for i, r in enumerate(pool.imap_unordered(_one, jobs)):

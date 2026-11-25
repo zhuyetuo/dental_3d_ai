@@ -523,9 +523,9 @@ class VoxelRefinedGenerator:
     accepts_prep = True
     TEETH = (16, 26)
 
-    def __init__(self, base, shape, model_path, iters: int = 150, lap: float = 0.5):
+    def __init__(self, base, shape, model_path, iters: int = 150, lap: float = 0.5, init: str = "shape"):
         self.base, self.shape, self.model_path = base, shape, Path(model_path)
-        self.iters, self.lap = iters, lap
+        self.iters, self.lap, self.init = iters, lap, init
         self._model = None
 
     def __getattr__(self, k):  # style、library 等照 base 的
@@ -558,9 +558,18 @@ class VoxelRefinedGenerator:
         from ..geometry import estimate_arch_frame
         from .learned import canonical_rotation
 
-        tooth = self.shape.generate(ctx, target, margin=margin, prep=prep)
-        if not str(tooth.info.get("source", "")).startswith("learned"):
-            raise ValueError("形状模型没出结果（" + str(tooth.info.get("learned_fallback")) + "）")
+        import os
+
+        init = os.environ.get("VOXEL_INIT", self.init)
+        if init == "base":  # 贴合起点用 base 的结果（形状模型 + 扩散补的牙尖窝沟），细节更多
+            tooth = self._gen_base(ctx, target, margin, prep)
+            if "learned_fallback" in tooth.info or "mirror" in str(tooth.info.get("source", "")):
+                raise ValueError("base 没用形状模型")
+        else:
+            tooth = self.shape.generate(ctx, target, margin=margin, prep=prep)
+            if not str(tooth.info.get("source", "")).startswith("learned"):
+                raise ValueError("形状模型没出结果（" + str(tooth.info.get("learned_fallback")) + "）")
+        lap = float(os.environ.get("VOXEL_LAP", self.lap))
         if self._model is None:
             self._model = load(self.model_path)
         rot = canonical_rotation(estimate_arch_frame(ctx.mesh, ctx.labels, ctx.jaw), ctx.jaw)
@@ -590,13 +599,12 @@ class VoxelRefinedGenerator:
         bt = {"prep": torch.tensor(pp - c, dtype=torch.float32)[None], "ctx": torch.tensor(ctx4, dtype=torch.float32)[None]}
         p, _ = predict_points(self._model, make_inputs(bt, "cuda"))[0]
         p = p.cpu().numpy() + c
-        import os
-
         if os.environ.get("VOXEL_DUMP"):  # 调试：存下输入、输出（数据坐标）
             Path(os.environ["VOXEL_DUMP"]).mkdir(parents=True, exist_ok=True)
             np.savez(Path(os.environ["VOXEL_DUMP"]) / f"{target.fdi}_{len(pp)}_{int(c[0] * 1000)}.npz", prep=pp, nb=nb, ant=ant, pts=p, c=c,
                      shape=to_data(tooth.crown.vertices))
-        verts, faces = fit_mesh(to_data(tooth.crown.vertices), np.asarray(tooth.crown.faces), [], p, self.iters, self.lap)
+        verts, faces = fit_mesh(to_data(tooth.crown.vertices), np.asarray(tooth.crown.faces), [], p, self.iters, lap,
+                                subdivide=len(tooth.crown.vertices) < 5000)
         crown = trimesh.Trimesh(verts @ np.linalg.inv(A), faces, process=False)
         if ((crown.triangles_center - crown.vertices.mean(axis=0)) * crown.face_normals).sum() < 0:
             crown.invert()

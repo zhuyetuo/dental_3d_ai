@@ -42,7 +42,7 @@ class Fixed:
         return GeneratedTooth(fdi=16, crown=self.crown.copy(), method="learned", info={"source": "形状模型（预备体表面 + 颈缘线 + 对颌）"})
 
 
-def build(model, d: Path, out: Path, device: str) -> dict:
+def build(model, d: Path, out: Path, device: str, vox=None) -> dict:
     pts, props, prep, crown = load_case(d)
     dent = trimesh.load(d / "dentition_mesh.ply", process=False)
     tree = cKDTree(pts[:, :3])
@@ -71,6 +71,23 @@ def build(model, d: Path, out: Path, device: str) -> dict:
     crown.export(out / "original_16.stl")
 
     row, outer = run_case(model, d, 1.0, True, True, device)
+    src = "形状模型（预备体表面 + 颈缘线 + 对颌）"
+    if vox is not None:  # 体素模型：形状模型的网格贴到体素模型的点上（和线上流程 16 / 26 号一样）
+        import torch
+
+        from dental_ai.eval_crownfusion import surface_points
+        from dental_ai.generation import voxel_crown as vc
+
+        pp = surface_points(prep, vc.N_PREP, int(d.name) + 1)
+        c = vc.crop_center(pp)
+        bt = {"prep": torch.tensor(pp - c, dtype=torch.float32)[None],
+              "ctx": torch.tensor(np.concatenate([pts[:, :3] - c, (props[:, 1:2] + 1)], 1), dtype=torch.float32)[None]}
+        vp = vc.predict_points(vox, vc.make_inputs(bt, "cuda"))[0][0].cpu().numpy() + c
+        v, f = vc.fit_mesh(np.asarray(outer.vertices), np.asarray(outer.faces), [], vp, 150, 0.5)
+        outer = trimesh.Trimesh(v, f, process=False)
+        if ((outer.triangles_center - v.mean(axis=0)) * outer.face_normals).sum() < 0:
+            outer.invert()
+        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，贴合形状模型网格）"
     margin = margin_loop(prep)
     warnings = []
     try:
@@ -93,9 +110,9 @@ def build(model, d: Path, out: Path, device: str) -> dict:
     dist = cKDTree(trimesh.sample.sample_surface(solid, 60000, seed=0)[0]).query(real)[0]
     report = {
         "jaw": "upper", "segmenter": "数据集标注", "teeth": [15, 16, 17], "missing": [], "orientation": None, "numbering": None,
-        "warnings": warnings + ["局部牙弓（FDI 16 Crown Dataset 真实预备体），结果是离线用线上同一个形状模型算好的；“原始牙”= 技师设计的牙冠"],
+        "warnings": warnings + ["局部牙弓（FDI 16 Crown Dataset 真实预备体），结果是离线用线上同一套模型算好的；“原始牙”= 技师设计的牙冠"],
         "generated": [{"fdi": 16, "file": "crown_16.stl", "method": "prep_crown", "watertight": bool(solid.is_watertight), "prep_file": "prep_16.stl",
-                       "source": "形状模型（预备体表面 + 颈缘线 + 对颌）", **{k: v for k, v in info.items() if isinstance(v, (int, float, str, bool))}}],
+                       "source": src, **{k: v for k, v in info.items() if isinstance(v, (int, float, str, bool))}}],
         "margins": {"16": {"source": "数据集（预备体网格开边界）", "confidence": None, "method": "dataset"}},
         "comparison": {"16": {"mean_mm": round(float(dist.mean()), 3), "median_mm": round(float(np.median(dist)), 3),
                               "p95_mm": round(float(np.percentile(dist, 95)), 3), "max_mm": round(float(dist.max()), 3),
@@ -111,6 +128,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", type=Path, required=True)
     ap.add_argument("--model", type=Path, required=True)
+    ap.add_argument("--voxel", type=Path, help="体素模型（generation/voxel_crown.py）：外表面贴到它的点上")
     ap.add_argument("--rows", type=Path, required=True, help="eval_crownfusion 的 rows.json：按距离挑好 / 中等 / 偏难各一例")
     ap.add_argument("--out", type=Path, default=ROOT / "demo" / "local")
     a = ap.parse_args()
@@ -118,6 +136,11 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, _ = load_model(a.model, device)
+    vox = None
+    if a.voxel:
+        from dental_ai.generation import voxel_crown as vc
+
+        vox = vc.load(a.voxel, device)
     rows = sorted(json.loads(a.rows.read_text()), key=lambda r: r["cd"])
     picks = [("效果好", rows[len(rows) // 10]), ("中等", rows[len(rows) // 2]), ("偏难", rows[len(rows) * 9 // 10])]
     entries = []
@@ -126,12 +149,13 @@ def main() -> None:
         dest = a.out / "cf" / cid
         if dest.exists():
             shutil.rmtree(dest)
-        info = build(model, a.data / "test" / cid, dest, device)
+        info = build(model, a.data / "test" / cid, dest, device, vox)
         print(json.dumps({"tag": tag, **info}, ensure_ascii=False), flush=True)
         entries.append({
-            "id": f"cf16-{cid}", "title": f"局部牙弓：真实 16 预备体（{tag}，和技师牙冠差 {info['cd']:.2f} mm）",
-            "description": "FDI 16 Crown Dataset 测试集里真实磨好的 16 号预备体，只有 15、17 和对颌两颗牙。牙冠外形由线上的形状模型看着邻牙、颈缘线、"
-                           "预备体表面和对颌生成，“原始牙”是技师设计的牙冠，可以叠加对比。网页流程要整个牙弓，这几例是离线用同一个模型算好的",
+            "id": f"cf16-{cid}", "title": f"局部牙弓：真实 16 预备体（{tag}，和技师牙冠差 {info['vs_technician_mean']:.2f} mm）",
+            "description": "FDI 16 Crown Dataset 测试集里真实磨好的 16 号预备体，只有 15、17 和对颌两颗牙。牙冠外形由线上的"
+                           + ("体素模型（预备体、邻牙、对颌放进 0.16 mm 的体素，逐点精修）" if vox is not None else "形状模型看着邻牙、颈缘线、预备体表面和对颌")
+                           + "生成，“原始牙”是技师设计的牙冠，可以叠加对比。网页流程要整个牙弓，这几例是离线用同一个模型算好的",
             "precomputed": f"cf/{cid}", "scan": f"cf/{cid}", "labels": True, "jaw": "upper"})
     p = a.out / "demos.json"
     demos = json.loads(p.read_text()) if p.exists() else []
