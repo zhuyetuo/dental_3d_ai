@@ -36,6 +36,22 @@ from .segmentation.remote import RemoteSegmenter
 
 
 def _prep_outer_generator(generator):
+    """预备体牙冠外表面：_prep_outer_generator_base 的生成器；设了 PREP_VOXEL_MODEL 时，上颌第一磨牙改用
+    “形状模型网格贴到体素模型的点上”（generation/voxel_crown.py，真实预备体测试集上比形状模型准）。"""
+    g = _prep_outer_generator_base(generator)
+    vox = os.environ.get("PREP_VOXEL_MODEL")
+    if not vox or not Path(vox).is_file():
+        return g
+    fb = getattr(g, "fallback", None)
+    shape = fb if getattr(fb, "name", "") == "learned" else (g if getattr(g, "name", "") == "learned" else None)
+    if shape is None:
+        return g
+    from .generation.voxel_crown import VoxelRefinedGenerator
+
+    return VoxelRefinedGenerator(g, shape, vox)
+
+
+def _prep_outer_generator_base(generator):
     """预备体牙冠外表面用的生成器：和缺失牙同一个，风格换成 PREP_OUTER_STYLE（默认天然风格，预备体评分卡上不碰对颌）。"""
     import copy
 

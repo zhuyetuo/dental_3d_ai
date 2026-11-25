@@ -349,7 +349,7 @@ def validate(model, vdl, device):
 def load(path: Path, device="cuda"):
     import torch
 
-    ck = torch.load(path, map_location=device)
+    ck = torch.load(path, map_location=device, weights_only=False)
     m = build_model(ck.get("f0", 32)).to(device)
     m.load_state_dict(ck["state"])
     return m.eval()
@@ -394,6 +394,219 @@ def evaluate(data: Path, split: str, model_path: Path, out: Path, limit: int | N
     print(json.dumps(s, ensure_ascii=False))
 
 
+def fit_mesh(verts, faces, fixed, pts, iters: int = 150, lap: float = 0.5, trunc: float = 1.0, subdivide: bool = True):
+    """把网格贴到点上：顶点位移 = 优化“网格表面采样 ↔ 点”的双向倒角 + 位移场的拉普拉斯平滑；fixed 顶点（底边）不动。
+    点 → 网格方向距离超过 trunc mm 的点不算（体素零散的外层点）。返回 (顶点, 面)。"""
+    import torch
+    import trimesh
+
+    if subdivide:  # 细分一次：形状模型网格顶点少，窝沟出不来
+        from trimesh.grouping import group_rows
+
+        verts, faces = trimesh.remesh.subdivide(verts, faces)
+        es = trimesh.Trimesh(verts, faces, process=False).edges_sorted
+        fixed = np.unique(es[group_rows(es, require_count=1)]) if len(fixed) else []  # 细分后的开口边上的点（原底边 + 新中点）
+    dev = "cuda"
+    V0 = torch.tensor(verts, dtype=torch.float32, device=dev)
+    F_ = torch.tensor(np.asarray(faces), dtype=torch.long, device=dev)
+    P = torch.tensor(pts, dtype=torch.float32, device=dev)
+    n = len(V0)
+    e = torch.cat([F_[:, [0, 1]], F_[:, [1, 2]], F_[:, [2, 0]]])
+    e = torch.cat([e, e.flip(1)])
+    deg = torch.zeros(n, device=dev).index_add_(0, e[:, 0], torch.ones(len(e), device=dev))
+    free = torch.ones(n, 1, device=dev)
+    if len(fixed):
+        free[torch.tensor(fixed, dtype=torch.long, device=dev)] = 0
+    D = torch.zeros_like(V0, requires_grad=True)
+    opt = torch.optim.Adam([D], lr=0.02)
+    g = torch.Generator(device=dev).manual_seed(0)
+    NS = 12000
+    for _ in range(iters):
+        V = V0 + D * free
+        fi = torch.randint(0, len(F_), (NS,), device=dev, generator=g)
+        uv = torch.rand(NS, 2, device=dev, generator=g)
+        flip = uv.sum(1) > 1
+        uv[flip] = 1 - uv[flip]
+        tri = V[F_[fi]]
+        s = tri[:, 0] + uv[:, :1] * (tri[:, 1] - tri[:, 0]) + uv[:, 1:] * (tri[:, 2] - tri[:, 0])
+        p = P[torch.randint(0, len(P), (NS,), device=dev, generator=g)]
+        dm = torch.cdist(s, p)  # 一次算两个方向
+        d_sp = dm.min(1)[0] ** 2
+        d_ps = dm.min(0)[0] ** 2
+        d_ps = d_ps[d_ps < trunc ** 2]
+        Dm = D * free
+        lp = Dm - torch.zeros_like(Dm).index_add_(0, e[:, 0], Dm[e[:, 1]]) / deg[:, None]
+        loss = d_sp.mean() + d_ps.mean() + lap * (lp ** 2).sum(1).mean()
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    return (V0 + D * free).detach().cpu().numpy().astype(float), np.asarray(faces)
+
+
+def evaluate_mesh(data: Path, split: str, model_path: Path, shape_path: Path, out: Path, limit: int | None,
+                  iters: int, lap: float, trunc: float, free_rim: bool = False) -> None:
+    """真实预备体测试集，网格上的指标：形状模型出网格（底边贴颈缘）→ 贴到体素模型的点上 → 和 eval_crownfusion 一样算指标。
+    每例同时记形状模型本身的指标（配对比较）。"""
+    import torch
+    import trimesh
+    from scipy.spatial import cKDTree
+
+    from ..eval_crownfusion import load_case, margin_loop, occlusal_metrics, rim_points, run_case, surface_points
+    from .learned import antagonist_points, load_model
+
+    vox = load(model_path)
+    shape, _ = load_model(shape_path, "cuda")
+    ids = sorted(json.load(open(data / {"test": "testing.json", "val": "validation.json", "train": "training.json"}[split])), key=int)[:limit]
+    out.mkdir(parents=True, exist_ok=True)
+    rows, times = [], []
+    R = np.array([[0, 0, 1.0], [1, 0, 0], [0, 1, 0]])
+    for k, cid in enumerate(ids):
+        d = data / split / str(cid)
+        r = run_case(shape, d, 1.0, True, True, "cuda")
+        if r is None:
+            continue
+        base, gen = r
+        pts, props, prep, crown = load_case(d)
+        t0 = time.time()
+        pp = surface_points(prep, N_PREP, int(cid) + 1)
+        c = crop_center(pp)
+        bt = {"prep": torch.tensor(pp - c, dtype=torch.float32)[None],
+              "ctx": torch.tensor(np.concatenate([pts[:, :3] - c, (props[:, 1:2] + 1)], 1), dtype=torch.float32)[None]}
+        p, _ = predict_points(vox, make_inputs(bt, "cuda"))[0]
+        p = p.cpu().numpy() + c
+        verts, faces = fit_mesh(np.asarray(gen.vertices), np.asarray(gen.faces), [] if free_rim else shape.boundary.cpu().numpy(),
+                                p, iters, lap, trunc)
+        torch.cuda.synchronize(); times.append(time.time() - t0)
+        m = trimesh.Trimesh(verts, faces, process=False)
+        a10, b10 = surface_points(m, 10000, 1), surface_points(crown, 10000, 1)
+        da, db = cKDTree(b10).query(a10)[0], cKDTree(a10).query(b10)[0]
+        a, b = surface_points(m, 20000), surface_points(crown, 20000)
+        d_ab, d_ba = cKDTree(b).query(a)[0], cKDTree(a).query(b)[0]
+        margin = margin_loop(prep)
+        row = {"case": str(cid), "cd_l2_cf": float(np.sqrt((da ** 2).mean() + (db ** 2).mean())),
+               "cd": float((d_ab.mean() + d_ba.mean()) / 2), "gen_to_gt": float(d_ab.mean()), "gt_to_gen": float(d_ba.mean()),
+               "p95": float(max(np.percentile(d_ab, 95), np.percentile(d_ba, 95))),
+               "rim_to_margin": float(cKDTree(margin).query(rim_points(m))[0].mean()),
+               "height_err": float(verts[:, 1].max() - np.asarray(crown.vertices)[:, 1].max()),
+               "pts_height_err": float(p[:, 1].max() - np.asarray(crown.vertices)[:, 1].max()),
+               "pts_far": float((cKDTree(b).query(p)[0] > 0.5).mean())}
+        antm = props[:, 1] == 1
+        if antm.sum() >= 64:
+            xyz, nrm = pts[:, :3].astype(float) @ R.T, pts[:, 3:].astype(float) @ R.T
+            row.update(occlusal_metrics(trimesh.Trimesh(verts @ R.T, faces, process=False), antagonist_points(xyz[antm], nrm[antm])))
+        row.update({f"shape_{kk}": base[kk] for kk in ("cd_l2_cf", "cd", "height_err", "bite10", "inter_n") if kk in base})
+        rows.append(row)
+        if k < 12:
+            m.export(out / f"{cid}_vox.ply")
+            gen.export(out / f"{cid}_shape.ply")
+            crown.export(out / f"{cid}_gt.ply")
+        if k % 100 == 0:
+            print(k, json.dumps({kk: round(v, 3) for kk, v in row.items() if isinstance(v, float)}), flush=True)
+    json.dump(rows, open(out / "rows.json", "w"))
+    keys = [kk for kk in rows[0] if kk != "case"]
+    s = {"n": len(rows), **{kk: {"median": round(float(np.median([r[kk] for r in rows if kk in r])), 3),
+                                 "mean": round(float(np.mean([r[kk] for r in rows if kk in r])), 3)} for kk in keys},
+         "s_per_case_vox_fit": round(float(np.median(times)), 2)}
+    json.dump(s, open(out / "summary.json", "w"), indent=1)
+    print(json.dumps(s, ensure_ascii=False))
+
+
+R_DATA = np.array([[0, 0, 1.0], [1, 0, 0], [0, 1, 0]])  # 标准坐标 = 数据坐标 @ R_DATA.T（和 eval_crownfusion 的 s=+1 一样）
+
+
+class VoxelRefinedGenerator:
+    """预备体牙冠外表面：上颌第一磨牙（16 / 26，26 镜像成 16）用“形状模型网格 + 体素模型的点”——形状模型出网格，
+    贴到体素模型的精修点上（底边也跟着走）。其他牙位、没有预备体、出错时交给 base（原来的生成器）。"""
+
+    name = "learned+voxel"
+    accepts_margin = True
+    accepts_prep = True
+    TEETH = (16, 26)
+
+    def __init__(self, base, shape, model_path, iters: int = 150, lap: float = 0.5):
+        self.base, self.shape, self.model_path = base, shape, Path(model_path)
+        self.iters, self.lap = iters, lap
+        self._model = None
+
+    def __getattr__(self, k):  # style、library 等照 base 的
+        if k in ("base",):
+            raise AttributeError(k)
+        return getattr(self.base, k)
+
+    def _gen_base(self, ctx, target, margin, prep):
+        b = self.base
+        if getattr(b, "accepts_prep", False):
+            return b.generate(ctx, target, margin=margin, prep=prep)
+        if getattr(b, "accepts_margin", False):
+            return b.generate(ctx, target, margin=margin)
+        return b.generate(ctx, target)
+
+    def generate(self, ctx, target, margin=None, prep=None):
+        if target.fdi not in self.TEETH or prep is None or len(prep.faces) < 20:
+            return self._gen_base(ctx, target, margin, prep)
+        try:
+            return self._generate(ctx, target, margin, prep)
+        except Exception as exc:  # noqa: BLE001
+            tooth = self._gen_base(ctx, target, margin, prep)
+            tooth.info["voxel_skipped"] = f"{type(exc).__name__}: {exc}"
+            return tooth
+
+    def _generate(self, ctx, target, margin, prep):
+        import torch
+        import trimesh
+
+        from ..geometry import estimate_arch_frame
+        from .learned import canonical_rotation
+
+        tooth = self.shape.generate(ctx, target, margin=margin, prep=prep)
+        if not str(tooth.info.get("source", "")).startswith("learned"):
+            raise ValueError("形状模型没出结果（" + str(tooth.info.get("learned_fallback")) + "）")
+        if self._model is None:
+            self._model = load(self.model_path)
+        rot = canonical_rotation(estimate_arch_frame(ctx.mesh, ctx.labels, ctx.jaw), ctx.jaw)
+        sign = np.array([-1.0, 1, 1]) if target.fdi // 10 == 2 else np.ones(3)
+        A = rot.T @ np.diag(sign) @ R_DATA  # 世界坐标 @ A = 数据坐标
+        to_data = lambda x: np.asarray(x, float) @ A  # noqa: E731
+        rng = np.random.default_rng(0)
+        pp, _ = trimesh.sample.sample_surface(prep, N_PREP, seed=1)
+        pp = to_data(pp)
+        c = crop_center(pp)
+        labels = np.asarray(ctx.labels)
+        nb = to_data(np.asarray(ctx.mesh.vertices)[np.isin(labels, [target.fdi - 1, target.fdi + 1])])
+        ant = np.zeros((0, 3))
+        if ctx.antagonist is not None:  # 和训练数据一样只要对颌的牙（不要牙龈），范围也照训练数据（缺隙上方一段）
+            av = np.asarray(ctx.antagonist.vertices)
+            if ctx.antagonist_labels is not None and len(ctx.antagonist_labels) == len(av):
+                av = av[np.asarray(ctx.antagonist_labels) > 0]
+            ant = to_data(av)
+            r = ant - c
+            ant = ant[(np.abs(r[:, 0]) < 16) & (r[:, 1] > -1) & (r[:, 1] < 13) & (np.abs(r[:, 2]) < 9)]
+        if len(nb) < 200:
+            raise ValueError("邻牙点太少")
+        nb = nb[rng.choice(len(nb), min(len(nb), 15000), replace=False)]
+        if len(ant):
+            ant = ant[rng.choice(len(ant), min(len(ant), 15000), replace=False)]
+        ctx4 = np.concatenate([np.c_[nb - c, np.ones(len(nb))], np.c_[ant - c, np.full(len(ant), 2.0)]])
+        bt = {"prep": torch.tensor(pp - c, dtype=torch.float32)[None], "ctx": torch.tensor(ctx4, dtype=torch.float32)[None]}
+        p, _ = predict_points(self._model, make_inputs(bt, "cuda"))[0]
+        p = p.cpu().numpy() + c
+        import os
+
+        if os.environ.get("VOXEL_DUMP"):  # 调试：存下输入、输出（数据坐标）
+            Path(os.environ["VOXEL_DUMP"]).mkdir(parents=True, exist_ok=True)
+            np.savez(Path(os.environ["VOXEL_DUMP"]) / f"{target.fdi}_{len(pp)}_{int(c[0] * 1000)}.npz", prep=pp, nb=nb, ant=ant, pts=p, c=c,
+                     shape=to_data(tooth.crown.vertices))
+        verts, faces = fit_mesh(to_data(tooth.crown.vertices), np.asarray(tooth.crown.faces), [], p, self.iters, self.lap)
+        crown = trimesh.Trimesh(verts @ np.linalg.inv(A), faces, process=False)
+        if ((crown.triangles_center - crown.vertices.mean(axis=0)) * crown.face_normals).sum() < 0:
+            crown.invert()
+        tooth.crown = crown
+        tooth.method = self.name
+        tooth.info["source"] = f"{tooth.info.get('source')}+voxel:{self.model_path.name}"
+        tooth.info["voxel_points"] = int(len(p))
+        return tooth
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -411,12 +624,18 @@ def main() -> None:
     e.add_argument("--data", type=Path, required=True); e.add_argument("--split", default="test")
     e.add_argument("--model", type=Path, required=True); e.add_argument("--out", type=Path, required=True)
     e.add_argument("--limit", type=int)
+    e.add_argument("--shape-model", type=Path, help="给了就在网格上评测：形状模型的网格贴到体素点上")
+    e.add_argument("--iters", type=int, default=150); e.add_argument("--lap", type=float, default=0.5)
+    e.add_argument("--trunc", type=float, default=1.0)
+    e.add_argument("--free-rim", action="store_true", help="底边也跟着点走（不固定在颈缘线上）")
     a = ap.parse_args()
     if a.cmd == "cache":
         print("cached", build_cache(a.data, a.split, a.out, a.workers))
     elif a.cmd == "train":
         a.out.parent.mkdir(parents=True, exist_ok=True)
         train(a.cache, a.val, a.out, a.epochs, a.batch_size, a.lr, a.f0, a.refine_from, a.workers, a.init, a.max_val)
+    elif a.shape_model:
+        evaluate_mesh(a.data, a.split, a.model, a.shape_model, a.out, a.limit, a.iters, a.lap, a.trunc, a.free_rim)
     else:
         evaluate(a.data, a.split, a.model, a.out, a.limit)
 
