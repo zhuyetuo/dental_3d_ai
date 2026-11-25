@@ -112,7 +112,7 @@ def build(model, d: Path, out: Path, device: str, vox=None) -> dict:
         "jaw": "upper", "segmenter": "数据集标注", "teeth": [15, 16, 17], "missing": [], "orientation": None, "numbering": None,
         "warnings": warnings + ["局部牙弓（FDI 16 Crown Dataset 真实预备体），结果是离线用线上同一套模型算好的；“原始牙”= 技师设计的牙冠"],
         "generated": [{"fdi": 16, "file": "crown_16.stl", "method": "prep_crown", "watertight": bool(solid.is_watertight), "prep_file": "prep_16.stl",
-                       "source": src, **{k: v for k, v in info.items() if isinstance(v, (int, float, str, bool))}}],
+                       **{k: v for k, v in info.items() if isinstance(v, (int, float, str, bool))}, "source": src}],
         "margins": {"16": {"source": "数据集（预备体网格开边界）", "confidence": None, "method": "dataset"}},
         "comparison": {"16": {"mean_mm": round(float(dist.mean()), 3), "median_mm": round(float(np.median(dist)), 3),
                               "p95_mm": round(float(np.percentile(dist, 95)), 3), "max_mm": round(float(dist.max()), 3),
