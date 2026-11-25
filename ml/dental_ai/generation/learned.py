@@ -75,7 +75,8 @@ def crop_antagonist(ant: np.ndarray | None, origin: np.ndarray, rng: np.random.G
 
 MARGIN_DROP = 0.15  # 训练时不给颈缘线的比例
 SOFT_K, SOFT_SIGMA = 32, 0.3  # 软的对颌邻居：取最近 32 个点，距离权重的尺度 mm
-N_PREP, PREP_K, PREP_SIGMA, PREP_DROP = 1024, 16, 0.5, 0.15  # 预备体表面：点数、每个顶点看的邻居数、距离权重尺度 mm、训练时不给的比例
+N_PREP, PREP_K, PREP_SIGMA, PREP_DROP = 1024, 16, 0.5, 0.15
+CTX_K, CTX_SIGMA = 16, 1.0  # 看邻牙的局部修正：每个顶点看的上下文点数、距离权重尺度 mm  # 预备体表面：点数、每个顶点看的邻居数、距离权重尺度 mm、训练时不给的比例
 
 
 def jitter_rim(rim):
@@ -401,7 +402,8 @@ def dome_template(rings: int = 40, segments: int = 64, max_polar_deg: float = 12
 
 
 def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template: str = "sphere", antagonist: bool = False, refine: bool = False,
-                lib_template: bool = False, margin: bool = False, soft_refine: bool = False, prep: bool = False):
+                lib_template: bool = False, margin: bool = False, soft_refine: bool = False, prep: bool = False,
+                ctx_refine: bool = False):
     """antagonist：多一个看对颌的分支（缺隙上方的对颌表面点 + 法向 → 256 维，和牙弓上下文的特征拼在一起）。
     refine：粗结果出来后，每个顶点再看离它最近的几个对颌点，预测一个小的修正量（让咬合面去适应对颌的尖窝）。"""
     import torch
@@ -463,6 +465,14 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             self.soft_refine = soft_refine  # 对颌修正：软的加权邻居（连续）而不是最近 8 个取最大
             self.margin = margin  # 颈缘线分支（预备体牙冠：颈缘点 → 256 维，接在最后）
             self.prep = prep  # 预备体表面分支（整体特征 + 每个顶点看附近的预备体）
+            self.ctx_refine = ctx_refine  # 每个顶点看附近的邻牙点出修正量
+            if ctx_refine:
+                self.ctx_local = nn.Sequential(nn.Conv2d(4 + 16, 64, 1), nn.LeakyReLU(0.2), nn.Conv2d(64, 64, 1), nn.LeakyReLU(0.2))
+                self.ctx_z = nn.Linear(latent, 128)
+                self.ctx_dec = nn.Sequential(nn.Conv1d(3 + 64 + 128 + 16, 256, 1), nn.LeakyReLU(0.2),
+                                             nn.Conv1d(256, 128, 1), nn.LeakyReLU(0.2), nn.Conv1d(128, 3, 1))
+                nn.init.zeros_(self.ctx_dec[-1].weight)  # 修正量从 0 开始
+                nn.init.zeros_(self.ctx_dec[-1].bias)
             self.fc = nn.Sequential(nn.Linear(2048 + (256 if antagonist else 0) + (256 if margin else 0) + (256 if prep else 0), latent),
                                     nn.LeakyReLU(0.2))
             if prep:
@@ -513,6 +523,18 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             e0, e1 = self.edges[:, 0], self.edges[:, 1]
             s = torch.zeros_like(pred).index_add(1, e0, pred[:, e1]).index_add(1, e1, pred[:, e0])
             return (pred - s / self.degree.view(1, -1, 1))[:, self.interior]
+
+        def ctx_step(self, out, ctx, ctx_idx, t, z, c):  # out (B,V,3) mm、ctx (B,N,3) mm → 修正量 (B,V,3) mm
+            v = out.shape[1]
+            dist, idx = torch.cdist(out, ctx).topk(CTX_K, dim=2, largest=False)
+            nbp = torch.gather(ctx.unsqueeze(1).expand(-1, v, -1, -1), 2, idx.unsqueeze(-1).expand(-1, -1, -1, 3))
+            emb = self.emb_idx(torch.gather(ctx_idx.unsqueeze(1).expand(-1, v, -1), 2, idx))  # 这个点是哪颗邻牙（牙弓位置）
+            off = out.unsqueeze(2) - nbp
+            f = torch.cat([(off / 5).clamp(-2, 2), (dist.unsqueeze(-1) / 5).clamp(0, 2), emb], dim=-1).permute(0, 3, 1, 2)
+            w = torch.softmax(-dist / CTX_SIGMA, dim=-1)
+            local = (self.ctx_local(f) * w.unsqueeze(1)).sum(dim=-1)
+            h = torch.cat([t, local, self.ctx_z(z).unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
+            return self.ctx_dec(h).transpose(1, 2)
 
         def prep_step(self, out, prep, t, z, c):  # out (B,V,3) mm、prep (B,P,6) → 修正量 (B,V,3) mm；软加权邻居，输出连续
             v = out.shape[1]
@@ -596,6 +618,8 @@ def build_model(k: int = 16, latent: int = 1024, subdivisions: int = 4, template
             else:
                 h = torch.cat([t, z.unsqueeze(-1).expand(-1, -1, v), c.unsqueeze(-1).expand(-1, -1, v)], dim=1)
                 out = (0.3 * t + self.dec(h)).transpose(1, 2) * SCALE
+            if self.ctx_refine:  # 先看邻牙（边缘嵴、牙尖高度）
+                out = out + self.ctx_step(out, ctx, ctx_idx, t, z, c)
             if self.prep and prep is not None:  # 先按预备体修侧面，再按对颌修咬合面
                 out = out + self.prep_step(out, prep, t, z, c) * has_prep.view(-1, 1, 1)
             if self.refine and ant is not None:
@@ -611,6 +635,33 @@ def chamfer(pred, gt):
 
     d = torch.cdist(pred, gt)
     return (d.min(dim=2)[0].mean(dim=1) + d.min(dim=1)[0].mean(dim=1)) / 2
+
+
+def curvature_weights(gt, strength: float, k: int = 16):
+    """(B,M,3) 真牙点 → 每个点的权重 (B,M)，平均为 1：exp(strength · 表面变化度 / 本样本平均)，截到 [0, 3·strength]。
+    表面变化度 = 邻域协方差最小特征值 / 特征值之和（平面 0，尖、沟处大）。不求梯度。"""
+    import torch
+
+    with torch.no_grad():
+        idx = torch.cdist(gt, gt).topk(k, dim=2, largest=False)[1]
+        nb = torch.gather(gt.unsqueeze(1).expand(-1, gt.shape[1], -1, -1), 2, idx.unsqueeze(-1).expand(-1, -1, -1, 3))
+        nb = nb - nb.mean(dim=2, keepdim=True)
+        cov = nb.transpose(2, 3) @ nb / k
+        ev = torch.linalg.eigvalsh(cov.double()).float().clamp(min=0)
+        sv = ev[..., 0] / ev.sum(-1).clamp(min=1e-9)
+        w = torch.exp((strength * sv / sv.mean(dim=1, keepdim=True).clamp(min=1e-9)).clamp(max=3 * strength))
+        return w / w.mean(dim=1, keepdim=True)
+
+
+def chamfer_weighted(pred, gt, w):
+    """加权的双向平均距离：真牙点 → 生成点按真牙点的权重；生成点 → 真牙点按最近那个真牙点的权重。"""
+    import torch
+
+    d = torch.cdist(pred, gt)
+    dg, _ = d.min(dim=1)  # 每个真牙点到生成点
+    dp, ip = d.min(dim=2)  # 每个生成点到真牙点
+    wp = torch.gather(w, 1, ip)
+    return ((dp * wp).sum(1) / wp.sum(1) + (dg * w).sum(1) / w.sum(1)) / 2
 
 
 def antagonist_distance(pred, ant):
@@ -633,7 +684,8 @@ def load_model(path: Path, device: str):
     ckpt = torch.load(path, map_location=device)
     model = build_model(template=ckpt.get("template", "sphere"), antagonist=ckpt.get("antagonist", False), refine=ckpt.get("refine", False),
                         lib_template=ckpt.get("lib_template", False), margin=ckpt.get("margin", False),
-                        soft_refine=ckpt.get("soft_refine", False), prep=ckpt.get("prep", False)).to(device)
+                        soft_refine=ckpt.get("soft_refine", False), prep=ckpt.get("prep", False),
+                        ctx_refine=ckpt.get("ctx_refine", False)).to(device)
     missing = model.load_state_dict(ckpt["state"], strict=False).missing_keys
     # 早期保存的模型没有这几个由模板决定的缓冲区，其余权重必须齐全
     assert set(missing) <= {"interior", "degree", "boundary"}, missing
@@ -644,7 +696,8 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
           template: str = "sphere", init: Path | None = None, lap_weight: float = 0.0, rim_weight: float = 1.0,
           antagonist: bool = False, refine: bool = False, ant_drop: float = 0.3, pen_weight: float = 10.0, clear_weight: float = 0.0,
           extent_weight: float = 0.0, gap_weight: float = 0.0, lib_template: Path | None = None, margin: bool = False,
-          compile: bool = False, soft_refine: bool = False, prep: bool = False) -> dict:
+          compile: bool = False, soft_refine: bool = False, prep: bool = False, curv_weight: float = 0.0,
+          ctx_refine: bool = False) -> dict:
     import torch
 
     torch.manual_seed(0)
@@ -661,7 +714,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
     dl = torch.utils.data.DataLoader(_dataset(scans, tr, True, ant_drop, antagonist, prep), batch_size=batch_size, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=workers > 0)
     dv = torch.utils.data.DataLoader(_dataset(scans, va, False, 0.0, antagonist, prep), batch_size=batch_size, num_workers=min(workers, 4))
     model = build_model(template=template, antagonist=antagonist, refine=refine, lib_template=lib_template is not None, margin=margin,
-                        soft_refine=soft_refine, prep=prep).to(device)
+                        soft_refine=soft_refine, prep=prep, ctx_refine=ctx_refine).to(device)
     if lib_template is not None:
         model.cls_template.copy_(torch.tensor(np.load(lib_template), device=device) / SCALE)
     if init:  # 沿用已训练的权重（模板不同时，形状对不上的缓冲区跳过）
@@ -690,12 +743,12 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         val = evaluate(model, dv, device)
         best = score(val)
         print(json.dumps({"epoch": 0, "val_chamfer_mm": round(val["chamfer_mm"], 4), "val_rim_mm": round(val["rim_mm"], 4), "note": "起点"}), flush=True)
-    def step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m, prep6=None, has_prep=None):  # 前向 + 损失
+    def step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m, prep6=None, has_prep=None, w_gt=None):  # 前向 + 损失
         if margin:
             pred = model(ctx, ctx_idx, cls, ant if antagonist else None, has_ant if antagonist else None, rim_in, has_m, prep6, has_prep)
         else:
             pred = model(ctx, ctx_idx, cls, ant, has_ant) if antagonist else model(ctx, ctx_idx, cls)
-        cd = chamfer(pred, gt).mean()
+        cd = (chamfer(pred, gt) if w_gt is None else chamfer_weighted(pred, gt, w_gt)).mean()
         if extent_weight or gap_weight:  # 整体形状：外形尺寸 / 高度、和邻牙的间隙都向真牙看齐
             extent, gap = shape_terms(pred, gt, nb.to(device), has_nb.to(device))
             cd = cd + extent_weight * extent.mean() + gap_weight * gap.mean()
@@ -736,7 +789,8 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
                 rim_in = jitter_rim(rim)
             else:
                 has_m = rim_in = None
-            loss, cd = step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m, prep6, has_prep)
+            w_gt = curvature_weights(gt, curv_weight) if curv_weight else None  # 曲率权重在编译的函数外面算（特征值分解）
+            loss, cd = step_fn(ctx, ctx_idx, cls, gt, rim, ant, has_ant, nb, has_nb, rim_in, has_m, prep6, has_prep, w_gt)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -750,7 +804,7 @@ def train(cache: Path | list[Path], out: Path, epochs: int, batch_size: int, lr:
         print(json.dumps(row), flush=True)
         ckpt = {"state": model.state_dict(), "epoch": epoch, "val": val, "template": template, "antagonist": antagonist, "refine": refine,
                 "lib_template": lib_template is not None, "margin": margin,
-                "soft_refine": soft_refine, "prep": prep}
+                "soft_refine": soft_refine, "prep": prep, "ctx_refine": ctx_refine}
         torch.save(ckpt, out.with_name(out.stem + ".last.pt"))  # 最后一轮总是留着（验证分数没超过起点时 out 不会被覆盖）
         if score(val) < best:
             best = score(val)
@@ -1141,6 +1195,8 @@ def main() -> None:
     t.add_argument("--gap-weight", type=float, default=0.0, help="到近中 / 远中邻牙的最小距离对齐真牙")
     t.add_argument("--lib-template", type=Path, help="每个牙位的库牙模板（lib_template.py build 生成）")
     t.add_argument("--margin", action="store_true", help="加颈缘线分支（预备体牙冠用）：训练时用真牙的边界环 + 扰动")
+    t.add_argument("--ctx-refine", action="store_true", help="每个顶点看附近的邻牙点出修正量（边缘嵴、牙尖高度）")
+    t.add_argument("--curv-weight", type=float, default=0.0, help="曲率加权倒角损失的强度（参考 VBCD；0 = 关，常用 1）")
     t.add_argument("--prep", action="store_true", help="加预备体表面分支（缓存里有 prep 的样本才给）：整体特征 + 每个顶点看附近的预备体")
     t.add_argument("--soft-refine", action="store_true", help="对颌修正用软的加权邻居（最近 32 个点按距离加权），输出随输入连续变化")
     t.add_argument("--compile", action="store_true", help="torch.compile 前向和损失（约快 1.5 倍；结果只差浮点舍入）")
@@ -1161,7 +1217,8 @@ def main() -> None:
               template=args.template, init=args.init, lap_weight=args.lap_weight, rim_weight=args.rim_weight,
               antagonist=args.antagonist, refine=args.refine, ant_drop=args.ant_drop, pen_weight=args.pen_weight, clear_weight=args.clear_weight,
               extent_weight=args.extent_weight, gap_weight=args.gap_weight, lib_template=args.lib_template, margin=args.margin,
-              compile=args.compile, soft_refine=args.soft_refine, prep=args.prep)
+              compile=args.compile, soft_refine=args.soft_refine, prep=args.prep, curv_weight=args.curv_weight,
+              ctx_refine=args.ctx_refine)
     else:
         run_eval(args.model, args.cache, args.out, args.batch_size, args.samples, args.hide_antagonist)
 
