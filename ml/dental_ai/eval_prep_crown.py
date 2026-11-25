@@ -36,6 +36,10 @@ def _one(args) -> list[dict]:
 
     zip_path, pid, seg_model, gen_model, out, per_jaw, seed, *rest = args
     sim_kw = {"proximal_band": rest[0]} if rest and rest[0] is not None else {}
+    if len(rest) > 1 and rest[1] == "real":  # 按真实预备体校准过的模拟（synthetic.REAL_PREP_KW）
+        from .synthetic import REAL_PREP_KW
+
+        sim_kw = dict(REAL_PREP_KW)
     rows: list[dict] = []
     try:
         meshes = {jaw: _load(zip_path, pid, jaw) for jaw in ("upper", "lower")}
@@ -132,6 +136,8 @@ def main() -> None:
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--labels-from", type=Path, help="已有的分割标签缓存目录（复用缺失牙评分卡的）")
+    p.add_argument("--prep-sim", default="v1", choices=["v1", "real"],
+                   help="模拟预备体：v1 = 原来的参数；real = 按 1500 个真实预备体校准的（邻面也磨、咬合面多磨）")
     p.add_argument("--proximal-band", type=float, help="模拟预备体邻面渐变带宽度 mm（默认 1.0：邻面没有棱；0.2：邻面也有台阶）")
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
@@ -144,7 +150,7 @@ def main() -> None:
     names = zipfile.ZipFile(args.zip).namelist()
     pids = sorted({n.split("/")[0] for n in names if n.endswith("ios_upper.stl") and n.replace("upper", "lower") in names})
     pids = [pids[i] for i in np.random.default_rng(1).permutation(len(pids))[: args.patients]]
-    jobs = [(str(args.zip), pid, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i, args.proximal_band) for i, pid in enumerate(pids)]
+    jobs = [(str(args.zip), pid, args.seg_model, args.gen_model, str(args.out), args.per_jaw, i, args.proximal_band, args.prep_sim) for i, pid in enumerate(pids)]
     rows = []
     with mp.get_context("spawn").Pool(args.workers) as pool:
         for i, r in enumerate(pool.imap_unordered(_one, jobs)):

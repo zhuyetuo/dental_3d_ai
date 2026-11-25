@@ -198,6 +198,12 @@ def simulate_closed_gap(mesh: trimesh.Trimesh, labels: np.ndarray, jaw: Jaw, tee
     return trimesh.Trimesh(v[used], remap[faces], process=False), labels[used]
 
 
+# 11-25 按 FDI 16 Crown Dataset 1500 个真实预备体（技师牙冠当原牙）校准：颊舌磨除量各高度相差 0.1 mm 内、咬合面 2.0（真实 1.8）、
+# 颈缘线起伏 2.4（真实 2.7）、邻面也磨（中部 0.8 mm，真实 1.6；口扫拍不到邻面下部，再多磨会穿出牙面）
+REAL_PREP_KW = dict(proximal_from="gum", proximal_band=0.3, occlusal=2.5, occlusal_floor=0.35, margin_above_gum=0.0,
+                    scallop=0.15, axial=0.8, taper_deg=2.0)
+
+
 def simulate_preparation(
     mesh: trimesh.Trimesh,
     labels: np.ndarray,
@@ -209,6 +215,8 @@ def simulate_preparation(
     taper_deg: float = 6.0,
     scallop: float = 0.4,
     proximal_band: float = 1.0,
+    proximal_from: str = "all",
+    occlusal_floor: float = 0.5,
 ) -> tuple[trimesh.Trimesh, np.ndarray]:
     """在真实口扫上把一颗牙“磨”成肩台预备体，返回 (网格, 真值颈缘线上的点)。
 
@@ -217,7 +225,11 @@ def simulate_preparation(
     被拉成近似水平的肩台，肩台外缘就是颈缘线。顶点、三角形和标签都不变（整颗牙仍标为 fdi）。
     返回的真值颈缘线是肩台外缘那一圈没有移动的顶点。
     proximal_band：邻面离邻牙 / 牙龈多近开始减小磨除量（mm）。1.0 时邻面平滑过渡、没有棱（原来的做法）；
-    0.2 时邻面也磨出台阶，终止线和颊舌侧一样清楚（真实预备体邻面也有终止线，11-23 起颈缘线评估用这个）。"""
+    0.2 时邻面也磨出台阶，终止线和颊舌侧一样清楚（真实预备体邻面也有终止线，11-23 起颈缘线评估用这个）。
+    proximal_from："all" = 离邻牙和牙龈都渐变（原来的做法，接触点处不磨，邻面几乎没磨）；"gum" = 只在牙龈处渐变，
+    邻面照样磨（和真实预备体一样离开邻牙），并切开预备体和邻牙之间的三角形。
+    occlusal_floor：咬合面压低后最少保留原来颈缘线以上高度的比例。
+    11-25 按 FDI 16 Crown Dataset 1500 个真实预备体校准过的参数见 REAL_PREP_KW。"""
     from .geometry import estimate_arch_frame
     from .margin.cervical import cervical_line
 
@@ -272,10 +284,10 @@ def simulate_preparation(
     target = np.minimum(r - axial, wall)
     scale = np.maximum(target, 0.35 * r) / np.maximum(r, 1e-9)  # 细的切牙不要收过轴心
     top = rise.max()
-    lowered = rise * max(top - occlusal, 0.5 * top) / top  # 高度按比例压低，颈缘线处不动
+    lowered = rise * max(top - occlusal, occlusal_floor * top) / top  # 高度按比例压低，颈缘线处不动
     # 邻面：口扫只拍到接触点，标签边界以下没有牙面。在那里照样内收会在预备体和牙龈之间拉出一道
     # 竖直的“悬崖”（大倒凹）。离非本牙顶点 1 mm 以内逐渐减小磨除量，邻面成为刃状边缘
-    others = np.nonzero(labels != fdi)[0]
+    others = np.nonzero(labels != fdi)[0] if proximal_from == "all" else np.nonzero(labels == 0)[0]
     dist = cKDTree(v[others]).query(v[idx])[0]
     weight = np.clip(dist / max(proximal_band, 1e-3), 0.0, 1.0)
     weight = weight * weight * (3 - 2 * weight)
@@ -283,6 +295,12 @@ def simulate_preparation(
     new = axis + horiz * scale[:, None] + np.outer(hm[above] + lowered, up)
     v[idx] = v[idx] + weight[:, None] * (new - v[idx])
     mesh.vertices = v
+    if proximal_from != "all":  # 切开磨过的牙面和邻牙之间被拉长的三角形
+        fl = labels[mesh.faces]
+        mv = np.zeros(len(v), dtype=bool)
+        mv[idx] = True
+        bridge = (fl == fdi).any(1) & ((fl != fdi) & (fl != 0)).any(1) & mv[mesh.faces].any(1)
+        mesh.update_faces(~bridge)
 
     # 真值颈缘线：颊舌侧是肩台外缘（与磨过的顶点相邻、没有动的本牙顶点），
     # 邻面是磨过的区域贴着非本牙顶点的那一圈（刃状边缘）

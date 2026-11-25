@@ -83,8 +83,10 @@ def cached_preparation(mesh, labels, jaw, fdi, **kw):
     key = mesh_key(mesh, np.asarray(labels, np.int16), jaw, fdi, kw, "prep_v1")
     hit = load("prep_sim", key)
     if hit is not None:
-        return trimesh.Trimesh(hit["verts"], np.asarray(mesh.faces), process=False), hit["truth"], hit["sharp"]
+        faces = hit["faces"] if "faces" in hit else np.asarray(mesh.faces)  # 邻面切开的模拟预备体面会变
+        return trimesh.Trimesh(hit["verts"], faces, process=False), hit["truth"], hit["sharp"]
     prep, truth = simulate_preparation(mesh, labels, jaw, fdi, **kw)
     sharp = edge_sharpness(prep)
-    save("prep_sim", key, verts=np.asarray(prep.vertices), truth=np.asarray(truth), sharp=np.asarray(sharp, np.float32))
+    save("prep_sim", key, verts=np.asarray(prep.vertices), faces=np.asarray(prep.faces), truth=np.asarray(truth),
+         sharp=np.asarray(sharp, np.float32))
     return prep, truth, sharp
