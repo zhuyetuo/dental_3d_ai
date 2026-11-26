@@ -180,6 +180,8 @@ def build_model(f0: int = 32, levels: int = 5):
                                      for i in range(levels - 1, 0, -1)])
             self.dec = nn.ModuleList([RB(fm[i - 1], fm[i - 1]) for i in range(levels - 1, 0, -1)])
             self.head = nn.Conv3d(fm[0], 4, 1)  # 占据 logit + 法向
+            # 多尺度监督（MADCrowner）：除最后一级外每级解码器出一个占据 logit，和下采样的真值比（只在训练时用）
+            self.aux = nn.ModuleList([nn.Conv3d(fm[i - 1], 1, 1) for i in range(levels - 1, 1, -1)])
             self.refine = nn.Sequential(nn.Linear(fm[0] + 4, 128), nn.ReLU(), nn.Linear(128, 128), nn.ReLU(), nn.Linear(128, 6))
             nn.init.zeros_(self.refine[-1].weight)
             nn.init.zeros_(self.refine[-1].bias)
@@ -191,8 +193,11 @@ def build_model(f0: int = 32, levels: int = 5):
                     x = F.max_pool3d(x, 2)
                 x = e(x)
                 skips.append(x)
+            self.aux_out = []
             for j, (u, d) in enumerate(zip(self.up, self.dec)):
                 x = d(u(x) + skips[-2 - j])  # VBCD：跳连相加
+                if j < len(self.aux):
+                    self.aux_out.append(self.aux[j](x))
             return self.head(x), x
 
         def refine_points(self, feat, logit, idx_list):
@@ -238,12 +243,15 @@ def nn_dist(a, b, chunk: int = 4096):
     return torch.cat(ds), torch.cat(ids)
 
 
-def cmpl(pos, nrm, gt):
+def cmpl(pos, nrm, gt, occl_w: float = 0.0):
     """VBCD 的 CMPL：双向最近点距离平方，按 exp(|曲率|/平均) + 颈缘 加权；外加法向 MSE。gt (M,8)：xyz、法向、曲率、颈缘。"""
     import torch
 
     k = gt[:, 6].abs()
     w = torch.exp((k / k.mean().clamp(min=1e-6)).clamp(max=4)) + gt[:, 7]
+    if occl_w:  # 咬合面加权：真值点里靠上（y 高）的那部分
+        y = gt[:, 1]
+        w = w * (1 + occl_w * torch.sigmoid((y - torch.quantile(y, 0.6)) / 0.5))
     d_gp, _ = nn_dist(gt[:, :3], pos)
     d_pg, i = nn_dist(pos, gt[:, :3])
     loss = (w * d_gp).sum() / w.sum() + (w[i] * d_pg).sum() / w[i].sum()
@@ -253,7 +261,7 @@ def cmpl(pos, nrm, gt):
 
 # ---------------------------------------------------------------- 训练
 def train(cache: list[Path], val: Path | None, out: Path, epochs: int, batch: int, lr: float, f0: int,
-          refine_from: int, workers: int, init: Path | None, max_val: int) -> None:
+          refine_from: int, workers: int, init: Path | None, max_val: int, occl_w: float = 0.0, deep_sup: float = 0.0) -> None:
     import torch
     import torch.nn.functional as F
 
@@ -265,7 +273,8 @@ def train(cache: list[Path], val: Path | None, out: Path, epochs: int, batch: in
     vdl = torch.utils.data.DataLoader(VoxDataset(vfiles, False), batch_size=batch, num_workers=workers) if vfiles else None
     model = build_model(f0).to(device)
     if init:
-        model.load_state_dict(torch.load(init, map_location=device)["state"])
+        miss = model.load_state_dict(torch.load(init, map_location=device, weights_only=False)["state"], strict=False)
+        print(json.dumps({"init_missing": list(miss.missing_keys)}), flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
     total = epochs * len(dl)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: 0.5 * (1 + math.cos(math.pi * min(s, total) / total)))
@@ -288,10 +297,15 @@ def train(cache: list[Path], val: Path | None, out: Path, epochs: int, batch: in
             m = occ[:, 0] > 0
             nrm = ((logit[:, 1:4] - tn) ** 2).sum(1)[m].mean()
             loss = bce + nrm
+            if deep_sup:
+                for k, a in enumerate(model.aux_out):
+                    f = GRID // a.shape[-1]
+                    tgt = F.max_pool3d(occ, f)
+                    loss = loss + deep_sup * F.binary_cross_entropy_with_logits(a.float(), tgt, pos_weight=pw)
             if use_ref:
                 gt = bt["gt"].to(device)
                 ref = model.refine_points(feat, logit, surface_voxels(logit.detach(), 12000))
-                cl, pn, cdm = zip(*[cmpl(p, n, gt[b]) for b, (p, n) in enumerate(ref)])
+                cl, pn, cdm = zip(*[cmpl(p, n, gt[b], occl_w) for b, (p, n) in enumerate(ref)])
                 cl, pn = torch.stack(cl).mean(), torch.stack(pn).mean()
                 loss = loss + 10 * cl + 0.1 * pn  # 距离平方 mm² 量级小，放大
                 agg["cmpl"] += cl.item(); agg["pn"] += pn.item(); agg["cd"] += torch.stack(cdm).mean().item()
@@ -351,7 +365,7 @@ def load(path: Path, device="cuda"):
 
     ck = torch.load(path, map_location=device, weights_only=False)
     m = build_model(ck.get("f0", 32)).to(device)
-    m.load_state_dict(ck["state"])
+    m.load_state_dict(ck["state"], strict=False)  # 旧模型没有多尺度头
     return m.eval()
 
 
@@ -628,6 +642,8 @@ def main() -> None:
     t.add_argument("--f0", type=int, default=32); t.add_argument("--refine-from", type=int, default=2)
     t.add_argument("--workers", type=int, default=8); t.add_argument("--init", type=Path)
     t.add_argument("--max-val", type=int, default=200)
+    t.add_argument("--occl-w", type=float, default=0.0, help="CMPL 里咬合面（牙冠上部）点的额外权重")
+    t.add_argument("--deep-sup", type=float, default=0.0, help="多尺度监督的权重（0 = 不用）")
     e = sub.add_parser("eval")
     e.add_argument("--data", type=Path, required=True); e.add_argument("--split", default="test")
     e.add_argument("--model", type=Path, required=True); e.add_argument("--out", type=Path, required=True)
@@ -641,7 +657,7 @@ def main() -> None:
         print("cached", build_cache(a.data, a.split, a.out, a.workers))
     elif a.cmd == "train":
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        train(a.cache, a.val, a.out, a.epochs, a.batch_size, a.lr, a.f0, a.refine_from, a.workers, a.init, a.max_val)
+        train(a.cache, a.val, a.out, a.epochs, a.batch_size, a.lr, a.f0, a.refine_from, a.workers, a.init, a.max_val, a.occl_w, a.deep_sup)
     elif a.shape_model:
         evaluate_mesh(a.data, a.split, a.model, a.shape_model, a.out, a.limit, a.iters, a.lap, a.trunc, a.free_rim)
     else:
