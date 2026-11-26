@@ -55,7 +55,7 @@ def build(model, d: Path, out: Path, device: str, vox=None) -> dict:
             ant_parts.append(b)
             continue
         if np.bincount(pr[:, 2]).argmax() == 1:  # 预备体连同周围牙龈：预备体网格上的顶点 = 16，其余 = 牙龈
-            lab = np.where(near_prep.query(b.vertices)[0] < 0.05, 16, 0)
+            lab = np.full(len(b.vertices), 16)  # 数据集去掉了牙龈：这块就是预备体（原来按到预备体顶点的距离标，标成了散点）
         else:
             lab = np.full(len(b.vertices), 15 if side == 1 else 17)
         up_parts.append(b)

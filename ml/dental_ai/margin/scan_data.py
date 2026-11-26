@@ -21,7 +21,8 @@ CLIP = 2.0  # 和 learned.py 一致
 
 def _one(args):
     """CPU 进程：一个颌 → 若干颗模拟预备体的裁剪块（还没有训练目标，只有“在预备体一侧”的符号）。"""
-    item, per_jaw, seed, reach = args
+    item, per_jaw, seed, reach, *rest = args
+    sim = rest[0] if rest else "v1"
     import trimesh
     from scipy.spatial import cKDTree
 
@@ -39,8 +40,13 @@ def _one(args):
     present = sorted({int(f) for f in np.unique(labels) if f and 3 <= f % 10 <= 7 and (labels == f).sum() > 400})
     for fdi in rng.permutation(present)[:per_jaw].tolist():
         try:
-            prm = dict(margin_above_gum=rng.uniform(0.3, 1.2), axial=rng.uniform(0.8, 1.4), occlusal=rng.uniform(1.2, 2.0),
-                       taper_deg=rng.uniform(4, 10), scallop=rng.uniform(0.3, 0.6))
+            if sim == "real":  # 围绕按真实预备体校准的参数（synthetic.REAL_PREP_KW）随机：邻面也磨、咬合面多磨
+                prm = dict(proximal_from="gum", proximal_band=rng.uniform(0.2, 0.6), occlusal=rng.uniform(2.0, 3.0), occlusal_floor=0.35,
+                           margin_above_gum=rng.uniform(0.0, 0.5), axial=rng.uniform(0.6, 1.1), taper_deg=rng.uniform(1, 8),
+                           scallop=rng.uniform(0.1, 0.3))
+            else:
+                prm = dict(margin_above_gum=rng.uniform(0.3, 1.2), axial=rng.uniform(0.8, 1.4), occlusal=rng.uniform(1.2, 2.0),
+                           taper_deg=rng.uniform(4, 10), scallop=rng.uniform(0.3, 0.6))
             prep, truth = simulate_preparation(mesh, labels, jaw, fdi, **prm)
             v0, v = np.asarray(mesh.vertices), np.asarray(prep.vertices)
             moved = np.linalg.norm(v - v0, axis=1) > 1e-6
@@ -93,10 +99,11 @@ def main() -> None:
     p.add_argument("--reach", type=float, default=3.0)
     p.add_argument("--workers", type=int, default=40)
     p.add_argument("--limit", type=int)
+    p.add_argument("--sim", default="v1", choices=["v1", "real"], help="real = 按真实预备体校准的模拟（11-25）")
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     items = [s for sp in (args.split or [None]) for s in teeth3ds_zip_scans(args.zips, sp)][: args.limit]
-    jobs = [(it, args.per_jaw, i, args.reach) for i, it in enumerate(items)]
+    jobs = [(it, args.per_jaw, i, args.reach, args.sim) for i, it in enumerate(items)]
     device = "cuda" if torch.cuda.is_available() else "cpu"
     t0, n_ok, errors, pending = time.time(), 0, [], []
 
