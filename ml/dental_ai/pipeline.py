@@ -167,9 +167,17 @@ def run(
                 try:
                     geo = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness)
                     d = (cKDTree(geo.points).query(learned)[0].mean() + cKDTree(learned).query(geo.points)[0].mean()) / 2
+                    snap = None
                     if d < float(os.environ.get("MARGIN_FUSE_GATE", "0.8")):
                         snap = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness, initial=learned,
                                              search_radius=0.5, max_height_diff=0.5)
+
+                    def _loop_len(q):
+                        return float(np.linalg.norm(np.diff(np.vstack([q, q[:1]]), axis=0), axis=1).sum())
+
+                    # 来回折的线（比几何线长 30% 以上）不要：11-25 快速对比颈缘线误差 0.469 → 0.445 mm，p90 0.81 → 0.63 mm
+                    if snap is not None and \
+                            _loop_len(snap.points) < float(os.environ.get("MARGIN_FUSE_LEN", "1.3")) * _loop_len(geo.points):
                         margins[str(fdi)] = {**snap.to_dict(), "method": "fused"}
                     else:
                         margins[str(fdi)] = {**geo.to_dict(), "method": "fused-geometric"}

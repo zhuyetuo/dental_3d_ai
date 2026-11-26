@@ -15,6 +15,25 @@ def _err(line, truth):
     return float((cKDTree(truth).query(line)[0].mean() + cKDTree(line).query(truth)[0].mean()) / 2)
 
 
+def loop_len(p):
+    return float(np.linalg.norm(np.diff(np.vstack([p, p[:1]]), axis=0), axis=1).sum())
+
+
+def backtrack(p, up):
+    """绕牙轴看，相邻点的角度和整体方向相反的步数占比（正常的一圈接近 0，来回折的线明显大于 0）。"""
+    up = np.asarray(up, float) / np.linalg.norm(up)
+    c = p.mean(axis=0)
+    ax = np.cross(up, [1.0, 0.0, 0.0])
+    if np.linalg.norm(ax) < 1e-3:
+        ax = np.cross(up, [0.0, 1.0, 0.0])
+    ax /= np.linalg.norm(ax)
+    ay = np.cross(up, ax)
+    a = np.arctan2((p - c) @ ay, (p - c) @ ax)
+    da = (np.roll(a, -1) - a + np.pi) % (2 * np.pi) - np.pi
+    s = np.sign(np.sum(da))
+    return float((np.sign(da) != s).mean())
+
+
 def _one(args):
     from dental_ai.cache import cached_preparation
     from dental_ai.eval_crown import _labels, _load
@@ -62,6 +81,11 @@ def _one(args):
                     for rad in (0.5, 0.8, 1.2):
                         lines[f"snap{rad}"] = detect_margin(prep, lab, fdi, up=up, sharpness=sharp, initial=L,
                                                             search_radius=rad, max_height_diff=rad).points
+                    # 来回折的形状指标：周长比几何线长多少、绕牙轴的角度往回走的比例
+                    r["len_ratio"] = loop_len(L) / loop_len(geo.points)
+                    r["back_l"] = backtrack(L, up)
+                    r["back_s"] = backtrack(lines["snap0.5"], up)
+                    r["len_ratio_s"] = loop_len(lines["snap0.5"]) / loop_len(geo.points)
                 r.update({k: _err(v, truth) for k, v in lines.items()})
             except Exception as exc:  # noqa: BLE001
                 r["error"] = f"{type(exc).__name__}: {exc}"[:200]
@@ -112,6 +136,19 @@ def main():
     for t in (0.4, 0.6, 0.8, 1.0, 1.5):
         pick(f"gate{t}", lambda r, t=t: r["learned"] if "learned" in r and r["dist_lg"] < t else r["geo"])
         pick(f"gate{t}+snap0.5", lambda r, t=t: r["snap0.5"] if "learned" in r and r["dist_lg"] < t else r["geo"])
+    fz = lambda r: r["snap0.5"] if "learned" in r and r["dist_lg"] < 0.8 else r["geo"]  # noqa: E731
+    pick("FUSED(online)", fz)
+    for lr in (1.1, 1.15, 1.2, 1.3):
+        pick(f"fused+len<{lr}", lambda r, lr=lr: fz(r) if "learned" not in r or r["len_ratio_s"] < lr else r["geo"])
+    for bt in (0.05, 0.1, 0.15, 0.2):
+        pick(f"fused+back<{bt}", lambda r, bt=bt: fz(r) if "learned" not in r or r["back_s"] < bt else r["geo"])
+    for g in (0.8, 1.0, 1.2):
+        for lr in (1.15, 1.2):
+            pick(f"gate{g}+len<{lr}", lambda r, g=g, lr=lr: r["snap0.5"] if "learned" in r and r["dist_lg"] < g and r["len_ratio_s"] < lr else r["geo"])
+    w = sorted((r for r in ok if "learned" in r and r["dist_lg"] < 0.8), key=lambda r: r["geo"] - r["snap0.5"])[:6]
+    for r in w:
+        print("worst", r["patient"], r["fdi"], "geo", round(r["geo"], 2), "fused", round(r["snap0.5"], 2), "len", round(r["len_ratio_s"], 2),
+              "back", round(r["back_s"], 3), "dist", round(r["dist_lg"], 2))
     pick("sharper", lambda r: r["learned"] if "learned" in r and r["sharp_l"] >= r["sharp_g"] else r["geo"])
     pick("oracle", lambda r: min(r.get("learned", 9), r["geo"]))
 
