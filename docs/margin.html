@@ -46,10 +46,49 @@ td.w{white-space:normal;min-width:260px}
 <a href="https://github.com/zhuyetuo/dental_3d_ai">代码仓库</a></div></nav>
 <div class="wrap">
   <header>
-    <div class="eyebrow">牙冠生成的下半部分（见<a href="generation.html">牙冠生成</a>）· 专项 · 预备体颈缘线 · 数字更新于 2026-11-13</div>
+    <div class="eyebrow">牙冠生成的下半部分（见<a href="generation.html">牙冠生成</a>）· 专项 · 预备体颈缘线 · 数字更新于 2026-11-25</div>
     <h1>在磨好的牙上找出牙冠边缘那条线</h1>
-    <p class="lead">现状一句话：在单独的代型上误差只有零点零几毫米，但<b>还没接进流程，也没在口内扫描上测过</b>。这一轮没有重新训练。</p>
+    <p class="lead">现状一句话：<b>口内扫描上，学习式 + 几何的融合方法把颈缘线误差从 0.55 mm 降到 0.46 mm</b>，牙冠外形也跟着变好；单独代型上误差只有零点零几毫米。融合版已接进流程，线上还没切换。</p>
   </header>
+
+  <section>
+    <h2>口内扫描上（11-25 新）</h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">颈缘线误差，平均</div><div class="v"><s>0.546</s><b>0.458 mm</b></div><div class="n">107 颗牙，配对比较，置信区间不含 0</div></div>
+      <div class="tile"><div class="k">颈缘线误差，中位数</div><div class="v"><s>0.547</s><b>0.403 mm</b></div><div class="n">60% 的牙比几何方法准</div></div>
+      <div class="tile"><div class="k">牙冠外形误差（RMSE）</div><div class="v"><s>0.527</s><b>0.485 mm</b></div><div class="n">线准了，牙冠下半部分也跟着准</div></div>
+      <div class="tile"><div class="k">牙尖位置误差</div><div class="v"><s>1.37</s><b>1.23 mm</b></div><div class="n"></div></div>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:#2ca02c"></span>真值颈缘线</span>
+      <span><span class="sw" style="background:#2e6fe0"></span>几何方法（线上）</span>
+      <span><span class="sw" style="background:#d62728"></span>融合</span>
+    </div>
+    <figure>
+      <img src="images/margin_fuse.png" alt="口扫上的预备体：几何方法和融合方法找的颈缘线">
+      <figcaption>真实口扫上按真实预备体校准过的模拟预备体（带牙龈和邻牙）。上：提升最大的之一；中：典型；下：融合最差的一颗——学习式的线在近中来回折，下一步加形状检查挡掉这种。</figcaption>
+    </figure>
+    <figure>
+      <img src="images/margin_fuse_cdf.png" alt="逐牙颈缘线误差分布">
+      <figcaption>逐牙误差的累计分布：越靠左上越好。单用学习式，多数牙更准但尾巴长（找偏的牙误差超过 1 mm）；融合保住了提升，又把大部分尾巴截掉。</figcaption>
+    </figure>
+    <div class="flow">
+      <div class="step"><b>学习式找线</b>模拟口扫（带牙龈）上训的逐点网络，给出颈缘线大致位置</div>
+      <div class="step"><b>和几何线比</b>两条线平均差不到 0.8 mm 才信学习式；差得多多半是学习式找偏，直接用几何</div>
+      <div class="step"><b>就近贴棱</b>以学习式的线为初始线，在 0.5 mm 内贴到预备体肩台的棱上</div>
+    </div>
+    <div class="scroll"><table>
+      <tr><th>方法</th><th>数据</th><th>颈缘线误差</th></tr>
+      <tr><td>几何方法（线上）</td><td class="w">本项目，口扫 + 模拟预备体，107 颗牙</td><td>平均 0.55 / 中位 0.55 mm</td></tr>
+      <tr><td>只用学习式</td><td class="w">同上</td><td>平均 0.54 / 中位 0.43 mm，个别找偏</td></tr>
+      <tr><td><b>融合</b></td><td class="w">同上</td><td><b>平均 0.46 / 中位 0.40 mm</b></td></tr>
+      <tr><td>Alsheghri 等 2024（点云生成）</td><td class="w">他们自己的预备体数据集，技工标注</td><td>Chamfer 中位 0.137 mm，Hausdorff 中位 0.242 mm</td></tr>
+    </table></div>
+    <ul>
+      <li>别家的数字来自论文，数据集和误差定义都不一样，只能看量级，不是同一个考场。我们的真值是模拟预备体的肩台外缘，比技工画线更“硬”；真实带技工标注的口扫还没有。</li>
+      <li>和代型上 0.04 mm 差这么多，主要是口扫里有牙龈、邻牙贴着预备体，分割边界本身就偏；而且模拟数据（Teeth3DS）和测试口扫来自不同扫描仪。</li>
+    </ul>
+  </section>
 
   <section class="explain">
     <details class="explain-box" open>
@@ -123,9 +162,10 @@ td.w{white-space:normal;min-width:260px}
   <section>
     <h2>路线</h2>
     <div class="road">
-      <div class="step new"><b>接进流程</b>现在预备体牙冠用的是几何方法找的颈缘线，换成这个模型。</div>
-      <div class="step"><b>口内扫描上测</b>目前只在单独的代型上测过；真实口扫里预备体旁边有牙龈和邻牙，难度不一样。</div>
-      <div class="step"><b>预备体牙冠的评分卡</b>缺失牙已有评分卡，预备体牙冠的还没有。</div>
+      <div class="step done"><b>接进流程、口扫上测、预备体评分卡</b>11-25 完成：融合方法（MARGIN_METHOD=fused）。</div>
+      <div class="step new"><b>线上切换</b>网页现在还用几何方法，确认后切到融合。</div>
+      <div class="step"><b>挡掉来回折的线</b>学习式的线比几何线长很多或自相交时不用它。</div>
+      <div class="step"><b>真实标注的口扫</b>拿到技工画过颈缘线的真实口扫后，在上面测一次、再微调。</div>
     </div>
   </section>
   <footer>完整数字在仓库的 <a href="https://github.com/zhuyetuo/dental_3d_ai/blob/main/docs/results.md">docs/results.md</a>。</footer>
