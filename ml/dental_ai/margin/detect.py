@@ -86,11 +86,13 @@ def detect_margin(
     sharpness: np.ndarray | None = None,
     start_candidates: int = 8,
     proximal_keep: tuple[float, float] | None = None,
+    initial: np.ndarray | None = None,
 ) -> MarginResult:
     """up：咬合方向（牙冠朝向）。不提供时用该牙表面法向的面积加权平均估计。
     proximal_keep=(lo, hi)：初始线离邻牙 lo mm 以内的站点留在分割边界上，hi mm 以外用棱检测，中间平滑过渡。
     邻面贴着邻牙，棱检测容易被拉到轴壁等别的棱上（模拟预备体上邻面误差是颊舌侧的 2 倍），分割边界在那里反而更准。None = 不用。"""
-    initial = resample_loop(cervical_line(mesh, labels, fdi, smooth_iters=3), stations)
+    # initial：初始线（默认用分割边界；融合时用学习式模型的线，再在附近贴到棱上）
+    initial = resample_loop(cervical_line(mesh, labels, fdi, smooth_iters=3) if initial is None else np.asarray(initial, float), stations)
     score = edge_sharpness(mesh) if sharpness is None else sharpness
     verts = np.asarray(mesh.vertices)
     if up is None:

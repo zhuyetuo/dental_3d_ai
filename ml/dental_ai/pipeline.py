@@ -152,7 +152,8 @@ def run(
             if sharpness is None:
                 sharpness = edge_sharpness(mesh)
             learned = None
-            if os.environ.get("MARGIN_METHOD", "geometric") == "learned":  # 学习式颈缘线（代型上训的模型），不行再用几何方法
+            method = os.environ.get("MARGIN_METHOD", "geometric")
+            if method in ("learned", "fused"):  # 学习式颈缘线（模拟口扫上训的模型），不行再用几何方法；fused 见下
                 try:
                     from .margin.learned import detect_in_scan
 
@@ -160,7 +161,23 @@ def run(
                     learned = detect_in_scan(model_path, mesh, labels, fdi)
                 except (ValueError, FileNotFoundError, RuntimeError) as exc:
                     report["warnings"].append(f"{fdi} 学习式颈缘线没用上（{exc}），改用几何方法")
-            if learned is not None:
+            if learned is not None and method == "fused":
+                # 融合（11-25）：学习式的线和几何方法的线平均差不到 0.8 mm 才信学习式，再在它附近 0.5 mm 内贴到棱上；
+                # 差得多多半是学习式找偏了，用几何。校准过的模拟预备体上颈缘线误差 0.555 → 0.469 mm
+                try:
+                    geo = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness)
+                    d = (cKDTree(geo.points).query(learned)[0].mean() + cKDTree(learned).query(geo.points)[0].mean()) / 2
+                    if d < float(os.environ.get("MARGIN_FUSE_GATE", "0.8")):
+                        snap = detect_margin(mesh, labels, fdi, up=up, sharpness=sharpness, initial=learned,
+                                             search_radius=0.5, max_height_diff=0.5)
+                        margins[str(fdi)] = {**snap.to_dict(), "method": "fused"}
+                    else:
+                        margins[str(fdi)] = {**geo.to_dict(), "method": "fused-geometric"}
+                        report["warnings"] += geo.warnings
+                except ValueError as exc:
+                    report["warnings"].append(f"{fdi} 颈缘线检测失败: {exc}")
+                    continue
+            elif learned is not None:
                 margins[str(fdi)] = {"points": learned.tolist(), "source": "auto", "method": "learned", "confidence": None}
             else:
                 try:
