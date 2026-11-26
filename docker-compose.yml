@@ -51,6 +51,10 @@ x-backend-common: &backend-common
     PREP_SHAPE_MODEL: /models/generation/toothgen_ctx.pt
     # 上颌第一磨牙（16 / 26）预备体牙冠外表面：体素模型（照 VBCD），形状模型的网格贴到它的点上（真实预备体 CD-L2 0.404 → 0.338、牙尖 1.38 → 0.90 mm）
     PREP_VOXEL_MODEL: /models/generation/voxel_crown.pt
+    # 颈缘线：fused = 学习式（模拟口扫上训的）和几何方法融合——两条线差不到 0.8 mm 才用学习式，并就近贴棱，否则用几何
+    # （11-25 预备体评分卡：颈缘线误差 0.546 → 0.458 mm，外形 RMSE 0.527 → 0.485 mm）；去掉这两行回到几何方法
+    MARGIN_METHOD: fused
+    MARGIN_MODEL: /models/margin/margin_scan_real.pt
     # 网页上的示例病例（仓库 demo/ 目录，Teeth3DS 原始扫描，见 demo/README.md）
     DEMO_DIR: /demo
   volumes:
@@ -58,6 +62,7 @@ x-backend-common: &backend-common
     - ./models/templates:/models/templates:ro
     - ./models/segmentation:/models/segmentation:ro
     - ./models/generation:/models/generation:ro
+    - ./models/margin:/models/margin:ro
     - ./demo:/demo:ro
 
 services:
