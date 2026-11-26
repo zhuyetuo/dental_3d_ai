@@ -159,3 +159,50 @@ def poisson_mesh(points, normals, res: int = 192, sigma: float = 1.0, trim: floa
         if len(parts):
             m = max(parts, key=lambda x: x.area)
     return m
+
+
+def deepen_grooves(m, k: float = 2.0, up_axis: int = 1, cell: float = 0.1, size: int = 13, blend: float = 1.0):
+    """只加深窄沟：咬合面高度图（cell mm 一格）做 size 格的形态学闭运算（把比约 1.3 mm 窄的沟填平）减原高度 = 沟深，
+    朝咬合面的顶点沿 −up 再挪 k × 沟深。平面、牙尖、大的窝不变（闭运算后不变），所以不放大噪声。
+    用在泊松表面上（三角形均匀，不会折叠），再把牙冠网格投上去。坐标里 up_axis 轴朝咬合面。"""
+    import trimesh
+    from scipy import ndimage
+    from scipy.spatial import cKDTree
+    from trimesh.grouping import group_rows
+
+    if k <= 0:
+        return m
+    ax = [i for i in range(3) if i != up_axis]
+    v = np.asarray(m.vertices, float).copy()
+    pts, _ = trimesh.sample.sample_surface(m, 150000, seed=5)
+    y = pts[:, up_axis]
+    top0 = np.percentile(y, 98) - 4.0
+    p = pts[y >= top0]
+    x0, z0 = p[:, ax[0]].min(), p[:, ax[1]].min()
+    ix = np.floor((p[:, ax[0]] - x0) / cell).astype(int)
+    iz = np.floor((p[:, ax[1]] - z0) / cell).astype(int)
+    g = np.full((ix.max() + 1, iz.max() + 1), -np.inf)
+    np.maximum.at(g, (ix, iz), p[:, up_axis])
+    have = np.isfinite(g)
+    idx = ndimage.distance_transform_edt(~have, return_distances=False, return_indices=True)
+    gf = ndimage.gaussian_filter(g[tuple(idx)], 0.75)
+    depth = ndimage.gaussian_filter(ndimage.grey_closing(gf, size=(size, size)) - gf, 1.5)
+    edge = ndimage.distance_transform_edt(ndimage.binary_closing(have, iterations=3)) * cell
+    depth *= np.clip(edge / 1.0, 0, 1)  # 轮廓附近（边缘嵴外侧）不动
+    n = np.asarray(m.vertex_normals)
+    fx, fz = (v[:, ax[0]] - x0) / cell - 0.5, (v[:, ax[1]] - z0) / cell - 0.5
+    dv = ndimage.map_coordinates(depth, [fx, fz], order=1, mode="nearest")
+    hv = ndimage.map_coordinates(gf, [fx, fz], order=1, mode="nearest")
+    w = np.clip((n[:, up_axis] - 0.3) / 0.4, 0, 1) * (v[:, up_axis] >= top0) * np.clip(1 - (np.abs(v[:, up_axis] - hv) - 0.2) / 0.2, 0, 1)
+    es = m.edges_sorted
+    rim = np.unique(es[group_rows(es, require_count=1)])
+    if len(rim):
+        w *= np.clip(cKDTree(v[rim]).query(v)[0] / blend, 0, 1)
+    disp = k * dv * w
+    e = m.edges_unique
+    deg = np.bincount(e.ravel(), minlength=len(v)).astype(float)
+    for _ in range(4):  # 位移在网格上平滑几次
+        acc = np.bincount(e[:, 0], disp[e[:, 1]], len(v)) + np.bincount(e[:, 1], disp[e[:, 0]], len(v))
+        disp = 0.5 * disp + 0.5 * acc / np.maximum(deg, 1)
+    v[:, up_axis] -= disp
+    return trimesh.Trimesh(v, m.faces, process=False)

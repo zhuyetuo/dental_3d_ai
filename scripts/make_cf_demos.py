@@ -89,7 +89,7 @@ def build(model, d: Path, out: Path, device: str, vox=None) -> dict:
         outer = trimesh.Trimesh(v, f, process=False)
         if ((outer.triangles_center - v.mean(axis=0)) * outer.face_normals).sum() < 0:
             outer.invert()
-        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，泊松重建出光滑表面，贴合形状模型网格）"
+        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，泊松重建出光滑表面、窝沟加深，贴合形状模型网格）"
     margin = margin_loop(prep)
     warnings = []
     try:

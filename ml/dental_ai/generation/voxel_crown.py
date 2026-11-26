@@ -457,7 +457,8 @@ def fit_mesh(verts, faces, fixed, pts, iters: int = 150, lap: float = 0.5, trunc
     return (V0 + D * free).detach().cpu().numpy().astype(float), np.asarray(faces)
 
 
-def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1.0, taubin: int = 3, subdivide: bool = True):
+def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1.0, taubin: int = 3, subdivide: bool = True,
+                    groove: float | None = None):
     """贴好的网格 → 顶点投影到体素点 + 法向做的泊松重建表面上（光滑，去掉逐顶点贴点带来的小凹凸）。
     开边界（底边）不动，离底边 blend mm 以内线性过渡；泊松表面被裁掉的地方（离它 1.5 mm 以上）不投。再做几次 Taubin 平滑。"""
     import trimesh
@@ -467,6 +468,13 @@ def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1
     from .poisson import poisson_mesh
 
     pm = poisson_mesh(pts, nrm, 192, sigma, 0.3)
+    import os
+
+    from .poisson import deepen_grooves
+
+    groove = float(os.environ.get("VOXEL_GROOVE", 2.0)) if groove is None else groove
+    if groove > 0:  # 窝沟加深（数据坐标 y 朝咬合面）：泊松表面上窄沟 × (1 + groove)，40 例上沟深 0.10 → 约 0.22 mm（技师 0.235）
+        pm = deepen_grooves(pm, groove)
     if subdivide:  # 再细分一次，投影后窝沟、牙尖更圆顺
         verts, faces = trimesh.remesh.subdivide(np.asarray(verts, float), np.asarray(faces))
     v = np.asarray(verts, float).copy()
