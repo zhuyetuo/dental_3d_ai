@@ -457,6 +457,33 @@ def fit_mesh(verts, faces, fixed, pts, iters: int = 150, lap: float = 0.5, trunc
     return (V0 + D * free).detach().cpu().numpy().astype(float), np.asarray(faces)
 
 
+def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1.0, taubin: int = 3, subdivide: bool = True):
+    """贴好的网格 → 顶点投影到体素点 + 法向做的泊松重建表面上（光滑，去掉逐顶点贴点带来的小凹凸）。
+    开边界（底边）不动，离底边 blend mm 以内线性过渡；泊松表面被裁掉的地方（离它 1.5 mm 以上）不投。再做几次 Taubin 平滑。"""
+    import trimesh
+    from scipy.spatial import cKDTree
+    from trimesh.grouping import group_rows
+
+    from .poisson import poisson_mesh
+
+    pm = poisson_mesh(pts, nrm, 192, sigma, 0.3)
+    if subdivide:  # 再细分一次，投影后窝沟、牙尖更圆顺
+        verts, faces = trimesh.remesh.subdivide(np.asarray(verts, float), np.asarray(faces))
+    v = np.asarray(verts, float).copy()
+    m = trimesh.Trimesh(v, faces, process=False)
+    es = m.edges_sorted
+    rim = np.unique(es[group_rows(es, require_count=1)])
+    w = np.clip(cKDTree(v[rim]).query(v)[0] / blend, 0, 1) if len(rim) else np.ones(len(v))
+    cp, dist, _ = trimesh.proximity.closest_point(pm, v)
+    w = w * (dist < 1.5)
+    out = trimesh.Trimesh(v + w[:, None] * (cp - v), faces, process=False)
+    if taubin:
+        trimesh.smoothing.filter_taubin(out, lamb=0.5, nu=-0.53, iterations=taubin)
+        if len(rim):
+            out.vertices[rim] = v[rim]
+    return np.asarray(out.vertices, float), np.asarray(faces)
+
+
 def evaluate_mesh(data: Path, split: str, model_path: Path, shape_path: Path, out: Path, limit: int | None,
                   iters: int, lap: float, trunc: float, free_rim: bool = False) -> None:
     """真实预备体测试集，网格上的指标：形状模型出网格（底边贴颈缘）→ 贴到体素模型的点上 → 和 eval_crownfusion 一样算指标。
@@ -611,14 +638,17 @@ class VoxelRefinedGenerator:
             ant = ant[rng.choice(len(ant), min(len(ant), 15000), replace=False)]
         ctx4 = np.concatenate([np.c_[nb - c, np.ones(len(nb))], np.c_[ant - c, np.full(len(ant), 2.0)]])
         bt = {"prep": torch.tensor(pp - c, dtype=torch.float32)[None], "ctx": torch.tensor(ctx4, dtype=torch.float32)[None]}
-        p, _ = predict_points(self._model, make_inputs(bt, "cuda"))[0]
-        p = p.cpu().numpy() + c
+        p, pn = predict_points(self._model, make_inputs(bt, "cuda"))[0]
+        p, pn = p.float().cpu().numpy() + c, pn.float().cpu().numpy()
         if os.environ.get("VOXEL_DUMP"):  # 调试：存下输入、输出（数据坐标）
             Path(os.environ["VOXEL_DUMP"]).mkdir(parents=True, exist_ok=True)
             np.savez(Path(os.environ["VOXEL_DUMP"]) / f"{target.fdi}_{len(pp)}_{int(c[0] * 1000)}.npz", prep=pp, nb=nb, ant=ant, pts=p, c=c,
                      shape=to_data(tooth.crown.vertices))
         verts, faces = fit_mesh(to_data(tooth.crown.vertices), np.asarray(tooth.crown.faces), [], p, self.iters, lap,
                                 subdivide=len(tooth.crown.vertices) < 5000)
+        surface = os.environ.get("VOXEL_SURFACE", "poisson")
+        if surface == "poisson":  # 逐顶点贴点会带体素点的噪声（表面密密麻麻的小凹凸），投到泊松重建的光滑表面上
+            verts, faces = poisson_project(verts, faces, p, pn)
         crown = trimesh.Trimesh(verts @ np.linalg.inv(A), faces, process=False)
         if ((crown.triangles_center - crown.vertices.mean(axis=0)) * crown.face_normals).sum() < 0:
             crown.invert()
@@ -626,6 +656,7 @@ class VoxelRefinedGenerator:
         tooth.method = self.name
         tooth.info["source"] = f"{tooth.info.get('source')}+voxel:{self.model_path.name}"
         tooth.info["voxel_points"] = int(len(p))
+        tooth.info["voxel_surface"] = surface
         return tooth
 
 

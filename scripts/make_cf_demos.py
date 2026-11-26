@@ -82,12 +82,14 @@ def build(model, d: Path, out: Path, device: str, vox=None) -> dict:
         c = vc.crop_center(pp)
         bt = {"prep": torch.tensor(pp - c, dtype=torch.float32)[None],
               "ctx": torch.tensor(np.concatenate([pts[:, :3] - c, (props[:, 1:2] + 1)], 1), dtype=torch.float32)[None]}
-        vp = vc.predict_points(vox, vc.make_inputs(bt, "cuda"))[0][0].cpu().numpy() + c
+        vp, vn = vc.predict_points(vox, vc.make_inputs(bt, "cuda"))[0]
+        vp, vn = vp.float().cpu().numpy() + c, vn.float().cpu().numpy()
         v, f = vc.fit_mesh(np.asarray(outer.vertices), np.asarray(outer.faces), [], vp, 150, 0.5)
+        v, f = vc.poisson_project(v, f, vp, vn)  # 和线上一样：投到泊松重建的光滑表面上
         outer = trimesh.Trimesh(v, f, process=False)
         if ((outer.triangles_center - v.mean(axis=0)) * outer.face_normals).sum() < 0:
             outer.invert()
-        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，贴合形状模型网格）"
+        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，泊松重建出光滑表面，贴合形状模型网格）"
     margin = margin_loop(prep)
     warnings = []
     try:
