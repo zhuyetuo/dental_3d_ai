@@ -132,7 +132,40 @@ td.w{white-space:normal;min-width:260px}
 
 
   <section>
-    <h2>新：形状模型出形状，扩散模型补细节（11-14，网页已默认使用）</h2>
+    <h2>新：预备体牙冠的咬合面，体素模型第二版（11-27 上线）</h2>
+    <p>上颌第一磨牙（16 / 26）的预备体牙冠外表面用体素模型（照 VBCD 的结构：预备体、邻牙、对颌放进 128³ 体素，3D U-Net 出表面，再逐点精修，形状模型的网格贴上去）。
+    第二版在第一版上接着训 8 轮，加了两样：<b>咬合面加权</b>（精修损失里牙冠上部的点权重最高到 3 倍）和<b>多尺度监督</b>（MADCrowner：解码器每一级都和下采样的真值比）。
+    在真实预备体测试集（CrownFusion 的数据，技师设计的牙冠当真值）上比：</p>
+    <div class="tiles">
+      <div class="tile"><div class="k">牙尖位置误差（平均）</div><div class="v"><s>0.88</s><b>0.80 mm</b></div><div class="n">中位 0.65 → 0.58 mm，150 例</div></div>
+      <div class="tile"><div class="k">中央窝位置误差（平均）</div><div class="v"><s>1.10</s><b>1.08 mm</b></div><div class="n">中位 0.50 → 0.48 mm</div></div>
+      <div class="tile"><div class="k">整体 CD-L2（网格）</div><div class="v"><s>0.334</s><b>0.336</b></div><div class="n">持平；VBCD 0.353、CrownFusion 0.412</div></div>
+      <div class="tile"><div class="k">牙尖数和技师牙冠差</div><div class="v"><s>−0.05</s><b>+0.05</b></div><div class="n">平均；中位都是 0</div></div>
+    </div>
+    <figure>
+      <img src="images/voxel2_bars.png" alt="旧版和新版的牙尖误差、中央窝误差、CD-L2 柱状图">
+      <figcaption>深色：平均；浅色：中位。右图虚线是 VBCD、CrownFusion 论文在同一测试集上的数（同一种 CD-L2 算法，取自 CrownFusion 的代码）。</figcaption>
+    </figure>
+    <figure>
+      <img src="images/voxel2_occlusal.png" alt="四个病例的咬合面俯视：技师牙冠、旧版、新版，按离技师牙冠的距离上色">
+      <figcaption>咬合面俯视。圈：技师牙冠的牙尖；叉：生成牙冠的牙尖，连线是配对。从网格评测存下来的前 12 例里取牙尖改善最多的 3 例和变差最多的 1 例（不是从 150 例里挑）。
+      10524：旧版少了远中颊尖（被配到别的牙尖上，1.48 mm），新版找回来了（0.35 mm）。10515：新版近中舌尖偏得更多。浅黄色 = 贴着技师牙冠，深紫 = 差 0.5 mm 以上：误差主要在边缘嵴和窝沟里。</figcaption>
+    </figure>
+    <div class="scroll">
+    <table>
+      <tr><th>补全的指标（150 例，中位）</th><th>技师牙冠</th><th>线上（第一版）</th><th>说明</th></tr>
+      <tr><td>F-score @0.1 / 0.2 / 0.3 / 0.5 mm</td><td>—</td><td>0.31 / 0.69 / 0.88 / 0.98</td><td>表面上落在阈值以内的比例（精度和召回的调和平均）</td></tr>
+      <tr><td>HD95 / HD</td><td>—</td><td>0.42 / 0.83 mm</td><td>最差的地方差多少</td></tr>
+      <tr><td>法向一致性</td><td>—</td><td>0.86</td><td>表面朝向像不像（1 = 完全一致）</td></tr>
+      <tr><td>邻接：最近处（负 = 压进邻牙）</td><td>近中 −0.11 / 远中 −0.11 mm</td><td>−0.10 / −0.09 mm</td><td>和技师牙冠中位差 0.05 mm</td></tr>
+      <tr><td>离对颌最近</td><td>0.18 mm</td><td>0.23 mm</td><td>技师牙冠在这套数据里也不碰对颌</td></tr>
+    </table>
+    </div>
+    <p class="note">还试了“生成后按邻牙 / 对颌再调一次”（底边不动，压进邻牙的推出来、有缝的拉过去）：这套数据里技师牙冠本身就压进邻牙约 0.1 mm（80% 的病例），推到刚好接触反而离技师设计更远（0.05 → 0.08 mm），F@0.1 也略降，不采用。</p>
+  </section>
+
+  <section>
+    <h2>形状模型出形状，扩散模型补细节（11-14，网页已默认使用）</h2>
     <p>形状模型整体形状准，但咬合面整片贴着对颌；扩散模型单独用时细节像真牙，但形状偏。把两个接起来：
     形状模型先出牙冠 → 投到径向深度图上 → 加噪到第 600 步（共 1000）→ 扩散模型去噪，每一步把低频部分换回形状模型的（只取扩散模型的细节）。不用重新训练。</p>
     <div class="tiles">
@@ -263,10 +296,11 @@ td.w{white-space:normal;min-width:260px}
       <tr><td>DMC</td><td>预备体牙冠，16 号牙，技师设计</td><td>0.433 mm</td><td>1.11 mm²</td><td>平滑</td></tr>
       <tr><td>VBCD</td><td>同上</td><td>0.353 mm</td><td>2.36 mm²</td><td>—</td></tr>
       <tr><td>CrownFusion</td><td>同上</td><td>0.412 mm</td><td>0.61 mm²</td><td>有完整窝沟</td></tr>
-      <tr class="pick"><td>本项目</td><td>缺失牙，前磨牙和第一磨牙，真牙</td><td>0.26 mm</td><td>0（调整后）</td><td>平滑</td></tr>
+      <tr class="pick"><td>本项目：体素模型第二版（11-27）</td><td>同上（同一测试集、同一种 CD-L2）</td><td><b>0.336 mm</b></td><td>≈ 0（平均 0.004 mm²）</td><td>牙尖位置误差 0.80 mm</td></tr>
+      <tr><td>本项目：缺失牙流程</td><td>缺失牙，前磨牙和第一磨牙，真牙</td><td>0.26 mm</td><td>0（调整后）</td><td>平滑</td></tr>
     </table>
     </div>
-    <p class="note">前三行来自 <a href="https://crownfusion.github.io/">CrownFusion</a> 论文的对比表。任务、数据、距离的算法都不同，不能排名，只能看量级。能直接比的做法是把 VBCD（代码已公开）在同一批患者上跑一遍，还没做。已经能确定的差距：窝沟牙尖的细节 CrownFusion 明显更好。</p>
+    <p class="note">前三行来自 <a href="https://crownfusion.github.io/">CrownFusion</a> 论文的对比表。第四行和它们同一测试集、同一种 CD-L2 算法（CrownFusion 代码里的），可以直接比；第五行任务和数据不同，只能看量级。穿进对颌的面积我们用 CrownFusion 代码的算法量，但对颌法向的约定可能不同，先当参考。</p>
   </section>
 
   <section>
