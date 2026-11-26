@@ -25,6 +25,28 @@ from scipy.spatial import cKDTree
 from .eval_crown import _labels, _load
 
 
+def _offsets(real_top: trimesh.Trimesh, crown: trimesh.Trimesh, up: np.ndarray, hm: float) -> dict:
+    """原牙表面每点沿外法向，到生成牙冠最近点的偏移（mm，正 = 生成的更鼓）。侧面按高度三段（颈缘线 → 最高点），咬合面单独。"""
+    pts, fi = trimesh.sample.sample_surface(real_top, 20000, seed=1)
+    n = np.asarray(real_top.face_normals)[fi]
+    if ((pts - pts.mean(axis=0)) * n).sum(axis=1).mean() < 0:
+        n = -n
+    cs = trimesh.sample.sample_surface(crown, 120000, seed=2)[0]
+    d, i = cKDTree(cs).query(pts)
+    off = ((cs[i] - pts) * n).sum(axis=1)
+    h = pts @ up
+    t = (h - hm) / max(float(np.percentile(h, 99.5)) - hm, 1e-6)
+    near = d < 1.5
+    side = (np.abs(n @ up) < 0.5) & near
+    out = {}
+    for name, lo, hi in (("off_side_low", 0.0, 0.33), ("off_side_mid", 0.33, 0.66), ("off_side_high", 0.66, 1.01)):
+        m = side & (t >= lo) & (t < hi)
+        out[name] = float(np.median(off[m])) if m.sum() > 30 else None
+    m = (n @ up > 0.5) & near
+    out["off_occl"] = float(np.median(off[m])) if m.sum() > 30 else None
+    return out
+
+
 def _one(args) -> list[dict]:
     from .crown_quality import _crop, score_crown
     from .eval_generation import _Fixed
@@ -80,8 +102,13 @@ def _one(args) -> list[dict]:
                     with tempfile.TemporaryDirectory() as tmp:
                         gen = make_generator(gen_model)
                         overrides = {fdi: {"points": truth.tolist()}} if mode == "truth" else None
+                        import os
+
+                        from .preferences import DesignPreferences
+
+                        prefs = DesignPreferences.from_dict(json.loads(os.environ["CARD_PREFS"])) if os.environ.get("CARD_PREFS") else None
                         report = run(prep, jaw, _Fixed(lab), tmp, generator=gen, antagonist=ant, prepared_teeth=[fdi], generate_teeth=[],
-                                     margin_overrides=overrides)
+                                     margin_overrides=overrides, preferences=prefs)
                         done = {g["fdi"]: g for g in report["generated"] if g.get("method") == "prep_crown"}
                         if fdi not in done:
                             rows.append({**base, "kind": mode, "error": "未生成：" + "; ".join(w for w in report["warnings"] if str(fdi) in w)[:160]})
@@ -99,6 +126,7 @@ def _one(args) -> list[dict]:
                              "gap_median": float(np.median(sd)) if len(sd) else None, "gap_p95": float(np.percentile(sd, 95)) if len(sd) else None,
                              "into_prep_rate": float((sd < -0.02).mean()) if len(sd) else None,
                              "source": done[fdi].get("source"), "min_thickness": done[fdi].get("min_thickness_mm")}
+                    extra.update(_offsets(real_top, crown, up, hm))
                     rows.append({**base, "kind": mode, **extra, **score_crown(crown, up, mesial, distal, ant, reference=real_top)})
             except Exception as exc:  # noqa: BLE001
                 rows.append({**base, "kind": "error", "error": f"{type(exc).__name__}: {exc}"[:200]})
@@ -106,7 +134,8 @@ def _one(args) -> list[dict]:
 
 
 KEYS = ("margin_mean", "margin_p95", "gap_median", "gap_p95", "into_prep_rate", "ref_chamfer_l1", "ref_rmse", "ref_cusp_err", "ref_fossa_err",
-        "mesial_gap", "distal_gap", "occl_clearance", "height_vs_neighbors", "fossa_depth")
+        "mesial_gap", "distal_gap", "occl_clearance", "height_vs_neighbors", "fossa_depth",
+        "off_side_low", "off_side_mid", "off_side_high", "off_occl")
 
 
 def summarize(rows):
