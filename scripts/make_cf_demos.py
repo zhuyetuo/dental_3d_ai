@@ -85,14 +85,13 @@ def build(model, d: Path, out: Path, device: str, vox=None) -> dict:
         vp, vn = vc.predict_points(vox, vc.make_inputs(bt, "cuda"))[0]
         vp, vn = vp.float().cpu().numpy() + c, vn.float().cpu().numpy()
         v, f = vc.fit_mesh(np.asarray(outer.vertices), np.asarray(outer.faces), [], vp, 150, 0.5)
-        v, f = vc.poisson_project(v, f, vp, vn)  # 和线上一样：投到泊松重建的光滑表面上
-        from dental_ai.generation.groove_sharpen import sharpen
-
-        v, f = sharpen(v, f)  # 和线上一样：沿窝沟中心线刻窄沟
+        # 和线上一样：泊松重建表面 + 咬合面起伏（有技师咬合面库时借检索对齐后的技师咬合面起伏）
+        lib_dir = Path(__file__).resolve().parents[1] / "models" / "generation" / "occl_library"
+        v, f, _ = vc.occlusal_surface(v, f, vp, vn, lib_dir)
         outer = trimesh.Trimesh(v, f, process=False)
         if ((outer.triangles_center - v.mean(axis=0)) * outer.face_normals).sum() < 0:
             outer.invert()
-        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，泊松重建出光滑表面、窝沟加深并锐化，贴合形状模型网格）"
+        src = "体素模型（预备体 / 邻牙 / 对颌体素 + 逐点精修，泊松重建出光滑表面，咬合面起伏借自检索对齐的技师牙冠，贴合形状模型网格）"
     margin = margin_loop(prep)
     warnings = []
     try:
