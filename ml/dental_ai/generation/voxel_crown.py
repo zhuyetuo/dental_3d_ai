@@ -514,6 +514,35 @@ def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1
     return np.asarray(out.vertices, float), np.asarray(faces)
 
 
+def occlusal_surface(verts, faces, pts, nrm, lib_dir):
+    """贴好的网格 → 最终外表面（数据坐标）：泊松重建表面 + 咬合面起伏。
+    有技师咬合面库（lib_dir，OCCL_LIBRARY=1 默认开）时：泊松表面不加深窝沟，咬合面比 1 mm 细的起伏借检索 + 对齐后的技师牙冠；
+    没有库或出错时：泊松表面 + 窝沟加深（VOXEL_GROOVE）+ 窝沟锐化（默认关）。返回 (verts, faces, info)。"""
+    import os
+    from pathlib import Path
+
+    info = {}
+    lib_dir = Path(lib_dir)
+    if os.environ.get("OCCL_LIBRARY", "1") == "1" and (lib_dir / "keys.npz").exists():
+        try:
+            from .occl_library import borrow
+
+            v0, f0 = poisson_project(verts, faces, pts, nrm, groove=0.0)
+            v1, info = borrow(v0, f0, lib_dir)
+            if isinstance(info.get("occl_library"), int):
+                return v1, f0, info
+        except Exception as exc:  # noqa: BLE001
+            info = {"occl_library_skipped": f"{type(exc).__name__}: {exc}"}
+    v, f = poisson_project(verts, faces, pts, nrm)
+    from .groove_sharpen import sharpen  # 窝沟锐化：沿窝沟中心线刻窄 V 沟（默认关，VOXEL_SHARPEN 打开）
+
+    try:
+        v, f = sharpen(v, f)
+    except Exception as exc:  # noqa: BLE001
+        info["sharpen_skipped"] = f"{type(exc).__name__}: {exc}"
+    return v, f, info
+
+
 def _nbr_mean(v, e, deg):
     """每个顶点的邻点平均（np.bincount，比 np.add.at 快很多）。"""
     n = len(v)
@@ -896,13 +925,8 @@ class VoxelRefinedGenerator:
                                 subdivide=len(tooth.crown.vertices) < 5000)
         surface = os.environ.get("VOXEL_SURFACE", "poisson")
         if surface == "poisson":  # 逐顶点贴点会带体素点的噪声（表面密密麻麻的小凹凸），投到泊松重建的光滑表面上
-            verts, faces = poisson_project(verts, faces, p, pn)
-            from .groove_sharpen import sharpen  # 窝沟锐化：沿现有窝沟中心线刻窄 V 沟（VOXEL_SHARPEN=0 关掉）
-
-            try:
-                verts, faces = sharpen(verts, faces, subdivide=os.environ.get("VOXEL_SHARPEN_SUBDIV", "0") == "1")  # 泊松网格已够细，不细分（面数 ×4 没好处）
-            except Exception as exc:  # noqa: BLE001
-                tooth.info["sharpen_skipped"] = f"{type(exc).__name__}: {exc}"
+            verts, faces, extra = occlusal_surface(verts, faces, p, pn, self.model_path.parent / "occl_library")
+            tooth.info.update(extra)
         crown = trimesh.Trimesh(verts @ np.linalg.inv(A), faces, process=False)
         if ((crown.triangles_center - crown.vertices.mean(axis=0)) * crown.face_normals).sum() < 0:
             crown.invert()
