@@ -63,7 +63,7 @@ def carve_map(h, valid, cell, groove_fn, half_width=0.15, depth=0.12, rel=0.6):
     return ndimage.gaussian_filter(-(depth + rel * g_at) * prof * fade * valid, 0.8)
 
 
-def sharpen(verts, faces, subdivide: bool = True):
+def sharpen(verts, faces, subdivide: bool = False):
     """牙冠外表面（数据坐标）→ 刻好窄沟的网格 (verts, faces)。VOXEL_SHARPEN="半宽,深度,比例"，"0" 关掉。"""
     import trimesh
     from scipy import ndimage
@@ -84,7 +84,7 @@ def sharpen(verts, faces, subdivide: bool = True):
     if not np.any(dmap):
         return verts, faces
     v, f = np.asarray(verts, float), np.asarray(faces)
-    if subdivide:  # 窄沟要细一点的网格才刻得出来
+    if subdivide:  # 默认不细分：泊松网格已够细，细分后面数 ×4，后面咬合调整等步骤慢很多，沟也没更明显
         v, f = trimesh.remesh.subdivide(v, f)
     m = trimesh.Trimesh(v, f, process=False)
     n = m.vertex_normals
