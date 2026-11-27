@@ -54,16 +54,33 @@ def carve_map(h, valid, cell, groove_fn, half_width=0.15, depth=0.12, rel=0.6):
     """高度图上的负位移（mm）：V 形，中心深 depth + rel × 当地沟深，半宽 half_width。"""
     from scipy import ndimage
 
-    g = groove_fn(h, valid)
-    sk = centerlines(g, valid, cell)
+    out, _ = _carve(groove_fn(h, valid), valid, cell, centerlines(groove_fn(h, valid), valid, cell), half_width, depth, rel)
+    return out
+
+
+def _carve(g, valid, cell, sk, half_width, depth, rel):
+    from scipy import ndimage
+
     if not sk.any():
-        return np.zeros_like(h)
+        return np.zeros_like(g), sk
     dist, idx = ndimage.distance_transform_edt(~sk, return_indices=True)
     prof = np.clip(1 - dist * cell / half_width, 0, 1) ** 1.5
     g_at = ndimage.gaussian_filter(g, 2.0)[tuple(idx)]
     inner = ndimage.distance_transform_edt(valid) * cell
     fade = np.clip((inner - 0.9) / 0.6, 0, 1)
-    return ndimage.gaussian_filter(-(depth + rel * g_at) * prof * fade * valid, 0.8)
+    return ndimage.gaussian_filter(-(depth + rel * g_at) * prof * fade * valid, 0.8), sk
+
+
+def secondary_map(h, valid, cell, groove_fn, main_sk, half_width=0.10, depth=0.08, rel=0.5, thr=0.03, size=13):
+    """细小的副沟：用小尺度（size 格 ≈ 0.7 mm）的沟深图找更浅、更窄的沟（牙尖斜面上的副沟），离主沟 0.35 mm 以内的不要（主沟已经刻了）。"""
+    from scipy import ndimage
+
+    g2 = groove_fn(h, valid, size=size)
+    sk2 = centerlines(g2, valid, cell, thr=thr, min_len_mm=0.6, sigma_cells=1.5, prune_mm=0.2, edge_mm=0.9, min_extent_mm=1.0)
+    if main_sk is not None and main_sk.any():
+        sk2 &= ndimage.distance_transform_edt(~main_sk) * cell > 0.35
+    out, _ = _carve(g2, valid, cell, sk2, half_width, depth, rel)
+    return out
 
 
 def sharpen(verts, faces, subdivide: bool = False):
@@ -76,7 +93,8 @@ def sharpen(verts, faces, subdivide: bool = False):
     from . import occlusal as oc
 
     # 半宽 0.12 mm、深 0.20 mm + 0.5 × 当地沟深；配合大窝沟加深 1.25 倍，40 例沟深 0.230（技师 0.228）、细沟幅度 0.046（技师 0.055）
-    spec = os.environ.get("VOXEL_SHARPEN", "0.12,0.20,0.5")
+    # 默认关：刻出来的细线像在光滑面上划痕，整体反而不像技师（用户看图判断），改为从技师牙冠借整套咬合面起伏。要用时设 "0.12,0.20,0.5"
+    spec = os.environ.get("VOXEL_SHARPEN", "0")
     if spec.strip() in ("", "0", "off"):
         return verts, faces
     hw, dep, rel = (float(x) for x in spec.split(","))
@@ -84,7 +102,14 @@ def sharpen(verts, faces, subdivide: bool = False):
     pts = np.asarray(trimesh.sample.sample_surface(m0, 300000, seed=1)[0])
     x4, (cx, cz, top) = oc.inputs(pts, None)
     mc = x4[1] > 0
-    dmap = carve_map(x4[0] + top, mc, oc.CELL, oc.groove_depth_map, hw, dep, rel)
+    h = x4[0] + top
+    g = oc.groove_depth_map(h, mc)
+    dmap, sk = _carve(g, mc, oc.CELL, centerlines(g, mc, oc.CELL), hw, dep, rel)
+    spec2 = os.environ.get("VOXEL_SHARPEN2", "0")  # 副沟：半宽,深度,比例,阈值,尺度格数
+    if spec2.strip() not in ("", "0", "off"):
+        a = [float(x) for x in spec2.split(",")]
+        d2 = secondary_map(h, mc, oc.CELL, oc.groove_depth_map, sk, a[0], a[1], a[2], a[3], int(a[4]))
+        dmap = np.minimum(dmap, d2)
     if not np.any(dmap):
         return verts, faces
     v, f = np.asarray(verts, float), np.asarray(faces)
