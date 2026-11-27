@@ -501,8 +501,162 @@ def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1
             rim2 = np.unique(es2[group_rows(es2, require_count=1)])
             w2 = np.clip(cKDTree(uv[rim2]).query(uv)[0] / blend, 0, 1) if len(rim2) else np.ones(len(uv))
             uv = untangle(uv, faces, pm, w2, 10)
+        band = float(os.environ.get("VOXEL_STITCH", 0.6))
+        if band > 0:  # 中间换成泊松表面自己的网格（没有翻折），底边一条带留着，两者缝起来
+            try:
+                st = stitch_poisson(trimesh.Trimesh(uv, faces, process=False), pm, band=band, gap=0.15)
+            except Exception:  # noqa: BLE001
+                st = None
+            if st is not None and st.is_winding_consistent and len(_boundary_loops(st)) == 1:
+                return np.asarray(st.vertices, float), np.asarray(st.faces)
         return uv, np.asarray(faces)
     return np.asarray(out.vertices, float), np.asarray(faces)
+
+
+def _nbr_mean(v, e, deg):
+    """每个顶点的邻点平均（np.bincount，比 np.add.at 快很多）。"""
+    n = len(v)
+    out = np.empty_like(v)
+    for k in range(v.shape[1]):
+        out[:, k] = np.bincount(e[:, 0], v[e[:, 1], k], n) + np.bincount(e[:, 1], v[e[:, 0], k], n)
+    return out / deg
+
+
+def _boundary_loops(m):
+    """按面的方向走的开口圈（有序顶点索引），按长度从大到小。"""
+    from trimesh.grouping import group_rows
+
+    f = np.asarray(m.faces)
+    e = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    be = e[group_rows(np.sort(e, 1), require_count=1)]
+    nxt = {int(a): int(b) for a, b in be}
+    loops, seen = [], set()
+    for s in list(nxt):
+        if s in seen:
+            continue
+        loop, x = [], s
+        while x not in seen and x in nxt:
+            seen.add(x)
+            loop.append(x)
+            x = nxt[x]
+        if len(loop) > 2:
+            loops.append(np.array(loop))
+    return sorted(loops, key=len, reverse=True)
+
+
+def _zipper(A, B, P):
+    """两圈（同一旋转方向）之间铺三角形带，P 是两圈共用的顶点数组。"""
+    from scipy.spatial import cKDTree
+
+    n, m = len(A), len(B)
+    B = np.roll(B, -int(cKDTree(P[B]).query(P[A[0]])[1]))
+    i = j = 0
+    tris = []
+    while i < n or j < m:
+        a0, a1 = A[i % n], A[(i + 1) % n]
+        b0, b1 = B[j % m], B[(j + 1) % m]
+        da = np.linalg.norm(P[a1] - P[b0]) if i < n else np.inf
+        db = np.linalg.norm(P[a0] - P[b1]) if j < m else np.inf
+        if da <= db:
+            tris.append((a0, a1, b0))
+            i += 1
+        else:
+            tris.append((a0, b1, b0))
+            j += 1
+    return np.array(tris)
+
+
+def stitch_poisson(m, pm, band: float = 0.6, keep_near: float = 0.5, gap: float = 0.15, iters: int = 30):
+    """牙冠网格 = m 靠底边 band mm 的一条带（底边贴颈缘线，不动）+ 中间直接用泊松表面 pm 自己的网格（没有翻折），缝起来，
+    缝合处摊平贴回。40 例上翻折再降一大截、底边不动、形状不变。失败返回 None。"""
+    import trimesh
+    from scipy.spatial import cKDTree
+
+    v = np.asarray(m.vertices, float)
+    rl = _boundary_loops(m)
+    if not rl:
+        return None
+    rim = rl[0]
+    d_rim = cKDTree(v[rim]).query(v)[0]
+    B = m.submesh([np.flatnonzero((d_rim[np.asarray(m.faces)] < band).any(1))], append=True, repair=False)
+    pv, pf = np.asarray(pm.vertices, float), np.asarray(pm.faces)
+    inner_v = v[d_rim >= band]
+    if not len(inner_v):
+        return None
+    ok = (cKDTree(v[rim]).query(pv)[0] >= band + gap) & (cKDTree(inner_v).query(pv)[0] < keep_near)
+    P = pm.submesh([np.flatnonzero(ok[pf].all(1))], append=True, repair=False)
+    if not len(P.faces):
+        return None
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    fa = P.face_adjacency
+    nF = len(P.faces)
+    _, lab = connected_components(coo_matrix((np.ones(len(fa)), (fa[:, 0], fa[:, 1])), shape=(nF, nF)), directed=False)
+    big = np.bincount(lab).argmax()
+    P = P.submesh([np.flatnonzero(lab == big)], append=True, repair=False)
+    # 泊松网格（surface nets）面片排成方格，打光能看到格子纹：内部 Taubin 3 次（边界不动）
+    pvv = np.asarray(P.vertices, float).copy()
+    pe = P.edges_unique
+    pdeg = np.maximum(np.bincount(pe.ravel(), minlength=len(pvv)), 1).astype(float)[:, None]
+    pb = np.zeros(len(pvv), bool)
+    for L in _boundary_loops(P):
+        pb[L] = True
+    for _ in range(3):
+        for s in (0.5, -0.53):
+            d_ = _nbr_mean(pvv, pe, pdeg) - pvv
+            pvv[~pb] += s * d_[~pb]
+    P = trimesh.Trimesh(pvv, P.faces, process=False)
+    # 方向和原网格一致（泊松网格的朝向不一定和牙冠网格一样）
+    near_m = cKDTree(v).query(P.triangles_center)[1]
+    if (P.face_normals * m.vertex_normals[near_m]).sum(1).mean() < 0:
+        P.invert()
+    lb, lp = _boundary_loops(B), _boundary_loops(P)
+    if len(lb) < 2 or not lp:
+        return None
+    bv, ppv = np.asarray(B.vertices), np.asarray(P.vertices)
+    rim_b = min(lb[:2], key=lambda L: cKDTree(v[rim]).query(bv[L])[0].mean())
+    inner = max([L for L in lb if L is not rim_b], key=len)
+    outer = lp[0]
+    ta = np.roll(bv[inner], -1, 0) - bv[inner]
+    near = cKDTree(ppv[outer]).query(bv[inner])[1]
+    tb = (np.roll(ppv[outer], -1, 0) - ppv[outer])[near]
+    if (ta * tb).sum() < 0:
+        outer = outer[::-1]
+    nb = len(bv)
+    V = np.vstack([bv, ppv])
+    Z = _zipper(inner, outer + nb, V)
+    zn = np.cross(V[Z[:, 1]] - V[Z[:, 0]], V[Z[:, 2]] - V[Z[:, 0]])
+    if (zn * m.vertex_normals[cKDTree(v).query(V[Z].mean(1))[1]]).sum() < 0:  # 缝合带的朝向跟着原网格
+        Z = Z[:, [0, 2, 1]]
+    F = np.vstack([np.asarray(B.faces), np.asarray(P.faces) + nb, Z])
+    out = trimesh.Trimesh(V, F, process=False)
+    out.remove_unreferenced_vertices()
+    # 缝合处摊平：底边不动，离底边 0.3 mm 起逐渐放开，只动离底边 band + 0.6 mm 以内
+    v = np.asarray(out.vertices, float).copy()
+    f = np.asarray(out.faces)
+    r2 = _boundary_loops(out)[0]
+    d = cKDTree(v[r2]).query(v)[0]
+    W = (np.clip((d - 0.3) / 0.7, 0, 1) * (d < band + 0.6))[:, None]
+    e = out.edges_unique
+    deg = np.maximum(np.bincount(e.ravel(), minlength=len(v)), 1).astype(float)[:, None]
+    pn = np.asarray(pm.vertex_normals)
+    tree = cKDTree(pv)
+    on = (tree.query(v)[0] < 0.3)[:, None]
+    act = np.flatnonzero(W[:, 0] > 0)
+    _, j = tree.query(v[act])
+    for it in range(iters):
+        lap = _nbr_mean(v, e, deg) - v
+        if it % 10 == 0:  # 网格法向（泊松裁掉、贴不回的地方用）隔几轮更新一次
+            n = trimesh.Trimesh(v, f, process=False).vertex_normals
+        va = v[act]
+        la = lap[act]
+        na = np.where(on[act], pn[j], n[act])  # 贴得上泊松的用泊松法向，其余用网格法向
+        v2 = va + 0.6 * (la - (la * na).sum(1, keepdims=True) * na) * W[act]
+        _, j = tree.query(v2)
+        q, nq = pv[j], pn[j]
+        v[act] = v2 + (W[act] * on[act]) * (-((v2 - q) * nq).sum(1, keepdims=True) * nq)
+    return trimesh.Trimesh(v, f, process=False)
 
 
 def collapse_short(v, f, rel: float = 0.5, rounds: int = 6):
@@ -566,10 +720,7 @@ def untangle(v, faces, pm, w, iters: int = 30, step: float = 0.5):
     tree = cKDTree(pv)
     w = np.asarray(w, float)[:, None]
     for _ in range(iters):
-        acc = np.zeros_like(v)
-        np.add.at(acc, e[:, 0], v[e[:, 1]])
-        np.add.at(acc, e[:, 1], v[e[:, 0]])
-        lap = acc / deg - v
+        lap = _nbr_mean(v, e, deg) - v
         _, j = tree.query(v)
         n = pn[j]
         v2 = v + step * (lap - (lap * n).sum(1, keepdims=True) * n) * w
