@@ -472,8 +472,10 @@ def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1
 
     from .poisson import deepen_grooves
 
-    groove = float(os.environ.get("VOXEL_GROOVE", 2.0)) if groove is None else groove
-    if groove > 0:  # 窝沟加深（数据坐标 y 朝咬合面）：泊松表面上窄沟 × (1 + groove)，40 例上沟深 0.10 → 约 0.22 mm（技师 0.235）
+    # 窝沟加深（数据坐标 y 朝咬合面）：泊松表面上窄沟 × (1 + groove)。单独用时 2 倍沟深约 0.22 mm（技师 0.23）；
+    # 后面还有窝沟锐化（groove_sharpen）也会加深，两者一起时 1.25 倍 + 锐化 = 0.230，和技师（0.228）一样
+    groove = float(os.environ.get("VOXEL_GROOVE", 1.25)) if groove is None else groove
+    if groove > 0:
         pm = deepen_grooves(pm, groove)
     if subdivide:  # 再细分一次，投影后窝沟、牙尖更圆顺
         verts, faces = trimesh.remesh.subdivide(np.asarray(verts, float), np.asarray(faces))

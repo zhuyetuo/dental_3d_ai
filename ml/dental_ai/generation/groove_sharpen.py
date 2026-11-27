@@ -1,6 +1,7 @@
 """窝沟锐化：在现有的大窝沟里找中心线，沿中心线刻一条窄的 V 形沟。
 技师牙冠上的窝沟又窄又利；泊松重建 + 加深出来的沟位置基本对（IoU 0.42），但又宽又软。这里不改沟的位置，只把它变窄变利。
-40 例真实预备体（16 号）：细沟幅度 0.038 → 0.051 mm（技师 0.055）、粗糙度 3.6° → 6.2°（技师 7.9°）、窝沟位置 IoU 不变、CD-L2 +0.007。
+40 例真实预备体（16 号），和大窝沟加深 1.25 倍一起：沟深 0.230 mm（技师 0.228）、细沟幅度 0.046（技师 0.055）、
+粗糙度 6.2°（技师 7.9°）、孤立小坑点 0.03 个 / 例。
 坐标：数据坐标（y 朝咬合面），和 voxel_crown / occlusal 一样。"""
 from __future__ import annotations
 
@@ -25,8 +26,9 @@ def _prune(sk, iters):
     return sk
 
 
-def centerlines(g, valid, cell, thr=0.06, min_len_mm=1.0, sigma_cells=2.0, prune_mm=0.35, edge_mm=0.9):
-    """沟深图的脊线 = 沟的中心线（在某个方向上比两边都深的格子），剪毛刺、去短段、离咬合面轮廓 edge_mm 以内不要。"""
+def centerlines(g, valid, cell, thr=0.06, min_len_mm=1.0, sigma_cells=2.0, prune_mm=0.35, edge_mm=0.9, min_extent_mm=1.5):
+    """沟深图的脊线 = 沟的中心线（在某个方向上比两边都深的格子），剪毛刺、去短段、离咬合面轮廓 edge_mm 以内不要。
+    缩成一团的小段（外接框对角线 < min_extent_mm）也去掉：格子数够但盘成一团，刻出来是个孤立的小坑点。"""
     from scipy import ndimage
 
     gs = ndimage.gaussian_filter(g, sigma_cells)
@@ -43,7 +45,8 @@ def centerlines(g, valid, cell, thr=0.06, min_len_mm=1.0, sigma_cells=2.0, prune
     lab, n = ndimage.label(sk, structure=K8)
     if n:
         sizes = ndimage.sum(sk, lab, range(1, n + 1))
-        sk &= np.isin(lab, 1 + np.flatnonzero(sizes * cell >= min_len_mm))
+        ext = np.array([np.hypot(s[0].stop - s[0].start, s[1].stop - s[1].start) for s in ndimage.find_objects(lab)]) * cell
+        sk &= np.isin(lab, 1 + np.flatnonzero((sizes * cell >= min_len_mm) & (ext >= min_extent_mm)))
     return sk
 
 
@@ -72,7 +75,8 @@ def sharpen(verts, faces, subdivide: bool = False):
 
     from . import occlusal as oc
 
-    spec = os.environ.get("VOXEL_SHARPEN", "0.15,0.12,0.6")
+    # 半宽 0.12 mm、深 0.20 mm + 0.5 × 当地沟深；配合大窝沟加深 1.25 倍，40 例沟深 0.230（技师 0.228）、细沟幅度 0.046（技师 0.055）
+    spec = os.environ.get("VOXEL_SHARPEN", "0.12,0.20,0.5")
     if spec.strip() in ("", "0", "off"):
         return verts, faces
     hw, dep, rel = (float(x) for x in spec.split(","))
