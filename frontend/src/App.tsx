@@ -13,7 +13,7 @@ const KIND_TEXT = { space: "有缺隙，可修复", closed: "间隙已关闭", f
 // 设计参数（mm），默认值与后端 dental_ai.preferences.DesignPreferences 一致
 const PREFERENCE_FIELDS = [
   { key: "contacts_distance", label: "邻接距离", value: -0.03 },
-  { key: "occlusion_distance", label: "咬合距离", value: 0.3 },
+  { key: "occlusion_distance", label: "咬合距离", value: 0.05 },
   { key: "gum_relief", label: "底面到牙龈距离", value: 0.05 },
   { key: "emergence_taper", label: "穿龈收拢比例", value: 0.85 },
   { key: "cement_gap", label: "粘接间隙（预备体冠）", value: 0.03 },
