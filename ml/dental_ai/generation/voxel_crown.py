@@ -492,8 +492,64 @@ def poisson_project(verts, faces, pts, nrm, sigma: float = 1.0, blend: float = 1
             out.vertices[rim] = v[rim]
     iters = int(os.environ.get("VOXEL_UNTANGLE", 30))
     if iters > 0:  # 去折叠：投影时凹处的顶点挤在一起、小三角形翻过来（渲染成白点、侧面条纹）
-        return untangle(np.asarray(out.vertices, float), np.asarray(faces), pm, w_rim, iters), np.asarray(faces)
+        uv = untangle(np.asarray(out.vertices, float), np.asarray(faces), pm, w_rim, iters)
+        rel = float(os.environ.get("VOXEL_COLLAPSE", 0.5))
+        if rel > 0:  # 摊不开的针状小三角形：短边合并掉（底边不动），再摊 10 轮
+            uv, faces, _ = collapse_short(uv, np.asarray(faces), rel)
+            m2 = trimesh.Trimesh(uv, faces, process=False)
+            es2 = m2.edges_sorted
+            rim2 = np.unique(es2[group_rows(es2, require_count=1)])
+            w2 = np.clip(cKDTree(uv[rim2]).query(uv)[0] / blend, 0, 1) if len(rim2) else np.ones(len(uv))
+            uv = untangle(uv, faces, pm, w2, 10)
+        return uv, np.asarray(faces)
     return np.asarray(out.vertices, float), np.asarray(faces)
+
+
+def collapse_short(v, f, rel: float = 0.5, rounds: int = 6):
+    """短于 rel × 中位边长的边合并成中点（底边一圈不动；只合并两端共有两个邻点的边，不产生非流形）。返回 (v, f, 合并数)。"""
+    import trimesh
+    from trimesh.grouping import group_rows
+
+    v = np.asarray(v, float).copy()
+    f = np.asarray(f).copy()
+    total = 0
+    for _ in range(rounds):
+        m = trimesh.Trimesh(v, f, process=False)
+        e = m.edges_unique
+        L = m.edges_unique_length
+        es = m.edges_sorted
+        rim = np.zeros(len(v), bool)
+        rim[np.unique(es[group_rows(es, require_count=1)])] = True
+        cand = np.flatnonzero((L < rel * np.median(L)) & ~rim[e[:, 0]] & ~rim[e[:, 1]])
+        if not len(cand):
+            break
+        cand = cand[np.argsort(L[cand])]
+        nbr = [set() for _ in range(len(v))]
+        for a, b in e:
+            nbr[a].add(b)
+            nbr[b].add(a)
+        remap = np.arange(len(v))
+        locked = np.zeros(len(v), bool)
+        n = 0
+        for k in cand:
+            a, b = e[k]
+            if locked[a] or locked[b] or len(nbr[a] & nbr[b]) != 2:
+                continue
+            v[a] = 0.5 * (v[a] + v[b])
+            remap[b] = a
+            locked[list(nbr[a] | nbr[b])] = True
+            locked[a] = locked[b] = True
+            n += 1
+        if n == 0:
+            break
+        total += n
+        f = remap[f]
+        f = f[(f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])]
+        used = np.unique(f)
+        new = -np.ones(len(v), int)
+        new[used] = np.arange(len(used))
+        v, f = v[used], new[f]
+    return v, f, total
 
 
 def untangle(v, faces, pm, w, iters: int = 30, step: float = 0.5):
