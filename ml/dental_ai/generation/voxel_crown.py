@@ -896,6 +896,12 @@ class VoxelRefinedGenerator:
         surface = os.environ.get("VOXEL_SURFACE", "poisson")
         if surface == "poisson":  # 逐顶点贴点会带体素点的噪声（表面密密麻麻的小凹凸），投到泊松重建的光滑表面上
             verts, faces = poisson_project(verts, faces, p, pn)
+            from .groove_sharpen import sharpen  # 窝沟锐化：沿现有窝沟中心线刻窄 V 沟（VOXEL_SHARPEN=0 关掉）
+
+            try:
+                verts, faces = sharpen(verts, faces, subdivide=os.environ.get("VOXEL_SHARPEN_SUBDIV", "0") == "1")  # 泊松网格已够细，不细分（面数 ×4 没好处）
+            except Exception as exc:  # noqa: BLE001
+                tooth.info["sharpen_skipped"] = f"{type(exc).__name__}: {exc}"
         crown = trimesh.Trimesh(verts @ np.linalg.inv(A), faces, process=False)
         if ((crown.triangles_center - crown.vertices.mean(axis=0)) * crown.face_normals).sum() < 0:
             crown.invert()
