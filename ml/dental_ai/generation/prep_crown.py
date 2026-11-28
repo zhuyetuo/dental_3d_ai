@@ -463,6 +463,13 @@ def generate_prep_crown(
             full[far] = deficit
             amount = np.maximum(amount, full)  # 平滑不能把该推的量抹小（评分卡上最小厚度掉到 0.07 mm）
             outer.vertices[far] = outer.vertices[far] + (dirs * amount[:, None])[far]
+        # 平滑推法在个别地方方向会互相抵消（16 号示例最薄 −1.2 mm 推不出来）：还不够厚的点按原来的办法逐点推，保证不比原来差
+        for _ in range(20):
+            t, normals = _signed_thickness(outer.vertices[far], inner, return_normals=True)
+            deficit = np.clip(prefs.crown_thickness - t, 0.0, prefs.crown_thickness)
+            if deficit.max() <= 1e-4:
+                break
+            outer.vertices[far] = outer.vertices[far] + normals * deficit[:, None]
 
     enforce_thickness()
     occlusion: dict = {}
