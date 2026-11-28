@@ -210,19 +210,119 @@ def _morph_outer(outer: trimesh.Trimesh, loop: np.ndarray, margin: np.ndarray, f
     r_t = r_t + thickness
     band = max(band, float((h_t - h_b).max()) + 1.5)
 
-    theta, r, h = frame.polar(outer.vertices)
+    old = np.asarray(outer.vertices, float).copy()
+    theta, r, h = frame.polar(old)
     hb, rb, ht, rt = at(h_b, theta), at(r_b, theta), at(h_t, theta), at(r_t, theta)
     s = np.clip((h - hb) / band, 0.0, 1.0)  # 0 = 底边，1 = 不受影响
     new_h = np.where(s < 1.0, ht + s * (hb + band - ht), h)
     new_r = r + (1.0 - s) * (rt - rb)
     d = np.stack([np.cos(theta), np.sin(theta)], axis=1)
-    outer.vertices = (
+    new = (
         frame.center
         + (new_r * d[:, 0])[:, None] * frame.u
         + (new_r * d[:, 1])[:, None] * frame.v
         + new_h[:, None] * frame.up
     )
-    outer.vertices[loop] = target + frame.radial(target) * thickness
+    new[loop] = target + frame.radial(target) * thickness
+    # 每个方位角单独算的位移在颈缘线陡升陡降处（邻面）相邻顶点差很多，颈部一圈被挤出尖棱（网页上看是侧面毛刺）：
+    # 位移场在网格上平滑（底边固定在颈缘线上、带以外不动）。46 号示例：这一步的翻折 120 → 见 _smooth_field
+    disp = new - old
+    fixed = np.zeros(len(old), bool)
+    fixed[loop] = True
+    disp = _smooth_field(outer, disp, fixed | (s >= 1.0), iters=20)
+    outer.vertices = old + disp
+    outer.vertices[loop] = new[loop]
+
+
+def _side_bulge(outer: trimesh.Trimesh, loop: np.ndarray, margin: np.ndarray, frame: _Frame, offsets) -> None:
+    """侧面按相对高度（颈缘线 0 → 最高点 1）沿法向外加厚 offsets = (下, 中, 上) mm（三段中点 1/6、1/2、5/6 之间线性插值）。
+    评分卡量到生成的牙冠侧面普遍比原牙瘦 0.2–0.35 mm（形状模型 + 扩散这条路）。只动侧面（法向和咬合方向夹角大），
+    颈缘线 1.5 mm 内渐变到 0，位移在网格上平滑。"""
+    off = np.asarray(offsets, float)
+    if not np.any(off):
+        return
+    v = np.asarray(outer.vertices, float)
+    theta, _, h = frame.polar(v)
+    tm, _, hm_loop = frame.polar(margin)
+    o = np.argsort(tm)
+    hm = np.interp(theta, np.concatenate([tm[o] - 2 * np.pi, tm[o], tm[o] + 2 * np.pi]), np.tile(hm_loop[o], 3))
+    top = float(np.percentile(h, 99.5))
+    t = np.clip((h - hm) / np.maximum(top - hm, 1e-6), 0, 1)
+    delta = np.interp(t, [1 / 6, 1 / 2, 5 / 6], off)
+    n = outer.vertex_normals
+    side = np.clip((0.75 - np.abs(n @ frame.up)) / 0.35, 0, 1)
+    ramp = np.clip((_distance_to_loop(v, margin) - 0.3) / 1.2, 0, 1)
+    disp = n * (delta * side * ramp)[:, None]
+    fixed = np.zeros(len(v), bool)
+    fixed[loop] = True
+    outer.vertices = v + _smooth_field(outer, disp, fixed, iters=6)
+
+
+def _smooth_field(mesh: trimesh.Trimesh, field: np.ndarray, fixed: np.ndarray, iters: int = 10) -> np.ndarray:
+    """网格上平滑一个逐顶点的量（均匀拉普拉斯，fixed 的顶点保持原值）。"""
+    e = mesh.edges_unique
+    n = len(mesh.vertices)
+    deg = np.maximum(np.bincount(e.ravel(), minlength=n), 1).astype(float)
+    f = np.asarray(field, float).copy()
+    two_d = f.ndim == 1
+    if two_d:
+        f = f[:, None]
+    keep = f[fixed].copy()
+    for _ in range(iters):
+        acc = np.empty_like(f)
+        for k in range(f.shape[1]):
+            acc[:, k] = np.bincount(e[:, 0], f[e[:, 1], k], n) + np.bincount(e[:, 1], f[e[:, 0], k], n)
+        f = 0.5 * f + 0.5 * acc / deg[:, None]
+        f[fixed] = keep
+    return f[:, 0] if two_d else f
+
+
+def _ring_max(mesh: trimesh.Trimesh, values: np.ndarray, rings: int = 2) -> np.ndarray:
+    """逐顶点的量在邻近 rings 圈内取最大（灰度膨胀）。"""
+    e = mesh.edges_unique
+    v = np.asarray(values, float).copy()
+    for _ in range(rings):
+        m = v.copy()
+        np.maximum.at(m, e[:, 0], v[e[:, 1]])
+        np.maximum.at(m, e[:, 1], v[e[:, 0]])
+        v = m
+    return v
+
+
+def _unfold(mesh: trimesh.Trimesh, movable: np.ndarray, rounds: int = 15, ring: int = 4, inner: int = 10) -> int:
+    """局部摊平翻折处（相邻面夹角 > 120°）：只动翻折处周围几圈的可动顶点，切向拉普拉斯（沿当前法向去掉法向分量，不改形状）。
+    原地修改，返回剩下的翻折边数。"""
+    v = np.asarray(mesh.vertices, float).copy()
+    e = mesh.edges_unique
+    n = len(v)
+    deg = np.maximum(np.bincount(e.ravel(), minlength=n), 1).astype(float)[:, None]
+    left = 0
+    for _ in range(rounds):
+        m = trimesh.Trimesh(v, mesh.faces, process=False)
+        fn = m.face_normals
+        adj = m.face_adjacency
+        bad = (fn[adj[:, 0]] * fn[adj[:, 1]]).sum(1) < -0.5
+        left = int(bad.sum())
+        if not left:
+            break
+        act = np.zeros(n, bool)
+        act[np.asarray(mesh.faces)[adj[bad].ravel()].ravel()] = True
+        for _ in range(ring):
+            a2 = act.copy()
+            a2[e[act[e[:, 0]], 1]] = True
+            a2[e[act[e[:, 1]], 0]] = True
+            act = a2
+        act &= movable
+        w = act[:, None].astype(float)
+        for _ in range(inner):
+            nrm = trimesh.Trimesh(v, mesh.faces, process=False).vertex_normals
+            acc = np.empty_like(v)
+            for k in range(3):
+                acc[:, k] = np.bincount(e[:, 0], v[e[:, 1], k], n) + np.bincount(e[:, 1], v[e[:, 0], k], n)
+            lap = acc / deg - v
+            v = v + 0.5 * (lap - (lap * nrm).sum(1, keepdims=True) * nrm) * w
+    mesh.vertices = v
+    return left
 
 
 def _loft(a_idx: np.ndarray, a_ang: np.ndarray, b_idx: np.ndarray, b_ang: np.ndarray) -> np.ndarray:
@@ -327,9 +427,17 @@ def generate_prep_crown(
         raise ValueError(f"外表面应只有一个开放边界，实际 {len(outer_loops)} 个")
     outer_loop = outer_loops[0]
     _morph_outer(outer, outer_loop, crown_margin, frame, margin_thickness)
+    import os
+
+    # 侧面加厚（下 / 中 / 上，mm）：评分卡偶数号病人量到侧面比原牙瘦 0.13 / 0.20 / 0.23 mm，补回这么多；
+    # 奇数号病人验证：瘦 0.17 / 0.20 / 0.25 → 0.07 / 0.09 / 0.16 mm，外形 RMSE 0.459 → 0.435
+    side_off = [float(x) for x in os.environ.get("PREP_SIDE_OFFSET", "0.13,0.20,0.23").split(",")]
+    if not str(outer_tooth.info.get("source", "")).count("voxel"):  # 16 / 26 体素模型这条路侧面不瘦（评分卡 +0.0–0.5 mm），不加
+        _side_bulge(outer, outer_loop, crown_margin, frame, side_off)
 
     # 3. 邻接 + 最小厚度（颈缘线附近 gap_taper + 0.5 mm 内的顶点不动、不检查）
-    far = _distance_to_loop(outer.vertices, margin) > gap_taper + 0.5
+    dmarg = _distance_to_loop(outer.vertices, margin)
+    far = dmarg > gap_taper + 0.5
     before = _signed_thickness(outer.vertices[far], inner) if far.any() else np.array([np.inf])
     neighbors = {f: tooth_mesh(mesh, without, f) for f in (target.mesial, target.distal) if f is not None}
 
@@ -341,15 +449,34 @@ def generate_prep_crown(
             deficit = np.clip(prefs.crown_thickness - t, 0.0, prefs.crown_thickness)
             if deficit.max() <= 1e-4:
                 break
-            outer.vertices[far] = outer.vertices[far] + normals * deficit[:, None]
+            # 逐顶点各推各的会推出尖刺（侧面毛刺）：推的量先在周围 2 圈取最大、再平滑，推出来是一块平滑的鼓包
+            push = np.zeros((len(outer.vertices), 3))
+            push[far] = normals * deficit[:, None]
+            mag = np.zeros(len(outer.vertices))
+            mag[far] = deficit
+            mag = _ring_max(outer, mag, 2)
+            dirs = _smooth_field(outer, push, ~far, iters=10)
+            dn = np.linalg.norm(dirs, axis=1, keepdims=True)
+            dirs = np.where(dn > 1e-9, dirs / np.maximum(dn, 1e-9), 0.0)
+            amount = _smooth_field(outer, mag, ~far, iters=6)
+            full = np.zeros(len(outer.vertices))
+            full[far] = deficit
+            amount = np.maximum(amount, full)  # 平滑不能把该推的量抹小（评分卡上最小厚度掉到 0.07 mm）
+            outer.vertices[far] = outer.vertices[far] + (dirs * amount[:, None])[far]
 
     enforce_thickness()
     occlusion: dict = {}
     if antagonist is not None:
         occlusion, occlusion_warnings = adjust_occlusion(outer, antagonist, np.asarray(up, dtype=float), prefs.occlusion_distance, far)
         warnings += [f"{fdi} {w}" for w in occlusion_warnings]
+    # 邻接不做平滑：前磨牙邻面颈缘线高，接触点就在分界上方 1–2 mm，平滑会把推力抹掉（评分卡上邻接间隙变成 +0.2 mm）
     contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
-    enforce_thickness()  # 退开邻牙时可能变薄，再补一次厚度
+    # 邻接、咬合调整都是把一片顶点往一个方向推，弯的地方会留下翻折：局部摊平（不改形状），再补厚度（摊平可能变薄）
+    _unfold(outer, far)
+    enforce_thickness()  # 退开邻牙、摊平时可能变薄，再补一次厚度
+    # 摊平会把邻接处刚推出来的小鼓包也摊掉（评分卡上近中没接触的牙 21% → 45%）：再调一次邻接
+    contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
+    enforce_thickness()  # 第二次退开邻牙也可能变薄（评分卡上个别磨牙最薄 0.12 mm）
     if antagonist is not None:  # 邻接、补厚度都可能又顶到对颌：最后再磨一遍（只磨不抬），和缺失牙流程一样
         again, _ = adjust_occlusion(outer, antagonist, np.asarray(up, dtype=float), prefs.occlusion_distance, far, lift=False)
         occlusion["occlusal_clearance_mm"] = again.get("occlusal_clearance_mm")
