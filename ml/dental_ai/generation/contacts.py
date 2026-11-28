@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
@@ -147,7 +149,14 @@ def adjust_contacts(
             contact = crown.vertices[idx[k]]
             toward = -normals[k]  # 邻牙法向朝外，朝向邻牙就是反方向
             w = np.exp(-((crown.vertices[idx] - contact) ** 2).sum(axis=1) / (2 * sigma2))
-            crown.vertices[idx] = crown.vertices[idx] + (w * delta)[:, None] * toward
+            if os.environ.get("CONTACT_PUSH", "fixed") == "normal":  # 试过：邻接压进邻牙 0.26 mm、翻折更多，默认不用
+                # 每个顶点沿自己的法向挪（只取朝邻牙方向的分量）：相当于局部偏移曲面。整片沿同一个方向推，
+                # 在邻面和咬合面交界的弯处会把网格挤皱（网页上 46 号邻面角上的皱褶）
+                vn = np.asarray(crown.vertex_normals)[idx]
+                proj = np.clip((vn * toward).sum(axis=1), 0.0, None)  # 背对邻牙的顶点不动
+                crown.vertices[idx] = crown.vertices[idx] + (w * delta * proj)[:, None] * vn
+            else:
+                crown.vertices[idx] = crown.vertices[idx] + (w * delta)[:, None] * toward
         result[fdi] = round(d_min, 3) if np.isfinite(d_min) else None
         if np.isfinite(d_min) and d_min <= max_gap and abs(d_min - target) > 0.05:
             warnings.append(f"与 {fdi} 的邻接距离 {d_min:.2f} mm，未达到目标 {target:.2f} mm")

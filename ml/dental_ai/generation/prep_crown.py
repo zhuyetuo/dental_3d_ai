@@ -289,6 +289,42 @@ def _ring_max(mesh: trimesh.Trimesh, values: np.ndarray, rings: int = 2) -> np.n
     return v
 
 
+def _local_taubin(mesh: trimesh.Trimesh, movable: np.ndarray, rounds: int = 6, ring: int = 3, iters: int = 6, thr: float = 0.0) -> int:
+    """皱褶处局部 Taubin 平滑（λ 0.5 / μ −0.53，不缩体积）：只动相邻面夹角大（法向点积 < thr，默认 > 90°）的地方周围几圈的可动顶点。
+    切向摊平只能把翻过来的三角形摊开，挤皱的地方（法向来回翻但没翻过来）摊不平。原地修改，返回剩下的尖棱数。"""
+    v = np.asarray(mesh.vertices, float).copy()
+    f = np.asarray(mesh.faces)
+    e = mesh.edges_unique
+    n = len(v)
+    deg = np.maximum(np.bincount(e.ravel(), minlength=n), 1).astype(float)[:, None]
+    left = 0
+    for _ in range(rounds):
+        m = trimesh.Trimesh(v, f, process=False)
+        fn = m.face_normals
+        adj = m.face_adjacency
+        bad = (fn[adj[:, 0]] * fn[adj[:, 1]]).sum(1) < thr
+        left = int(bad.sum())
+        if not left:
+            break
+        act = np.zeros(n, bool)
+        act[f[adj[bad].ravel()].ravel()] = True
+        for _ in range(ring):
+            a2 = act.copy()
+            a2[e[act[e[:, 0]], 1]] = True
+            a2[e[act[e[:, 1]], 0]] = True
+            act = a2
+        act &= movable
+        w = act[:, None].astype(float)
+        for _ in range(iters):
+            for s in (0.5, -0.53):
+                acc = np.empty_like(v)
+                for k in range(3):
+                    acc[:, k] = np.bincount(e[:, 0], v[e[:, 1], k], n) + np.bincount(e[:, 1], v[e[:, 0], k], n)
+                v = v + s * (acc / deg - v) * w
+    mesh.vertices = v
+    return left
+
+
 def _unfold(mesh: trimesh.Trimesh, movable: np.ndarray, rounds: int = 15, ring: int = 4, inner: int = 10) -> int:
     """局部摊平翻折处（相邻面夹角 > 120°）：只动翻折处周围几圈的可动顶点，切向拉普拉斯（沿当前法向去掉法向分量，不改形状）。
     原地修改，返回剩下的翻折边数。"""
@@ -471,19 +507,29 @@ def generate_prep_crown(
                 break
             outer.vertices[far] = outer.vertices[far] + normals * deficit[:, None]
 
+    # 补冠厚、邻接都会在弯处挤出皱褶（46 号示例补冠厚一步 +150 处尖棱，邻面角上看得见）：每一步之后皱褶处局部 Taubin 平滑
+    tidy = os.environ.get("PREP_TIDY", "taubin")
+
+    def smooth_creases():
+        if tidy == "taubin":
+            _local_taubin(outer, far)
+        elif tidy == "unfold":
+            _unfold(outer, far)
+
     enforce_thickness()
+    smooth_creases()
     occlusion: dict = {}
     if antagonist is not None:
         occlusion, occlusion_warnings = adjust_occlusion(outer, antagonist, np.asarray(up, dtype=float), prefs.occlusion_distance, far)
         warnings += [f"{fdi} {w}" for w in occlusion_warnings]
     # 邻接不做平滑：前磨牙邻面颈缘线高，接触点就在分界上方 1–2 mm，平滑会把推力抹掉（评分卡上邻接间隙变成 +0.2 mm）
     contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
-    # 邻接、咬合调整都是把一片顶点往一个方向推，弯的地方会留下翻折：局部摊平（不改形状），再补厚度（摊平可能变薄）
-    _unfold(outer, far)
-    enforce_thickness()  # 退开邻牙、摊平时可能变薄，再补一次厚度
-    # 摊平会把邻接处刚推出来的小鼓包也摊掉（评分卡上近中没接触的牙 21% → 45%）：再调一次邻接
+    smooth_creases()
+    enforce_thickness()  # 退开邻牙、平滑时可能变薄，再补一次厚度
+    # 平滑会把邻接处刚推出来的小鼓包也抹掉（评分卡上近中没接触的牙 21% → 45%）：再调一次邻接
     contacts, contact_warnings = adjust_contacts(outer, neighbors, prefs.contacts_distance, far)
-    enforce_thickness()  # 第二次退开邻牙也可能变薄（评分卡上个别磨牙最薄 0.12 mm）
+    smooth_creases()
+    enforce_thickness()  # 第二次退开邻牙、平滑也可能变薄（评分卡上个别磨牙最薄 0.12 mm）
     if antagonist is not None:  # 邻接、补厚度都可能又顶到对颌：最后再磨一遍（只磨不抬），和缺失牙流程一样
         again, _ = adjust_occlusion(outer, antagonist, np.asarray(up, dtype=float), prefs.occlusion_distance, far, lift=False)
         occlusion["occlusal_clearance_mm"] = again.get("occlusal_clearance_mm")

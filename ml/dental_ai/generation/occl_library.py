@@ -205,7 +205,42 @@ def borrow(verts, faces, lib_path: Path, k: int = 5, gain: float | None = None, 
     if len(rim):
         w *= np.clip(cKDTree(v[rim]).query(v)[0] / 1.0, 0, 1)
     v[:, 1] += dv * w
+    if os.environ.get("OCCL_LIB_TIDY", "1") == "1":  # 陡坡上竖直挪起伏会挤出尖棱 / 翻折（16 号示例 2400+ 处）：只在借了起伏的地方局部 Taubin
+        v = _crease_taubin(v, np.asarray(faces), (w > 0.05) & (np.abs(dv) > 1e-4))
     return v, {"occl_library": int(i), "occl_library_ncc": round(s, 3)}
+
+
+def _crease_taubin(v, f, movable, rounds=6, ring=2, iters=4, thr=0.0):
+    """尖棱（相邻面法向点积 < thr）周围几圈、movable 的顶点做 Taubin 平滑（不缩体积）。返回新顶点。"""
+    import trimesh
+
+    v = np.asarray(v, float).copy()
+    m = trimesh.Trimesh(v, f, process=False)
+    e = m.edges_unique
+    n = len(v)
+    deg = np.maximum(np.bincount(e.ravel(), minlength=n), 1).astype(float)[:, None]
+    for _ in range(rounds):
+        m = trimesh.Trimesh(v, f, process=False)
+        fn = m.face_normals
+        adj = m.face_adjacency
+        bad = (fn[adj[:, 0]] * fn[adj[:, 1]]).sum(1) < thr
+        if not bad.any():
+            break
+        act = np.zeros(n, bool)
+        act[f[adj[bad].ravel()].ravel()] = True
+        for _ in range(ring):
+            a2 = act.copy()
+            a2[e[act[e[:, 0]], 1]] = True
+            a2[e[act[e[:, 1]], 0]] = True
+            act = a2
+        wt = (act & movable)[:, None].astype(float)
+        for _ in range(iters):
+            for s_ in (0.5, -0.53):
+                acc = np.empty_like(v)
+                for k in range(3):
+                    acc[:, k] = np.bincount(e[:, 0], v[e[:, 1], k], n) + np.bincount(e[:, 1], v[e[:, 0], k], n)
+                v = v + s_ * (acc / deg - v) * wt
+    return v
 
 
 def main() -> None:

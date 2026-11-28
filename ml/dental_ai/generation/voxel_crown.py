@@ -574,6 +574,60 @@ def _boundary_loops(m):
     return sorted(loops, key=len, reverse=True)
 
 
+def _fill_holes(P, holes, ref):
+    """补洞：每个洞从中心扇形三角化，中心点放到 ref（原来的牙冠网格）表面上；洞较大时加一圈中间点。补完的地方 Taubin 几次。"""
+    import trimesh
+
+    v = [np.asarray(P.vertices, float)]
+    f = [np.asarray(P.faces)]
+    n0 = len(v[0])
+    new_ids = []
+    for L in holes:
+        L = np.asarray(L)
+        ring = v[0][L]
+        c = ring.mean(0)
+        c = trimesh.proximity.closest_point(ref, c[None])[0][0]
+        base = n0 + sum(len(x) for x in v[1:])
+        if len(L) > 24:  # 大洞：加一圈半径一半的中间点
+            mid = 0.5 * (ring + c)
+            mid = trimesh.proximity.closest_point(ref, mid)[0]
+            v.append(mid)
+            v.append(c[None])
+            k = len(L)
+            mids = base + np.arange(k)
+            ci = base + k
+            for i in range(k):
+                a, b = L[i], L[(i + 1) % k]
+                ma, mb = mids[i], mids[(i + 1) % k]
+                f.append(np.array([[b, a, ma], [b, ma, mb], [mb, ma, ci]]))
+            new_ids += list(mids) + [ci]
+        else:
+            v.append(c[None])
+            ci = base
+            k = len(L)
+            f.append(np.array([[L[(i + 1) % k], L[i], ci] for i in range(k)]))
+            new_ids.append(ci)
+    V = np.vstack(v)
+    F = np.vstack(f)
+    out = trimesh.Trimesh(V, F, process=False)
+    # 补的点和洞边一圈 Taubin
+    e = out.edges_unique
+    nv = len(V)
+    act = np.zeros(nv, bool)
+    act[new_ids] = True
+    for L in holes:
+        act[np.asarray(L)] = True
+    deg = np.maximum(np.bincount(e.ravel(), minlength=nv), 1).astype(float)[:, None]
+    w = act[:, None].astype(float)
+    for _ in range(6):
+        for s in (0.5, -0.53):
+            acc = np.empty_like(V)
+            for k in range(3):
+                acc[:, k] = np.bincount(e[:, 0], V[e[:, 1], k], nv) + np.bincount(e[:, 1], V[e[:, 0], k], nv)
+            V = V + s * (acc / deg - V) * w
+    return trimesh.Trimesh(V, F, process=False)
+
+
 def _zipper(A, B, P):
     """两圈（同一旋转方向）之间铺三角形带，P 是两圈共用的顶点数组。"""
     from scipy.spatial import cKDTree
@@ -641,6 +695,9 @@ def stitch_poisson(m, pm, band: float = 0.6, keep_near: float = 0.5, gap: float 
     near_m = cKDTree(v).query(P.triangles_center)[1]
     if (P.face_normals * m.vertex_normals[near_m]).sum(1).mean() < 0:
         P.invert()
+    lp = _boundary_loops(P)
+    if len(lp) > 1:  # 泊松表面被裁掉的地方在中间留下洞（真实口扫上常见），缝完开口不止一圈、整个缝合被弃用：先补上
+        P = _fill_holes(P, lp[1:], m)
     lb, lp = _boundary_loops(B), _boundary_loops(P)
     if len(lb) < 2 or not lp:
         return None
@@ -662,6 +719,18 @@ def stitch_poisson(m, pm, band: float = 0.6, keep_near: float = 0.5, gap: float 
     F = np.vstack([np.asarray(B.faces), np.asarray(P.faces) + nb, Z])
     out = trimesh.Trimesh(V, F, process=False)
     out.remove_unreferenced_vertices()
+    extra = _boundary_loops(out)[1:]  # 缝合处偶尔漏一两个三角形：底边以外的小开口补上
+    if extra and max(len(L) for L in extra) <= 30:
+        vv, ff = [np.asarray(out.vertices, float)], [np.asarray(out.faces)]
+        nxt = len(vv[0])
+        for L in extra:
+            if len(L) == 3:
+                ff.append(np.array([[L[2], L[1], L[0]]]))
+            else:
+                vv.append(vv[0][L].mean(0)[None])
+                ff.append(np.array([[L[(i + 1) % len(L)], L[i], nxt] for i in range(len(L))]))
+                nxt += 1
+        out = trimesh.Trimesh(np.vstack(vv), np.vstack(ff), process=False)
     # 缝合处摊平：底边不动，离底边 0.3 mm 起逐渐放开，只动离底边 band + 0.6 mm 以内
     v = np.asarray(out.vertices, float).copy()
     f = np.asarray(out.faces)
