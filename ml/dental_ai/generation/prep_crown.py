@@ -234,6 +234,42 @@ def _morph_outer(outer: trimesh.Trimesh, loop: np.ndarray, margin: np.ndarray, f
     outer.vertices[loop] = new[loop]
 
 
+def _fix_winding_fast(mesh: trimesh.Trimesh) -> None:
+    """统一三角形朝向（原地）：相邻两个面在公共边上的走向相同就是“不一致”；沿广度优先生成树传播要不要翻，每个连通块以第一个面为准。"""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import breadth_first_order, connected_components
+
+    f = np.asarray(mesh.faces).copy()
+    adj = mesh.face_adjacency
+    if not len(adj):
+        return
+    e = mesh.face_adjacency_edges  # (A, 2) 公共边的两个顶点
+
+    def forward(fi, a, b):  # 面 fi 里是否按 a → b 的方向走过这条边
+        ff = f[fi]
+        pos_a = np.argmax(ff == a[:, None], axis=1)
+        return ff[np.arange(len(fi)), (pos_a + 1) % 3] == b
+
+    same = forward(adj[:, 0], e[:, 0], e[:, 1]) == forward(adj[:, 1], e[:, 0], e[:, 1])  # 同向 = 不一致
+    n = len(f)
+    w = np.where(same, 2.0, 1.0)  # 边权编码“要不要翻”（2 = 翻），图本身只用来找生成树
+    g = coo_matrix((np.r_[w, w], (np.r_[adj[:, 0], adj[:, 1]], np.r_[adj[:, 1], adj[:, 0]])), shape=(n, n)).tocsr()
+    flip_pair = {}
+    for (a, b), s in zip(adj.tolist(), same.tolist()):
+        flip_pair[(a, b)] = flip_pair[(b, a)] = s
+    flip = np.zeros(n, bool)
+    _, lab = connected_components(g, directed=False)
+    seen = np.zeros(n, bool)
+    for root in np.unique(lab, return_index=True)[1]:
+        order, pred = breadth_first_order(g, int(root), directed=False, return_predecessors=True)
+        for x in order[1:]:
+            p = pred[x]
+            flip[x] = flip[p] ^ flip_pair[(int(p), int(x))]
+        seen[order] = True
+    f[flip] = f[flip][:, ::-1]
+    mesh.faces = f
+
+
 def _side_bulge(outer: trimesh.Trimesh, loop: np.ndarray, margin: np.ndarray, frame: _Frame, offsets) -> None:
     """侧面按相对高度（颈缘线 0 → 最高点 1）沿法向外加厚 offsets = (下, 中, 上) mm（三段中点 1/6、1/2、5/6 之间线性插值）。
     评分卡量到生成的牙冠侧面普遍比原牙瘦 0.2–0.35 mm（形状模型 + 扩散这条路）。只动侧面（法向和咬合方向夹角大），
@@ -384,13 +420,40 @@ def _signed_thickness(points: np.ndarray, inner: trimesh.Trimesh, edge_margin: f
 
     最近点落在组织面开放边缘（颈缘）edge_margin 以内的点记为 +inf：那里用边缘三角形的法向判断内外不可靠，
     会被误判成“太薄”，最小厚度的迭代就把这些点一次次往外推（真实口扫上推出了 10 mm 以上）。"""
-    cp, _, tri = closest_point(inner, points)
-    t = np.einsum("ij,ij->i", points - cp, inner.face_normals[tri])
-    loops = boundary_loops(inner)
-    if loops:
-        near_edge = cKDTree(inner.vertices[loops[0]]).query(cp)[0] < edge_margin
-        t[near_edge] = np.inf
-    return (t, inner.face_normals[tri]) if return_normals else t
+    from ..meshdist import _index
+
+    points = np.asarray(points, float)
+    n_all = len(points)
+    t = np.full(n_all, np.inf)
+    nrm = np.zeros((n_all, 3))
+    nrm[:, 2] = 1.0
+    # 离组织面明显很远、又在外侧的点一定够厚：只用三角形中心的 KD 树粗判，不求精确最近点（这一步原来占整颗牙冠 2/3 的时间，
+    # 离得远的点精确求解时候选三角形很多）。在组织面里面的点（负厚度）不管多远都精确求
+    idx = _index(inner)
+    if len(idx["small"]):
+        dc, ic = idx["tree"].query(points, k=1)
+        tri0 = idx["small"][ic]
+        sgn = np.einsum("ij,ij->i", points - idx["tris"][tri0].mean(axis=1), idx["normals"][tri0])
+        exact = (dc - idx["r_max"] < 1.0) | (sgn < 0)  # 1 mm 以内（冠厚 0.5 的两倍）或在里面：精确
+        t[~exact] = dc[~exact]
+        nrm[~exact] = idx["normals"][tri0[~exact]]
+    else:
+        exact = np.ones(n_all, bool)
+    if exact.any():
+        cp, _, tri = closest_point(inner, points[exact])
+        te = np.einsum("ij,ij->i", points[exact] - cp, inner.face_normals[tri])
+        # 组织面开放边缘的 KD 树：组织面不变，算一次挂在缓存上（原来每次都重新找边界，占 10 秒以上）
+        key = "dental_inner_edge_tree"
+        if key not in inner._cache:
+            loops = boundary_loops(inner)
+            inner._cache[key] = cKDTree(inner.vertices[loops[0]]) if loops else None
+        edge_tree = inner._cache[key]
+        if edge_tree is not None:
+            near_edge = edge_tree.query(cp)[0] < edge_margin
+            te[near_edge] = np.inf
+        t[exact] = te
+        nrm[exact] = inner.face_normals[tri]
+    return (t, nrm) if return_normals else t
 
 
 def generate_prep_crown(
@@ -478,7 +541,7 @@ def generate_prep_crown(
     neighbors = {f: tooth_mesh(mesh, without, f) for f in (target.mesial, target.distal) if f is not None}
 
     def enforce_thickness():
-        for _ in range(20):
+        for _ in range(8):
             t, normals = _signed_thickness(outer.vertices[far], inner, return_normals=True)
             # 每次最多外推一个冠厚；沿组织面在最近点处的法向推（一定让厚度增加）。
             # 用外表面自己的顶点法向不行：折叠、补洞处法向朝里，越推越薄，真实口扫上推出了 10 mm
@@ -500,7 +563,7 @@ def generate_prep_crown(
             amount = np.maximum(amount, full)  # 平滑不能把该推的量抹小（评分卡上最小厚度掉到 0.07 mm）
             outer.vertices[far] = outer.vertices[far] + (dirs * amount[:, None])[far]
         # 平滑推法在个别地方方向会互相抵消（16 号示例最薄 −1.2 mm 推不出来）：还不够厚的点按原来的办法逐点推，保证不比原来差
-        for _ in range(20):
+        for _ in range(12):
             t, normals = _signed_thickness(outer.vertices[far], inner, return_normals=True)
             deficit = np.clip(prefs.crown_thickness - t, 0.0, prefs.crown_thickness)
             if deficit.max() <= 1e-4:
@@ -550,7 +613,8 @@ def generate_prep_crown(
         np.vstack([outer.faces, inner.faces + n_outer, strip]),
         process=False,
     )
-    trimesh.repair.fix_normals(crown, multibody=False)
+    if not crown.is_winding_consistent:  # 不一致时才修；trimesh.repair.fix_normals 在 8 万个面上要 15 秒，这里用图的广度优先一次算完
+        _fix_winding_fast(crown)
     if crown.volume < 0:
         crown.invert()
     if not crown.is_watertight:

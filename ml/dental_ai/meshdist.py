@@ -16,6 +16,7 @@ trimesh.proximity.closest_point 逐点查空间索引，口扫的对颌有几万
 
 from __future__ import annotations
 
+import itertools
 import os
 
 import numpy as np
@@ -98,7 +99,7 @@ def _closest_on_triangles(p, a, b, c):
 _TIE = 1e-9  # 距离相差这么多以内算“并列最近”（毫米）
 
 
-def _best(points, tris, normals, cand):
+def _best(points, tris, normals, cand, tie=_TIE):
     """points (P,3)、tris (F,3,3)、normals (F,3) 都是 torch 张量，cand (P,K) 是候选三角形编号（-1 = 补位）。
     返回每个点的 (最近点, 距离, 三角形编号, 并列最近的三角形的法向之和)。"""
     P, K = cand.shape
@@ -119,12 +120,12 @@ def _best(points, tris, normals, cand):
         cps.append(q[row, j])
         ds.append(low)
         ts.append(c[row, j])
-        tied = d <= low[:, None] + _TIE
+        tied = d <= low[:, None] + tie
         ns.append((normals[c] * tied[..., None]).sum(dim=1))
     return torch.cat(cps), torch.cat(ds), torch.cat(ts), torch.cat(ns)
 
 
-def closest_point(surface: trimesh.Trimesh, points: np.ndarray, k: int = 16, return_normal: bool = False):
+def closest_point(surface: trimesh.Trimesh, points: np.ndarray, k: int = int(os.environ.get("DENTAL_MESHDIST_K", 64)), return_normal: bool = False):
     """和 trimesh.proximity.closest_point 的返回值一样：(最近点 (P,3), 距离 (P,), 三角形编号 (P,))。
 
     return_normal=True 时多返回一项：最近点处的法向（单位向量）。最近点落在棱或顶点上时，几个三角形并列最近，
@@ -144,22 +145,52 @@ def closest_point(surface: trimesh.Trimesh, points: np.ndarray, k: int = 16, ret
     return out if return_normal else out[:3]
 
 
+def _knn_gpu(pts, index, k, dev, origin, chunk_pairs=60_000_000):
+    """显卡上的 k 近邻（点 → 小三角形的中心），返回和 cKDTree.query 一样的 (距离 (P,k), 下标 (P,k)) numpy 数组。
+    pts 已经减过 origin（网格中心附近，float32 的 |p|² + |c|² − 2p·c 抵消误差小）。"""
+    key = ("centers", str(dev))
+    if key not in index:
+        cen = index["tris"][index["small"]].mean(axis=1) - origin
+        index[key] = torch.as_tensor(cen, dtype=torch.float32, device=dev)
+    c = index[key]
+    c2 = (c * c).sum(1)
+    p = pts.to(torch.float32)
+    step = max(1, chunk_pairs // max(len(c), 1))
+    ds, js = [], []
+    for s in range(0, len(p), step):
+        q = p[s : s + step]
+        d2 = (q * q).sum(1, keepdim=True) + c2[None] - 2.0 * (q @ c.T)
+        v, j = torch.topk(d2, k, dim=1, largest=False)
+        ds.append(v.clamp(min=0).sqrt())
+        js.append(j)
+    # float32 的距离有 1e-5 mm 级误差：下界判断（第 k 个候选的中心距离 − 最大半径）留一点余量
+    return (torch.cat(ds).double().cpu().numpy() - 1e-4), torch.cat(js).cpu().numpy()
+
+
 def _closest_point(surface, points, k, dev):
     index = _index(surface)
-    tris = torch.as_tensor(index["tris"], device=dev)
-    normals = torch.as_tensor(index["normals"], device=dev)
-    pts = torch.as_tensor(points, device=dev)
+    # 显卡上用 float32：消费级显卡（4090）float64 只有 float32 的 1/64，原来这里一颗牙冠要等显卡 40 秒；
+    # 坐标先平移到网格中心附近，float32 的误差在 1e-5 mm 量级，冠厚、邻接、咬合都够用（DENTAL_MESHDIST_F64=1 退回 float64）
+    f32 = dev.type == "cuda" and os.environ.get("DENTAL_MESHDIST_F64") != "1"
+    dt = torch.float32 if f32 else torch.float64
+    origin = index["tris"].reshape(-1, 3).mean(axis=0)
+    key = ("tris_dev", str(dev), str(dt))
+    if key not in index:
+        index[key] = (torch.as_tensor(index["tris"] - origin, dtype=dt, device=dev), torch.as_tensor(index["normals"], dtype=dt, device=dev))
+    tris, normals = index[key]
+    pts = torch.as_tensor(points - origin, dtype=dt, device=dev)
     small, big, tree, r_max = index["small"], index["big"], index["tree"], index["r_max"]
     n = len(points)
-    cp = torch.zeros((n, 3), dtype=torch.float64, device=dev)
-    dist = torch.full((n,), float("inf"), dtype=torch.float64, device=dev)
+    cp = torch.zeros((n, 3), dtype=dt, device=dev)
+    dist = torch.full((n,), float("inf"), dtype=dt, device=dev)
     tri = torch.zeros(n, dtype=torch.long, device=dev)
-    normal = torch.zeros((n, 3), dtype=torch.float64, device=dev)
+    normal = torch.zeros((n, 3), dtype=dt, device=dev)
+    tie = 1e-6 if f32 else _TIE
 
     def update(rows, cand, complete=False):
         """complete：候选里一定包含全部并列最近的三角形，距离一样时也换成这次的结果（法向之和才完整）。"""
-        q, d, t, m = _best(pts[rows], tris, normals, cand)
-        better = (d <= dist[rows] + _TIE) if complete else (d < dist[rows])
+        q, d, t, m = _best(pts[rows], tris, normals, cand, tie)
+        better = (d <= dist[rows] + tie) if complete else (d < dist[rows])
         r = rows[better]
         cp[r], dist[r], tri[r], normal[r] = q[better], d[better], t[better], m[better]
 
@@ -169,14 +200,25 @@ def _closest_point(surface, points, k, dev):
     if len(small):
         small_t = torch.as_tensor(small, device=dev)
         kk = min(k, len(small))
-        dc, ic = tree.query(points, k=kk, workers=_WORKERS)
-        if kk == 1:
-            dc, ic = dc[:, None], ic[:, None]
+        if dev.type == "cuda":  # 候选三角形也在显卡上找：分块算到三角形中心的距离取前 k（CPU 的 KD 树查询占了这里大半时间）
+            dc, ic = _knn_gpu(pts, index, kk, dev, origin)
+        else:
+            dc, ic = tree.query(points, k=kk, workers=_WORKERS)
+            if kk == 1:
+                dc, ic = dc[:, None], ic[:, None]
         update(everyone, small_t[torch.as_tensor(ic, device=dev)])
         if kk < len(small):
             # 没进候选的三角形到点的距离不会小于 “第 k 个候选的中心距离 − 最大半径”；已找到的距离超过它的点还不能确定
             found = dist.cpu().numpy()
             todo = np.flatnonzero(found > dc[:, -1] - r_max)
+            k2 = min(512, len(small))
+            if dev.type == "cuda" and len(todo) and k2 > kk:
+                # 还不确定的点先在显卡上多取候选（512 个）再算一遍，剩下的极少数才去 CPU 的 KD 树（那里是多线程查询，等锁占了几十秒）
+                t_rows = torch.as_tensor(todo, device=dev)
+                dc2, ic2 = _knn_gpu(pts[t_rows], index, k2, dev, origin)
+                update(t_rows, small_t[torch.as_tensor(ic2, device=dev)], complete=True)
+                found = dist.cpu().numpy()
+                todo = todo[found[todo] > dc2[:, -1] - r_max]
             if len(todo):
                 # 这些点（多半离曲面较远）改查“中心在 已找到的距离 + 最大半径 以内”的全部三角形：真正的最近三角形一定在里面
                 lists = tree.query_ball_point(points[todo], found[todo] + r_max, workers=_WORKERS, return_sorted=False)
@@ -191,12 +233,17 @@ def _closest_point(surface, points, k, dev):
                         e += 1
                     width = int(count[order[e - 1]])
                     if width:
-                        cand = np.full((e - s, width), -1, dtype=np.int64)
-                        for i, j in enumerate(order[s:e]):
-                            row = lists[j]
-                            cand[i, : len(row)] = small[row]
-                        update(torch.as_tensor(todo[order[s:e]], device=dev), torch.as_tensor(cand, device=dev), complete=True)
+                        # 补齐成矩阵：一次拼接 + 花式索引（原来逐点赋值，候选多的病例里这段纯 Python 循环占了几十秒）
+                        sel = order[s:e]
+                        lens = count[sel]
+                        flat = np.fromiter(itertools.chain.from_iterable(lists[j] for j in sel), dtype=np.int64, count=int(lens.sum()))
+                        rows_i = np.repeat(np.arange(len(sel)), lens)
+                        cols_i = np.arange(len(flat)) - np.repeat(np.cumsum(lens) - lens, lens)
+                        cand = np.full((len(sel), width), -1, dtype=np.int64)
+                        cand[rows_i, cols_i] = small[flat]
+                        update(torch.as_tensor(todo[sel], device=dev), torch.as_tensor(cand, device=dev), complete=True)
                     s = e
     length = torch.linalg.norm(normal, dim=1, keepdim=True)
     normal = torch.where(length > 1e-12, normal / length.clamp(min=1e-12), normals[tri])  # 法向互相抵消时退回最近三角形的法向
-    return cp.cpu().numpy(), dist.cpu().numpy(), tri.cpu().numpy(), normal.cpu().numpy()
+    return (cp.cpu().numpy().astype(np.float64) + origin, dist.cpu().numpy().astype(np.float64), tri.cpu().numpy(),
+            normal.cpu().numpy().astype(np.float64))
